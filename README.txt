@@ -11,15 +11,20 @@ from this directory. The output will go under build/.
 Build dependencies
 ------------------
 
+- scons
+
 - HDF5
 
 - Google protocol buffers (libprotobuf)
 
-- C bindings to protobuf (protobuf-c)
+- C bindings to protobuf (protobuf-c), and compiler
+
+- python
 
 On Ubuntu 12.04:
 
-   $ sudo apt-get install libprotobuf-dev libprotobuf-c0-dev libhdf5-serial-dev
+   $ sudo apt-get install libprotobuf-dev libprotobuf-c0-dev libhdf5-serial-dev \
+        protobuf-c-compiler scons python
 
 Repository contents
 -------------------
