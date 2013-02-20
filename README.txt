@@ -1,0 +1,39 @@
+What's this?
+------------
+
+This is the source code repository for the project codenamed
+"Wired-Leaf". To build, install scons and run
+
+    $ scons
+
+from this directory. The output will go under build/.
+
+Build dependencies
+------------------
+
+- HDF5
+
+- Google protocol buffers (libprotobuf)
+
+- C bindings to protobuf (protobuf-c)
+
+On Ubuntu 12.04:
+
+   $ sudo apt-get install libprotobuf-dev libprotobuf-c0-dev libhdf5-serial-dev
+
+Repository contents
+-------------------
+
+- README.txt: this file.
+
+- SConstruct, site_scons/: build system files.
+
+- proto/: Google protobuf message files. These are kept separate from
+  the source tree, as we may need to share them with others.
+
+  The build system takes care of ensuring that the generated headers
+  are available ("proto/foo.proto" gets included as
+  "proto/foo.pb-c.h") and that the generated C sources get built and
+  linked into the final program.
+
+- src/: source code.

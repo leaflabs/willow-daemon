@@ -1,0 +1,53 @@
+// TODO:
+//
+// - Is the memory overhead of using int32 for FrameChunk.readings
+//   excessive on either the sending or receiving end? If so, we may
+//   need to turn that into a "bytes" type, and rely on sampleSize
+//   plus memcpy() + endianness-tags to get good behavior. That's
+//   ugly, though, and kind of defeats the purpose.
+
+// Used when initializing an experiment or recording.
+message SetupPacket {
+
+    // Available control and status flags.
+    enum Flags {
+        SF_START = 1;
+        SF_STOP = 2;
+    }
+
+    // Size of each channel reading, in bytes. E.g. sampleSize == 2
+    // means a uint16_t will hold an individual channel reading.
+    optional int32 sampleSize = 4;
+
+    // For converting from samples to potentials. This value may be
+    // negative.
+    optional float voltsPerBit = 5;
+
+    // Control and status flags.
+    optional int32 flags = 6;
+
+    // Total number of channels being recorded. These will be numbered
+    // starting from 0 in a FrameChunk (q.v.).
+    optional int32 nChannels = 7;
+}
+
+// Stores a contiguous subset of channel readings.
+message FrameChunk {
+
+    // Number of first channel for which data are stored. Thus, this
+    // FrameChunk stores data for channels [startChannel,readings.length).
+    optional int32 startChannel = 4;
+
+    // The samples array.
+    repeated int32 readings = 5 [packed=true];
+}
+
+// Stores an entire frame's worth of data (i.e., one value per channel).
+message Frame {
+
+    // Monotonically increasing frame number.
+    optional int32 frameNum = 4;
+
+    // Frame data, in chunks.
+    repeated FrameChunk chunks = 5;
+}
