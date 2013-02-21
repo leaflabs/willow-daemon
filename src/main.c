@@ -1,10 +1,18 @@
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
+/* Copyright (c) 2013 LeafLabs, LLC. All rights reserved. */
 
+#include <fcntl.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <unistd.h>
+
+#include <sys/types.h>
+#include <sys/select.h>
+
+#include "daemon.h"
 #include "proto/open-ephys.pb-c.h"
 
-int main(int argc, char *argv[])
+void write_fchunk_to(int fd)
 {
     int32_t readings[] = {0xAA, 0x55, 0x00, 0xFF};
     FrameChunk fchunk = FRAME_CHUNK__INIT;
@@ -26,8 +34,39 @@ int main(int argc, char *argv[])
     }
     frame_chunk__pack(&fchunk, packed_buf);
 
-    /* Write packed protocol buffer to stdout. */
-    fwrite(packed_buf, packed_size, 1, stdout);
+    /* Write packed protocol buffer to file. */
+    if (write(fd, packed_buf, packed_size) == -1) {
+        perror("write");
+        exit(EXIT_FAILURE);
+    }
+}
 
+int main(int argc, char *argv[])
+{
+    const char out_path[] = "/tmp/fchunk-wire-fmt";
+
+    /* Leave stderr open for now, so we can perror() after calling
+     * daemonize().
+     * TODO: remove this once we've got a proper logging system. */
+    fd_set leave_open;
+    FD_ZERO(&leave_open);
+    FD_SET(STDERR_FILENO, &leave_open);
+
+    printf("Becoming daemon, then writing protobuf to %s.\n", out_path);
+
+    /* Become a daemon. */
+    if (daemonize(&leave_open, 0) != 0) {
+        perror("daemonize");
+        exit(EXIT_FAILURE);
+    }
+
+    /* Write to out_path. */
+    int out_fd = open(out_path, O_RDWR | O_CREAT, 0644);
+    if (out_fd == -1) {
+        perror("open");
+        exit(EXIT_FAILURE);
+    }
+    write_fchunk_to(out_fd);
+    close(out_fd);
     return 0;
 }
