@@ -43,7 +43,7 @@ message FrameChunk {
 }
 
 // Stores an entire frame's worth of data (i.e., one value per channel).
-message Frame {
+message BoardFrame {
 
     // Monotonically increasing frame number.
     optional int32 frameNum = 4;
