@@ -55,7 +55,7 @@ int main(int argc, char *argv[])
     printf("Becoming daemon, then writing protobuf to %s.\n", out_path);
 
     /* Become a daemon. */
-    if (daemonize(&leave_open, 0) != 0) {
+    if (daemonize(&leave_open, 0) == -1) {
         perror("daemonize");
         exit(EXIT_FAILURE);
     }
