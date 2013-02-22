@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
 #include <sys/types.h>
@@ -13,7 +14,10 @@
 #include "daemon.h"
 #include "proto/open-ephys.pb-c.h"
 
-static void usage(const char *program_name, int exit_status)
+/* main() initializes this before doing anything else. */
+static const char* program_name;
+
+static void usage(int exit_status)
 {
     printf("Usage: %s\n"
            "Options:\n"
@@ -53,7 +57,7 @@ void parse_args(struct arguments* args, int argc, char *const argv[])
         case 0:
             /* Check print_usage, which we treat as a special case. */
             if (print_usage) {
-                usage(argv[0], EXIT_SUCCESS);
+                usage(EXIT_SUCCESS);
             }
             /* Otherwise, getopt_long() has set *flag=val, so there's
              * nothing to do until we take long commands with
@@ -62,13 +66,13 @@ void parse_args(struct arguments* args, int argc, char *const argv[])
              * `optarg'. */
             break;
         case 'h':
-            usage(argv[0], EXIT_SUCCESS);
+            usage(EXIT_SUCCESS);
         case 'N':
             args->dont_daemonize = 1;
             break;
         case '?': /* Fall through. */
         default:
-            usage(argv[0], EXIT_FAILURE);
+            usage(EXIT_FAILURE);
         }
     }
 }
@@ -106,6 +110,12 @@ int main(int argc, char *argv[])
 {
     struct arguments args;
     const char out_path[] = "/tmp/fchunk-wire-fmt";
+
+    program_name = strdup(argv[0]);
+    if (!program_name) {
+        fprintf(stderr, "Out of memory at startup\n");
+        exit(EXIT_FAILURE);
+    }
 
     parse_args(&args, argc, argv);
 
