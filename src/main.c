@@ -12,6 +12,8 @@
 #include <sys/select.h>
 
 #include "daemon.h"
+#include "logging.h"
+
 #include "proto/open-ephys.pb-c.h"
 
 /* main() initializes this before doing anything else. */
@@ -94,16 +96,17 @@ void write_fchunk_to(int fd)
     packed_size = frame_chunk__get_packed_size(&fchunk);
     packed_buf = malloc(packed_size);
     if (packed_buf == 0) {
-        perror("malloc");
+        log_ERR("%m");
         exit(EXIT_FAILURE);
     }
     frame_chunk__pack(&fchunk, packed_buf);
 
     /* Write packed protocol buffer to file. */
     if (write(fd, packed_buf, packed_size) == -1) {
-        perror("write");
+        log_ERR("can't write to protobuf file: %m");
         exit(EXIT_FAILURE);
     }
+    log_DEBUG("wrote %zu bytes to file", packed_size);
 }
 
 int main(int argc, char *argv[])
@@ -111,36 +114,35 @@ int main(int argc, char *argv[])
     struct arguments args;
     const char out_path[] = "/tmp/fchunk-wire-fmt";
 
+    /* Stash the program name, parse arguments, and set up logging
+     * before doing anything else. DO NOT USE printf() etc. AFTER THIS
+     * POINT; use the logging.h API instead. */
     program_name = strdup(argv[0]);
     if (!program_name) {
         fprintf(stderr, "Out of memory at startup\n");
         exit(EXIT_FAILURE);
     }
-
     parse_args(&args, argc, argv);
-
-    printf("Writing protobuf to %s.\n", out_path);
-
-    /* Leave stderr open for now, so we can perror() after calling
-     * daemonize().
-     * TODO: remove this once we've got a proper logging system. */
-    fd_set leave_open;
-    FD_ZERO(&leave_open);
-    FD_SET(STDERR_FILENO, &leave_open);
+    int log_to_stderr = args.dont_daemonize;
+    logging_init(program_name, LOG_DEBUG, log_to_stderr);
 
     /* Become a daemon. */
+    fd_set leave_open;
+    FD_ZERO(&leave_open);
     if (!args.dont_daemonize && (daemonize(&leave_open, 0) == -1)) {
-        perror("daemonize");
+        log_EMERG("can't daemonize: %m");
         exit(EXIT_FAILURE);
     }
 
     /* Write to out_path. */
     int out_fd = open(out_path, O_RDWR | O_CREAT, 0644);
     if (out_fd == -1) {
-        perror("open");
+        log_ERR("can't open %s: %m", out_path);
         exit(EXIT_FAILURE);
     }
     write_fchunk_to(out_fd);
     close(out_fd);
+
+    logging_fini();
     return 0;
 }
