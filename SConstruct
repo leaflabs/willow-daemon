@@ -27,7 +27,7 @@ VariantDir(build_dir, src_dir, duplicate=1)
 # repeatable builds. This is an experiment. If it turns out to be a
 # pain in the ass, then first try reading build configuration from the
 # ARGUMENTS dictionary before falling back to copying os.environ.
-env = Environment(CCFLAGS='-g -std=c99',
+env = Environment(CCFLAGS='-g -std=c99 -Wall -Werror',
                   CPPPATH=[src_dir, build_dir],
                   LIBS=lib_deps,
                   tools=['default', 'protocc'],
