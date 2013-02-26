@@ -5,7 +5,7 @@ program = 'wired-leaf-is-a-codename' # come up with something better
 src_dir = '#src/'
 proto_dir = '#proto/' # Don't change this; we #include "proto/foo.pb-c.h".
 build_dir = '#build/' # Scons requires this to live in the source tree :(.
-lib_deps = ['hdf5', 'protobuf', 'protobuf-c']
+lib_deps = ['hdf5', 'protobuf', 'protobuf-c', 'm']
 
 def scons_path_fixup(dir):
     """Hack for converting SCons-style paths-with-leading-# to
