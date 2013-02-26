@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <sys/types.h>
@@ -84,22 +85,26 @@ void parse_args(struct arguments* args, int argc, char *const argv[])
 /*
  * Writes fake data to an HDF5 file, overwriting its previous contents.
  */
-#define DUMMY_DATA_LEN (100)
+#define DUMMY_DATA_LEN (20 * 60 * 1024 * 1024) /* 60MB is ~1 second of data */
 #define IS_LITTLE_ENDIAN (1 == *(unsigned char *)&(const int){1})
 static int write_h5_file(const char out_file_path[])
 {
     int ret = -1;
-    uint16_t data[DUMMY_DATA_LEN];
+    uint16_t *data = malloc(sizeof(uint16_t) * DUMMY_DATA_LEN);
     herr_t err;
 
     /* Initialize dummy data. */
+    if (!data) {
+        log_ERR("out of memory");
+        goto nomem;
+    }
+    log_DEBUG("initializing data");
     for (int i = 0; i < DUMMY_DATA_LEN; i++) {
-        float f = (float)i * 2 * (float)M_PI / DUMMY_DATA_LEN;
-        data[i] = (uint16_t)(0x7ff * (sinf(f) + 1.0f));
+        data[i] = (uint16_t)(0xFFFF * i / DUMMY_DATA_LEN);
     }
 
     /* Jump through hoops. */
-    log_INFO("opening %s", out_file_path);
+    log_INFO("opening %s and doing HDF5 setup", out_file_path);
     hid_t file = H5Fcreate(out_file_path, H5F_ACC_TRUNC, H5P_DEFAULT,
                            H5P_DEFAULT);
     if (file < 0) {
@@ -128,6 +133,10 @@ static int write_h5_file(const char out_file_path[])
         goto noorder;
     }
 
+    time_t t_start, t_finish;
+
+    log_DEBUG("starting write");
+    time(&t_start);
     hid_t data_set = H5Dcreate(file, "awesome dataset", data_type, data_space,
                                H5P_DEFAULT);
     if (data_set < 0) {
@@ -141,20 +150,38 @@ static int write_h5_file(const char out_file_path[])
     if (err < 0) {
         log_ERR("can't write data to %s", out_file_path);
     }
+    /* Flush data, to try to get better ideas about time. */
+    err = H5Fflush(file, H5F_SCOPE_LOCAL);
+    if (err < 0) {
+        log_ERR("can't write data to %s", out_file_path);
+    }
+    sync();
+    time(&t_finish);
 
     /* Success! */
-    log_DEBUG("wrote data to %s", out_file_path);
+    size_t nbytes = DUMMY_DATA_LEN * sizeof(data[0]);
+    double t_diff = difftime(t_finish, t_start);
+    double kb_sec = nbytes / t_diff / 1024.0 / 1024.0;
+    log_DEBUG("wrote %u records, %f sec, %f MB/sec",
+              DUMMY_DATA_LEN, t_diff, kb_sec);
     ret = 0;
 
+    log_DEBUG("closing data set");
     H5Dclose(data_set);
  noset:
  noorder:
+    log_DEBUG("closing data type");
     H5Tclose(data_type);
  notype:
+    log_DEBUG("closing data space");
     H5Sclose(data_space);
  nospace:
+    log_DEBUG("closing file");
     H5Fclose(file);
  nofile:
+    log_DEBUG("freeing data");
+    free(data);
+ nomem:
     return ret;
 }
 
