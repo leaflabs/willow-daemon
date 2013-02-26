@@ -1,7 +1,9 @@
 /* Copyright (c) 2013 LeafLabs, LLC. All rights reserved. */
 
+#include <assert.h>
 #include <fcntl.h>
 #include <getopt.h>
+#include <math.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -11,10 +13,10 @@
 #include <sys/types.h>
 #include <sys/select.h>
 
+#include <hdf5.h>
+
 #include "daemon.h"
 #include "logging.h"
-
-#include "proto/open-ephys.pb-c.h"
 
 /* main() initializes this before doing anything else. */
 static const char* program_name;
@@ -79,40 +81,86 @@ void parse_args(struct arguments* args, int argc, char *const argv[])
     }
 }
 
-void write_fchunk_to(int fd)
+/*
+ * Writes fake data to an HDF5 file, overwriting its previous contents.
+ */
+#define DUMMY_DATA_LEN (100)
+#define IS_LITTLE_ENDIAN (1 == *(unsigned char *)&(const int){1})
+static int write_h5_file(const char out_file_path[])
 {
-    int32_t readings[] = {0xAA, 0x55, 0x00, 0xFF};
-    FrameChunk fchunk = FRAME_CHUNK__INIT;
-    size_t packed_size;
-    void *packed_buf;
+    int ret = -1;
+    uint16_t data[DUMMY_DATA_LEN];
+    herr_t err;
 
-    /* Initialize fchunk. */
-    fchunk.has_startchannel = 1;
-    fchunk.startchannel = 0;
-    fchunk.n_readings = sizeof(readings) / sizeof(readings[0]);
-    fchunk.readings = readings;
-
-    /* Pack to wire format. */
-    packed_size = frame_chunk__get_packed_size(&fchunk);
-    packed_buf = malloc(packed_size);
-    if (packed_buf == 0) {
-        log_ERR("%m");
-        exit(EXIT_FAILURE);
+    /* Initialize dummy data. */
+    for (int i = 0; i < DUMMY_DATA_LEN; i++) {
+        float f = (float)i * 2 * (float)M_PI / DUMMY_DATA_LEN;
+        data[i] = (uint16_t)(0x7ff * (sinf(f) + 1.0f));
     }
-    frame_chunk__pack(&fchunk, packed_buf);
 
-    /* Write packed protocol buffer to file. */
-    if (write(fd, packed_buf, packed_size) == -1) {
-        log_ERR("can't write to protobuf file: %m");
-        exit(EXIT_FAILURE);
+    /* Jump through hoops. */
+    log_INFO("opening %s", out_file_path);
+    hid_t file = H5Fcreate(out_file_path, H5F_ACC_TRUNC, H5P_DEFAULT,
+                           H5P_DEFAULT);
+    if (file < 0) {
+        log_ERR("can't create file");
+        goto nofile;
     }
-    log_DEBUG("wrote %zu bytes to file", packed_size);
+
+    const hsize_t dim = DUMMY_DATA_LEN;
+    hid_t data_space = H5Screate_simple(1, &dim, NULL);
+    if (data_space < 0) {
+        log_ERR("can't create data space");
+        goto nospace;
+    }
+
+    assert(sizeof(unsigned short) == 2);
+    hid_t data_type = H5Tcopy(H5T_NATIVE_USHORT);
+    if (data_type < 0) {
+        log_ERR("can't create data type");
+        goto notype;
+    }
+    err = H5Tset_order(data_type, (IS_LITTLE_ENDIAN ?
+                                   H5T_ORDER_LE :
+                                   H5T_ORDER_BE));
+    if (err < 0) {
+        log_ERR("can't set byte order");
+        goto noorder;
+    }
+
+    hid_t data_set = H5Dcreate(file, "awesome dataset", data_type, data_space,
+                               H5P_DEFAULT);
+    if (data_set < 0) {
+        log_ERR("can't create data set");
+        goto noset;
+    }
+
+    /* Actually write the data. */
+    err = H5Dwrite(data_set, H5T_NATIVE_USHORT, H5S_ALL, H5S_ALL,
+                   H5P_DEFAULT, data);
+    if (err < 0) {
+        log_ERR("can't write data to %s", out_file_path);
+    }
+
+    /* Success! */
+    log_DEBUG("wrote data to %s", out_file_path);
+    ret = 0;
+
+    H5Dclose(data_set);
+ noset:
+ noorder:
+    H5Tclose(data_type);
+ notype:
+    H5Sclose(data_space);
+ nospace:
+    H5Fclose(file);
+ nofile:
+    return ret;
 }
 
 int main(int argc, char *argv[])
 {
     struct arguments args;
-    const char out_path[] = "/tmp/fchunk-wire-fmt";
 
     /* Stash the program name, parse arguments, and set up logging
      * before doing anything else. DO NOT USE printf() etc. AFTER THIS
@@ -134,14 +182,7 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    /* Write to out_path. */
-    int out_fd = open(out_path, O_RDWR | O_CREAT, 0644);
-    if (out_fd == -1) {
-        log_ERR("can't open %s: %m", out_path);
-        exit(EXIT_FAILURE);
-    }
-    write_fchunk_to(out_fd);
-    close(out_fd);
+    write_h5_file("/tmp/foo.h5");
 
     logging_fini();
     return 0;
