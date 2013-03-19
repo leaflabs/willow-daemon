@@ -39,7 +39,7 @@ int sockutil_get_udp_socket(uint16_t port)
         } else {
             log_ERR("getaddrinfo: %s", gai_strerror(gai_ret));
         }
-        return ret;
+        return -1;
     }
 
     for (struct addrinfo *arp = ai_results; arp != NULL; arp = arp->ai_next) {
