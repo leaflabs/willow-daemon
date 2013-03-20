@@ -82,6 +82,7 @@ void parse_args(struct arguments* args, int argc, char *const argv[])
     }
 }
 
+__attribute__((unused))
 static uint16_t* init_raw_data(size_t len)
 {
     uint16_t *data = malloc(len * sizeof(uint16_t));
