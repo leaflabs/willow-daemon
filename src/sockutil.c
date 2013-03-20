@@ -11,7 +11,13 @@
 
 #include "logging.h"
 
-int sockutil_get_udp_socket(uint16_t port)
+/* Socket configuration function, for sockutil_get_socket(). Takes a
+ * socket and the struct addrinfo used to create it as arguments;
+ * returns 0 if socket is successfully configured, or -1 on error. */
+typedef int (*sock_cfg_fn)(int, struct addrinfo*);
+
+static int sockutil_get_socket(int socktype, uint16_t port,
+                               sock_cfg_fn sock_cfg)
 {
     int ret = -1;
 
@@ -22,7 +28,7 @@ int sockutil_get_udp_socket(uint16_t port)
     hints.ai_next = NULL;
     hints.ai_flags = AI_PASSIVE | AI_NUMERICSERV;
     hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_socktype = socktype;
 
     char port_str[20];
     snprintf(port_str, sizeof(port_str), "%u", port);
@@ -31,7 +37,7 @@ int sockutil_get_udp_socket(uint16_t port)
     int gai_ret = getaddrinfo(NULL, port_str, &hints, &ai_results);
     if (gai_ret != 0) {
         // If getaddrinfo() fails, we might try falling back on
-        // calling socket(AF_INET, SOCK_DGRAM, 0) ourselves to try to
+        // calling socket(AF_INET, socktype, 0) ourselves to try to
         // get an IPv4 socket. But until that's actually a problem,
         // just scream and die.
         if (gai_ret == EAI_SYSTEM) {
@@ -48,7 +54,7 @@ int sockutil_get_udp_socket(uint16_t port)
         if (sckt == -1) {
             continue;
         }
-        if (bind(sckt, arp->ai_addr, arp->ai_addrlen) == -1) {
+        if (sock_cfg(sckt, arp) == -1) {
             close(sckt);
             continue;
         }
@@ -60,6 +66,19 @@ int sockutil_get_udp_socket(uint16_t port)
 
     freeaddrinfo(ai_results);
 
-    log_NOTICE("created UDP socket on port %u", port);
+    return ret;
+}
+
+static int sockutil_cfg_bind_sock(int sock, struct addrinfo *arp)
+{
+    return bind(sock, arp->ai_addr, arp->ai_addrlen);
+}
+
+int sockutil_get_udp_socket(uint16_t port)
+{
+    int ret = sockutil_get_socket(SOCK_DGRAM, port, sockutil_cfg_bind_sock);
+    if (ret == -1) {
+        log_ERR("can't create UDP socket on port %u", port);
+    }
     return ret;
 }
