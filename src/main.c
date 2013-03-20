@@ -148,7 +148,6 @@ static int write_raw_file(uint16_t *data, size_t len,
 
     /* Success. */
     log_results(len, nbytes, &t_start, &t_finish);
-    ret = 0;
 
  nowrite:
     ret = close(fd);
