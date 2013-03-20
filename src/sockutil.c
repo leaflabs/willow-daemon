@@ -16,7 +16,8 @@
  * returns 0 if socket is successfully configured, or -1 on error. */
 typedef int (*sock_cfg_fn)(int, struct addrinfo*);
 
-static int sockutil_get_socket(int socktype, uint16_t port,
+static int sockutil_get_socket(int socktype, int passive,
+                               const char *host, uint16_t port,
                                sock_cfg_fn sock_cfg)
 {
     int ret = -1;
@@ -26,7 +27,7 @@ static int sockutil_get_socket(int socktype, uint16_t port,
     hints.ai_canonname = NULL;
     hints.ai_addr = NULL;
     hints.ai_next = NULL;
-    hints.ai_flags = AI_PASSIVE | AI_NUMERICSERV;
+    hints.ai_flags = (passive ? AI_PASSIVE : 0) | AI_NUMERICSERV;
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = socktype;
 
@@ -34,7 +35,7 @@ static int sockutil_get_socket(int socktype, uint16_t port,
     snprintf(port_str, sizeof(port_str), "%u", port);
 
     struct addrinfo *ai_results;
-    int gai_ret = getaddrinfo(NULL, port_str, &hints, &ai_results);
+    int gai_ret = getaddrinfo(host, port_str, &hints, &ai_results);
     if (gai_ret != 0) {
         // If getaddrinfo() fails, we might try falling back on
         // calling socket(AF_INET, socktype, 0) ourselves to try to
@@ -76,9 +77,47 @@ static int sockutil_cfg_bind_sock(int sock, struct addrinfo *arp)
 
 int sockutil_get_udp_socket(uint16_t port)
 {
-    int ret = sockutil_get_socket(SOCK_DGRAM, port, sockutil_cfg_bind_sock);
+    int ret = sockutil_get_socket(SOCK_DGRAM, 1, NULL, port,
+                                  sockutil_cfg_bind_sock);
     if (ret == -1) {
         log_ERR("can't create UDP socket on port %u", port);
+    }
+    return ret;
+}
+
+static int sockutil_cfg_tcp_passive(int sock, struct addrinfo *arp)
+{
+    if (sockutil_cfg_bind_sock(sock, arp) == -1) {
+        return -1;
+    }
+    if (listen(sock, 5) == -1) {
+        return -1;
+    }
+    return 0;
+}
+
+int sockutil_get_tcp_passive(uint16_t port)
+{
+    int ret = sockutil_get_socket(SOCK_STREAM, 1, NULL, port,
+                                  sockutil_cfg_tcp_passive);
+    if (ret == -1) {
+        log_ERR("can't create passive TCP socket on port %u: %m", port);
+    }
+    return ret;
+}
+
+static int sockutil_cfg_conn(int sock, struct addrinfo *arp)
+{
+    return connect(sock, arp->ai_addr, arp->ai_addrlen);
+}
+
+int sockutil_get_tcp_connected_p(const char *host, uint16_t port)
+{
+    int ret = sockutil_get_socket(SOCK_STREAM, 0, host, port,
+                                  sockutil_cfg_conn);
+    if (ret == -1) {
+        log_ERR("can't create connected TCP socket on %s port %u: %m",
+                host, port);
     }
     return ret;
 }
