@@ -11,16 +11,7 @@ src_dir = '#src/'
 proto_dir = '#proto/' # Don't change this; we #include "proto/foo.pb-c.h".
 build_dir = '#build/' # Scons requires this to live in the source tree :(.
 lib_deps = ['hdf5', 'protobuf', 'protobuf-c', 'm']
-verbosity_level = (int(ARGUMENTS.get('V'))
-                   if ARGUMENTS.get('V') is not None
-                   else 0)
-
-def scons_path_fixup(dir):
-    """Hack for converting SCons-style paths-with-leading-# to
-    real paths."""
-    if dir.startswith('#'):
-        relpath = os.path.join(str(Dir('.').srcnode()), dir[1:])
-        return relpath
+verbosity_level = int(ARGUMENTS.get('V', 0))
 
 # Copy (link if possible) everything to the build directory, to
 # e.g. prevent anyone from carelessly committing generated protobuf
@@ -41,8 +32,8 @@ env = Environment(CCFLAGS='-g -std=c99 -Wall -Wextra -Werror',
 # Quiet build output unless user specifies verbose mode.
 if verbosity_level == 0:
     env['CCCOMSTR'] = '\t[CC] $SOURCE'
-    env['LINKCOMSTR'] = '\t[LD] $SOURCE'
     env['PROTOCCCOMSTR'] = '\t[PROTOCC] $SOURCE'
+    env['LINKCOMSTR'] = '\t[LD] $TARGET' # note the asymmetry
 
 # This will hold the paths to any generated C files. For now, that's
 # just protoc-c output.
@@ -50,7 +41,7 @@ generated_c_sources = []
 
 # Protobuf code generation.
 # See site_scons/site_tools/protocc.py for details on ProtocC.
-protos = [env.ProtocC([], proto, PROTOCCOUTDIR=scons_path_fixup(build_dir))
+protos = [env.ProtocC([], proto, PROTOCCOUTDIR=env.GetBuildPath(build_dir))
           for proto in Glob(proto_dir + '*.proto')]
 def c_nodes(nodes):
     return [n for n in nodes if str(n).endswith('c')]
@@ -61,5 +52,5 @@ for nodes in protos:
 all_sources = Glob(os.path.join(build_dir, '*.c')) + generated_c_sources
 # This is the final executable.
 # XXX why the fuck doesn't VariantDir put it in build/ for me?
-out_program = os.path.join(scons_path_fixup(build_dir), program)
+out_program = os.path.join(env.GetBuildPath(build_dir), program)
 main = env.Program(out_program, all_sources)
