@@ -10,14 +10,17 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <netinet/in.h>
 #include <sys/types.h>
 #include <sys/select.h>
+#include <sys/socket.h>
 #include <sys/time.h>
 
 #include <hdf5.h>
 
 #include "daemon.h"
 #include "logging.h"
+#include "sockutil.h"
 
 /* main() initializes this before doing anything else. */
 static const char* program_name;
@@ -265,27 +268,43 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    log_INFO("*** started.");
+    log_INFO("started successfully.");
 
-#define DUMMY_DATA_LEN (1024 * 30000 * 60) /* 1024 channels, 30 KHz, 60 sec */
-#define DUMMY_DATA_SIZE (DUMMY_DATA_LEN * sizeof(uint16_t))
-    uint16_t *data = init_raw_data(DUMMY_DATA_LEN);
-    if (!data) {
-        log_ERR("can't allocate raw data");
+    /* These assume you've got a TCP echo server running on
+     * localhost at port 1234. */
+#define ECHO_SERVER_HOST "127.0.0.1"
+#define ECHO_SERVER_PORT 1234
+    log_INFO("connecting to echo server at %s:%u",
+             ECHO_SERVER_HOST, ECHO_SERVER_PORT);
+    int sock = sockutil_get_tcp_connected_p(ECHO_SERVER_HOST,
+                                            ECHO_SERVER_PORT);
+    if (sock == -1) {
+        log_INFO("you can start an echo server with \"%s\"",
+                 "ncat -e /bin/cat -k -l 1234");
         exit(EXIT_FAILURE);
     }
 
-#define NRUNS 10
-    for (int i = 0; i < NRUNS; i++) {
-        log_DEBUG("starting run %d", i);
-#if 0
-        write_raw_file(data, DUMMY_DATA_LEN, "/tmp/foo.raw");
-#else
-        write_h5_file(data, DUMMY_DATA_LEN, "/tmp/foo.h5");
-#endif
+    char wbuf[] = "hello, world!";
+    char rbuf[sizeof(wbuf)];
+    log_INFO("writing \"%s\"", wbuf);
+    ssize_t nwritten = write(sock, wbuf, strlen(wbuf));
+    assert(nwritten > 0 && (size_t)nwritten == strlen(wbuf));
+    ssize_t nread = 0;
+    while (nread < nwritten) {
+        ssize_t rd = read(sock, rbuf + nread, strlen(wbuf) - nread);
+        if (rd <= 0) {
+            log_ERR("wtf?");
+            goto out;
+        }
+        nread += rd;
     }
+    assert(nread == sizeof(rbuf) - 1);
+    rbuf[nread] = '\0';
+    log_INFO("read back \"%s\"", rbuf);
+    log_INFO("ok, done");
 
-    free(data);
+ out:
+    close(sock);
 
     logging_fini();
     return 0;
