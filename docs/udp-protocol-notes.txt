@@ -160,13 +160,15 @@ Flags:
   much simpler)
 
     Sample Index (4byte)
-    [following is 2KB worth of sample data]
+    NCHIP = number of chips/board (2byte) | NCHAN = number of channels/chip (2byte)
+                [following is 2KB worth of sample data]
     Chip 0, Chan 0 data (2 byte) | Chip 0, Chan 1 data (2 byte)
     Chip 0, Chan 2 data (2 byte) | Chip 0, Chan 3 data (2 byte)
     [...]
+    Chip 0, Chan NCHAN-2 data (2 byte) | Chip 0, Chan NCHAN-1 data (2 byte)
     Chip 1, Chan 0 data (2 byte) | Chip 1, Chan 1 data (2 byte)
     [...]
-    Chip 31, Chan 31 data (2 byte) | Chip 31, Chan 32 data (2 byte)
+    Chip NCHIP, Chan NCHAN-2 data (2 byte) | Chip NCHIP, Chan NCHAN-1 data (2 byte)
 
 # Appendix: Intan Interface Chip Background
 
