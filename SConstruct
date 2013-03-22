@@ -1,11 +1,19 @@
 import os.path
 
+Help("""
+Build arguments:
+\tV=1: verbose build output (quiet if not given or if V=0)
+""")
+
 # Top-level build configuration
 program = 'wired-leaf-is-a-codename' # come up with something better
 src_dir = '#src/'
 proto_dir = '#proto/' # Don't change this; we #include "proto/foo.pb-c.h".
 build_dir = '#build/' # Scons requires this to live in the source tree :(.
 lib_deps = ['hdf5', 'protobuf', 'protobuf-c', 'm']
+verbosity_level = (int(ARGUMENTS.get('V'))
+                   if ARGUMENTS.get('V') is not None
+                   else 0)
 
 def scons_path_fixup(dir):
     """Hack for converting SCons-style paths-with-leading-# to
@@ -23,16 +31,18 @@ def scons_path_fixup(dir):
 # nice.
 VariantDir(build_dir, src_dir, duplicate=1)
 
-# Build environment. Note we don't copy os.environ here, to ensure
-# repeatable builds. This is an experiment. If it turns out to be a
-# pain in the ass, then first try reading build configuration from the
-# ARGUMENTS dictionary before falling back to copying os.environ.
+# Build environment. Note we don't copy os.environ here.
 env = Environment(CCFLAGS='-g -std=c99 -Wall -Wextra -Werror',
                   CPPDEFINES={'_XOPEN_SOURCE': 500},
                   CPPPATH=[build_dir],
                   LIBS=lib_deps,
                   tools=['default', 'protocc'],
                   )
+# Quiet build output unless user specifies verbose mode.
+if verbosity_level == 0:
+    env['CCCOMSTR'] = '\t[CC] $SOURCE'
+    env['LINKCOMSTR'] = '\t[LD] $SOURCE'
+    env['PROTOCCCOMSTR'] = '\t[PROTOCC] $SOURCE'
 
 # This will hold the paths to any generated C files. For now, that's
 # just protoc-c output.
