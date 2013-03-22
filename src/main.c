@@ -21,6 +21,7 @@
 #include "daemon.h"
 #include "logging.h"
 #include "sockutil.h"
+#include "type_attrs.h"
 
 /* main() initializes this before doing anything else. */
 static const char* program_name;
@@ -85,7 +86,7 @@ void parse_args(struct arguments* args, int argc, char *const argv[])
     }
 }
 
-__attribute__((unused))
+__unused
 static uint16_t* init_raw_data(size_t len)
 {
     uint16_t *data = malloc(len * sizeof(uint16_t));
@@ -118,7 +119,7 @@ static void log_results(size_t len, size_t nbytes,
 /*
  * Writes raw data to file, overwriting its previous contents.
  */
-__attribute__((unused))
+__unused
 static int write_raw_file(uint16_t *data, size_t len,
                           const char out_file_path[])
 {
@@ -166,7 +167,7 @@ static int write_raw_file(uint16_t *data, size_t len,
  * Writes fake data to an HDF5 file, overwriting its previous contents.
  */
 #define IS_LITTLE_ENDIAN (1 == *(unsigned char *)&(const int){1})
-__attribute__((unused))
+__unused
 static int write_h5_file(uint16_t *data, size_t len,
                          const char out_file_path[])
 {
