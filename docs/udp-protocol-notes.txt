@@ -137,6 +137,7 @@ Request types:
 - read samples from disk
 
     Request ID (2byte) | Request Type (1byte) | Address (1byte, or zeros)
+    Request value (4 bytes, or zero)
 
 TODO: should request ID be random? or ordered? larger?
 
@@ -144,7 +145,8 @@ TODO: should request ID be random? or ordered? larger?
 
 Same types as request.
 
-    Request ID (2byte) | Request Type (1byte) | Address (1byte, or zeros)
+    Response ID (2byte) | Response Type (1byte) | Address (1byte, or zeros)
+    Response value (4 bytes, or zero)
 
 #### Board Sample
 
