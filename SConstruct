@@ -19,15 +19,11 @@ build_lib_dir = toplevel_join(build_dir, lib_dir)
 lib_deps = ['hdf5', 'protobuf', 'protobuf-c', 'm'] # External dependencies
 verbosity_level = int(ARGUMENTS.get('V', 0))
 
-# Copy (link if possible) everything underneath the build directory,
-# to e.g. prevent anyone from carelessly committing generated protobuf
-# sources.
-#
-# I really tried to have output written to build/ without copying
-# sources into it, but couldn't figure out how to get SCons to play
-# nice.
-VariantDir(build_lib_dir, lib_dir)
-VariantDir(build_src_dir, src_dir)
+# Put all generated files underneath the build directory. protoc-c is
+# configured to do this as well, to prevent anyone from carelessly
+# committing generated protobuf sources.
+VariantDir(build_lib_dir, lib_dir, duplicate=0)
+VariantDir(build_src_dir, src_dir, duplicate=0)
 
 # Build environment. Note we don't copy os.environ here.
 env = Environment(CCFLAGS='-g -std=c99 -Wall -Wextra -Werror',
@@ -66,4 +62,4 @@ libutil = env.Library(os.path.join(env.GetBuildPath(build_lib_dir),
 # This is the final executable.
 out_program = os.path.join(env.GetBuildPath(build_dir), program)
 main = env.Program(out_program, src_sources + libutil,
-                   CPPPATH=[build_lib_dir, build_src_dir])
+                   CPPPATH=[build_lib_dir, src_dir])
