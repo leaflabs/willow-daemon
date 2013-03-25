@@ -33,6 +33,8 @@ Repository contents
 
 - SConstruct, site_scons/: build system files.
 
+- lib/: Helper libraries used by the daemon.
+
 - proto/: Google protobuf message files. These are kept separate from
   the source tree, as we may need to share them with others.
 
@@ -41,4 +43,5 @@ Repository contents
   "proto/foo.pb-c.h") and that the generated C sources get built and
   linked into the final program.
 
-- src/: source code.
+- src/: daemon source code; uses contents of lib/.
+
