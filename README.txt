@@ -21,10 +21,16 @@ Build dependencies
 
 - python
 
+- check: unit test framework for C, http://check.sourceforge.net/.
+  This is only required to build the test cases, not the daemon
+  itself. To skip building the test cases, build with:
+
+    $ scons SKIP_TESTS=y
+
 On Ubuntu 12.04:
 
    $ sudo apt-get install libprotobuf-dev libprotobuf-c0-dev libhdf5-serial-dev \
-        protobuf-c-compiler scons python
+        protobuf-c-compiler scons python check
 
 Repository contents
 -------------------
@@ -45,3 +51,5 @@ Repository contents
 
 - src/: daemon source code; uses contents of lib/.
 
+- test/: Test cases, one per subdirectory. These use the contents of
+  lib/, and may run and interact with the daemon as built from src/.
