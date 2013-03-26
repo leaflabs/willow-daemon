@@ -3,8 +3,8 @@ import os.path
 
 Help("""
 Build arguments:
-\tV=1: verbose build output (quiet if not given or if V=0)
-\tSKIP_TESTS=[y/n]: don't build tests (defaults to "n", which builds tests)
+\tV=1: verbose build output (default: V=0, quiet output)
+\tSKIP_TESTS=[y/n]: don't build tests (default: SKIP_TESTS=n, build tests)
 """)
 
 def toplevel_join(base, child):
