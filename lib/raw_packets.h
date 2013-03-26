@@ -19,6 +19,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <sys/types.h>
 
 #include "type_attrs.h"
 
@@ -33,14 +34,16 @@
 #define RAW_FLAG_BSAMP_IS_LIVE 0x01 /* "is_live" flag for ph.p_flags */
 #define RAW_FLAG_BSAMP_IS_LAST 0x02 /* "is_last_sample" flag for ph.p_flags */
 
+typedef uint16_t raw_samp_t;
+
 __packed
 struct raw_msg_bsamp {
-    uint32_t bs_idx;            /* Sample index */
-    uint16_t bs_nchips;         /* Number of chips on this board */
-    uint16_t bs_nlines;         /* Number of data samples per chip */
-    uint16_t bs_samples[];      /* The samples themselves; this is in
-                                 * chip-major order, and has
-                                 * length=bs_nchips*bs_nlines. */
+    uint32_t   bs_idx;          /* Sample index */
+    uint16_t   bs_nchips;       /* Number of chips on this board */
+    uint16_t   bs_nlines;       /* Number of data samples per chip */
+    raw_samp_t bs_samples[];    /* The samples themselves; this is in
+                                 * chip-major order, and has length =
+                                 * bs_nchips*bs_nlines. */
 };
 
 /* Request/response packet contents */
@@ -70,16 +73,11 @@ struct raw_msg_bsamp {
     uint8_t r_type;                             \
     uint8_t r_addr;                             \
     uint32_t r_val;
-__packed
 struct raw_msg_req { _RAW_DATA_REQ_RES };
-__packed
 struct raw_msg_res { _RAW_DATA_REQ_RES };
 #undef _RAW_DATA_REQ_RES
 
 /* Packet structure */
-
-/* Current protocol version for .p_proto_vers. */
-#define RAW_PROTO_VERS     0x00
 
 /* Packet message types for .p_type.
  *
@@ -95,13 +93,14 @@ struct raw_msg_res { _RAW_DATA_REQ_RES };
  * one. */
 #define RAW_FLAG_ERR       0x80
 
-__packed
 struct raw_packet {
     /* Packet header; this is common to packets of all types. */
 
-    uint8_t _p_magic; /* Don't touch. */
+    /* These are set by raw_packet_init(). You should probably leave
+     * them alone. */
+    uint8_t _p_magic;
+    uint8_t _p_proto_vers;
 
-    uint8_t p_proto_vers;       /* Protocol version */
     uint8_t p_type;             /* Packet type */
     uint8_t p_flags;            /* Extra flags */
 
@@ -121,8 +120,13 @@ struct raw_packet {
  * Packet send/recv primitives.
  *
  * These convenience routines handle byte order swapping and some
- * protocol implementation details. They return 0 on success and -1 on
- * failure, with errno set. */
+ * protocol implementation details. They return a positive number on
+ * success and -1 on failure, with errno set.
+ *
+ * Note that due to protocol implementation details, the return values
+ * of these functions might differ from what you'd expect out of
+ * ordinary send()/recv().
+ */
 
 /* Send a data packet.
  *
@@ -130,7 +134,7 @@ struct raw_packet {
  * `packet->p' as undefined after this call returns.
  *
  * `flags' are as with send(). */
-int raw_packet_send(int sockfd, struct raw_packet *packet, int flags);
+ssize_t raw_packet_send(int sockfd, struct raw_packet *packet, int flags);
 
 /* Receive a data packet.
  *
@@ -145,8 +149,8 @@ int raw_packet_send(int sockfd, struct raw_packet *packet, int flags);
  * .bs_nlines fields in packet->b.bsamp must be initialized properly.
  *
  * `flags' are as with recv(). */
-int raw_packet_recv(int sockfd, struct raw_packet *packet, uint8_t *packtype,
-                    int flags);
+ssize_t raw_packet_recv(int sockfd, struct raw_packet *packet,
+                        uint8_t *packtype, int flags);
 
 /*********************************************************************
  * Other packet routines
@@ -155,6 +159,17 @@ int raw_packet_recv(int sockfd, struct raw_packet *packet, uint8_t *packtype,
 /* Initialize a packet. Call this once before sending the packet
  * anywhere. */
 void raw_packet_init(struct raw_packet *packet);
+
+/* Create a board sample packet.
+ *
+ * Allocates a struct raw_packet of sufficient size to store `nchips *
+ * nlines' samples. It initializes its ->p.bsamp.bs_nchips and
+ * ->p.bsamp.bs_nlines fields to match nchips and nlines, and its
+ * ->p_type field to RAW_PKT_TYPE_BSAMP. It additionally calls
+ * raw_packet_init() on the result.
+ *
+ * Returns NULL when out of memory. */
+struct raw_packet* raw_packet_create_bsamp(uint16_t nchips, uint16_t nlines);
 
 /* True iff `packet' signals an error condition. */
 static inline int raw_packet_err(struct raw_packet *packet)

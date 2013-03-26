@@ -2,19 +2,37 @@
 
 #include "raw_packets.h"
 
-#include <assert.h>
 #include <errno.h>
 
 #include <arpa/inet.h>
-
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 
-#define PACKET_HEADER_MAGIC 0x5A
+#define PACKET_HEADER_MAGIC      0x5A
+#define PACKET_HEADER_PROTO_VERS 0x00
 
 void raw_packet_init(struct raw_packet *packet)
 {
     packet->_p_magic = PACKET_HEADER_MAGIC;
+    packet->_p_proto_vers = PACKET_HEADER_PROTO_VERS;
+}
+
+struct raw_packet* raw_packet_create_bsamp(uint16_t nchips, uint16_t nlines)
+{
+    /* This is pretty chummy with the packet type implementation,
+     * which is a bit brittle. */
+    size_t bsamp_size = (offsetof(struct raw_packet, p) +
+                         offsetof(struct raw_msg_bsamp, bs_samples) +
+                         (size_t)nchips * (size_t)nlines * sizeof(raw_samp_t));
+    struct raw_packet *ret = malloc(bsamp_size);
+    if (ret != 0) {
+        raw_packet_init(ret);
+        ret->p_type = RAW_PKT_TYPE_BSAMP;
+        ret->p.bsamp.bs_nchips = nchips;
+        ret->p.bsamp.bs_nlines = nlines;
+    }
+    return ret;
 }
 
 static void raw_msg_bsamp_hton(struct raw_msg_bsamp *msg)
@@ -38,14 +56,13 @@ static void raw_msg_res_hton(struct raw_msg_res *msg)
     raw_msg_req_hton((struct raw_msg_req*)msg);
 }
 
-int raw_packet_send(int sockfd, struct raw_packet *packet, int flags)
+ssize_t raw_packet_send(int sockfd, struct raw_packet *packet, int flags)
 {
     size_t packet_size = sizeof(struct raw_packet);
     switch (packet->p_type) {
-    case RAW_PKT_TYPE_BSAMP: {
+    case RAW_PKT_TYPE_BSAMP:
         packet_size += raw_packet_sampsize(packet);
         raw_msg_bsamp_hton(&packet->p.bsamp);
-    }
         break;
     case RAW_PKT_TYPE_REQ:
         raw_msg_req_hton(&packet->p.req);
@@ -83,8 +100,8 @@ static void raw_msg_res_ntoh(struct raw_msg_res *msg)
     raw_msg_req_ntoh((struct raw_msg_req*)msg);
 }
 
-int raw_packet_recv(int sockfd, struct raw_packet *packet, uint8_t *packtype,
-                    int flags)
+ssize_t raw_packet_recv(int sockfd, struct raw_packet *packet,
+                        uint8_t *packtype, int flags)
 {
     size_t packsize = sizeof(struct raw_packet);
     if (*packtype == RAW_PKT_TYPE_BSAMP) {
@@ -93,8 +110,6 @@ int raw_packet_recv(int sockfd, struct raw_packet *packet, uint8_t *packtype,
     int ret = recv(sockfd, packet, packsize, flags);
     if (packet->_p_magic != PACKET_HEADER_MAGIC) {
         errno = EPROTO;
-        /* Restore packet magic value, so it's OK to transmit with later. */
-        packet->_p_magic = PACKET_HEADER_MAGIC;
         return -1;
     }
     if (ret == -1) {
