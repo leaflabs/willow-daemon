@@ -76,15 +76,18 @@ libutil = env.Library(os.path.join(env.GetBuildPath(build_lib_dir),
                       lib_sources + proto_c_sources,
                       CPPPATH=[build_lib_dir])
 
-# Test programs, one per subdirectory of test_dir.
-for test_name, sources in test_sources_dict.iteritems():
-    test_dir = os.path.join(env.GetBuildPath(build_test_dir), test_name)
-    test_prog = os.path.join(test_dir, test_name)
-    env.Program(test_prog, sources + libutil,
-                CPPPATH=[build_lib_dir, test_dir],
-                LIBS=lib_deps + test_lib_deps)
-
 # This is the final executable.
 out_program = os.path.join(env.GetBuildPath(build_dir), program)
 main = env.Program(out_program, src_sources + libutil,
                    CPPPATH=[build_lib_dir, src_dir])
+
+# Test programs, one per subdirectory of test_dir.
+for test_name, sources in test_sources_dict.iteritems():
+    test_dir = os.path.join(env.GetBuildPath(build_test_dir), test_name)
+    test_prog = os.path.join(test_dir, test_name)
+    test_defines = env['CPPDEFINES'].copy()
+    test_defines.update({'TEST_DAEMON_PATH': str(out_program)})
+    env.Program(test_prog, sources + libutil,
+                CPPPATH=[build_lib_dir, test_dir],
+                CPPDEFINES=test_defines,
+                LIBS=lib_deps + test_lib_deps)
