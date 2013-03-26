@@ -77,12 +77,8 @@ static int sockutil_cfg_bind_sock(int sock, struct addrinfo *arp)
 
 int sockutil_get_udp_socket(uint16_t port)
 {
-    int ret = sockutil_get_socket(SOCK_DGRAM, 1, NULL, port,
-                                  sockutil_cfg_bind_sock);
-    if (ret == -1) {
-        log_ERR("can't create UDP socket on port %u", port);
-    }
-    return ret;
+    return sockutil_get_socket(SOCK_DGRAM, 1, NULL, port,
+                               sockutil_cfg_bind_sock);
 }
 
 static int sockutil_cfg_tcp_passive(int sock, struct addrinfo *arp)
@@ -98,12 +94,8 @@ static int sockutil_cfg_tcp_passive(int sock, struct addrinfo *arp)
 
 int sockutil_get_tcp_passive(uint16_t port)
 {
-    int ret = sockutil_get_socket(SOCK_STREAM, 1, NULL, port,
-                                  sockutil_cfg_tcp_passive);
-    if (ret == -1) {
-        log_ERR("can't create passive TCP socket on port %u: %m", port);
-    }
-    return ret;
+    return sockutil_get_socket(SOCK_STREAM, 1, NULL, port,
+                               sockutil_cfg_tcp_passive);
 }
 
 static int sockutil_cfg_conn(int sock, struct addrinfo *arp)
@@ -113,11 +105,6 @@ static int sockutil_cfg_conn(int sock, struct addrinfo *arp)
 
 int sockutil_get_tcp_connected_p(const char *host, uint16_t port)
 {
-    int ret = sockutil_get_socket(SOCK_STREAM, 0, host, port,
-                                  sockutil_cfg_conn);
-    if (ret == -1) {
-        log_ERR("can't create connected TCP socket on %s port %u: %m",
-                host, port);
-    }
-    return ret;
+    return sockutil_get_socket(SOCK_STREAM, 0, host, port,
+                               sockutil_cfg_conn);
 }
