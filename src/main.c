@@ -36,6 +36,8 @@ static void usage(int exit_status)
     exit(exit_status);
 }
 
+#define DEFAULT_ARGUMENTS { .dont_daemonize = 0 }
+
 /* Encapsulates results of command-line arguments. */
 struct arguments {
     int dont_daemonize;         /* Skip daemonization. */
@@ -247,7 +249,7 @@ static int write_h5_file(uint16_t *data, size_t len,
 
 int main(int argc, char *argv[])
 {
-    struct arguments args;
+    struct arguments args = DEFAULT_ARGUMENTS;
 
     /* Stash the program name, parse arguments, and set up logging
      * before doing anything else. DO NOT USE printf() etc. AFTER THIS
