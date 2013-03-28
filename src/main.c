@@ -43,7 +43,7 @@ struct arguments {
     int dont_daemonize;         /* Skip daemonization. */
 };
 
-void parse_args(struct arguments* args, int argc, char *const argv[])
+static void parse_args(struct arguments* args, int argc, char *const argv[])
 {
     int print_usage = 0;
     const char shortopts[] = "hN";
@@ -57,6 +57,7 @@ void parse_args(struct arguments* args, int argc, char *const argv[])
           .has_arg = no_argument,
           .flag = &args->dont_daemonize,
           .val = 1 },
+        {0, 0, 0, 0},
     };
     while (1) {
         int option_idx = 0;
