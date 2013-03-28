@@ -23,6 +23,16 @@
 int sockutil_get_udp_socket(uint16_t port);
 
 /**
+ * @brief Convenience for creating connected UDP sockets.
+ *
+ * @param host Host to connect to, presentation format (IPv4 dotted
+ *             quad or IPv6 hex string).
+ * @param port Port to connect to.
+ * @return Socket file descriptor on success, -1 on failure.
+ */
+int sockutil_get_udp_connected_p(const char *host, uint16_t port);
+
+/**
  * @brief Convenience for creating passive TCP sockets.
  *
  * @param port Port to create the socket on.

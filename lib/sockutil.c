@@ -75,10 +75,20 @@ static int sockutil_cfg_bind_sock(int sock, struct addrinfo *arp)
     return bind(sock, arp->ai_addr, arp->ai_addrlen);
 }
 
+static int sockutil_cfg_conn(int sock, struct addrinfo *arp)
+{
+    return connect(sock, arp->ai_addr, arp->ai_addrlen);
+}
+
 int sockutil_get_udp_socket(uint16_t port)
 {
     return sockutil_get_socket(SOCK_DGRAM, 1, NULL, port,
                                sockutil_cfg_bind_sock);
+}
+
+int sockutil_get_udp_connected_p(const char *host, uint16_t port)
+{
+    return sockutil_get_socket(SOCK_DGRAM, 0, host, port, sockutil_cfg_conn);
 }
 
 static int sockutil_cfg_tcp_passive(int sock, struct addrinfo *arp)
@@ -96,11 +106,6 @@ int sockutil_get_tcp_passive(uint16_t port)
 {
     return sockutil_get_socket(SOCK_STREAM, 1, NULL, port,
                                sockutil_cfg_tcp_passive);
-}
-
-static int sockutil_cfg_conn(int sock, struct addrinfo *arp)
-{
-    return connect(sock, arp->ai_addr, arp->ai_addrlen);
 }
 
 int sockutil_get_tcp_connected_p(const char *host, uint16_t port)
