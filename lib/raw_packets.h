@@ -17,6 +17,7 @@
 #ifndef _RAW_DATA_PACKETS_H_
 #define _RAW_DATA_PACKETS_H_
 
+#include <assert.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <sys/types.h>
@@ -228,6 +229,37 @@ static inline size_t raw_bsamp_sampsize(struct raw_msg_bsamp *bsamp)
 static inline size_t raw_packet_sampsize(struct raw_packet *packet)
 {
     return raw_bsamp_sampsize(&packet->p.bsamp);
+}
+
+/* TODO bounds-checking */
+void raw_packet_copy(struct raw_packet *dst, struct raw_packet *src);
+
+/* Request/response ID number */
+static inline uint16_t raw_r_id(struct raw_packet *packet) {
+    assert(packet->p_type == RAW_PKT_TYPE_REQ ||
+           packet->p_type == RAW_PKT_TYPE_RES);
+    return packet->p.req.r_id;
+}
+
+/* Request/response type */
+static inline uint8_t raw_r_type(struct raw_packet *packet) {
+    assert(packet->p_type == RAW_PKT_TYPE_REQ ||
+           packet->p_type == RAW_PKT_TYPE_RES);
+    return packet->p.req.r_type;
+}
+
+/* Request/response address */
+static inline uint8_t raw_r_addr(struct raw_packet *packet) {
+    assert(packet->p_type == RAW_PKT_TYPE_REQ ||
+           packet->p_type == RAW_PKT_TYPE_RES);
+    return packet->p.res.r_addr;
+}
+
+/* Request/response value */
+static inline uint32_t raw_r_val(struct raw_packet *packet) {
+    assert(packet->p_type == RAW_PKT_TYPE_REQ ||
+           packet->p_type == RAW_PKT_TYPE_RES);
+    return packet->p.res.r_val;
 }
 
 #endif  /* _RAW_DATA_PACKETS_H_ */
