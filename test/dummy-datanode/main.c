@@ -18,18 +18,19 @@
 #include "sockutil.h"
 #include "type_attrs.h"
 
-#define DEFAULT_ARGUMENTS { .cport = 8880, .dport = 8881 }
+#define DEFAULT_ARGUMENTS { .cport = 8880, .dport = 8881, .host = "127.0.0.1" }
 
 struct arguments {
-    uint16_t cport;    /* Client command and control port */
-    uint16_t dport;    /* UDP port listening for data packets */
+    const char *host;  /* Remote hostname to talk to */
+    uint16_t cport;    /* Remote TCP port for command/control */
+    uint16_t dport;    /* Remote UDP port listening for data packets */
 };
 
 static const char* program_name;
 
 static void parse_args(struct arguments *args, int argc, char *const argv[])
 {
-    const char shortopts[] = "C:D:";
+    const char shortopts[] = "C:D:H:";
     struct option longopts[] = {
         { .name = "cport",
           .has_arg = required_argument,
@@ -39,6 +40,10 @@ static void parse_args(struct arguments *args, int argc, char *const argv[])
           .has_arg = required_argument,
           .flag = 0,
           .val = 'D' },
+        { .name = "remote-host",
+          .has_arg = required_argument,
+          .flag = 0,
+          .val = 'H' },
         {0, 0, 0, 0},
     };
     while (1) {
@@ -52,6 +57,9 @@ static void parse_args(struct arguments *args, int argc, char *const argv[])
             args->cport = strtol(optarg, (char**)0, 10);
         case 'D':
             args->dport = strtol(optarg, (char**)0, 10);
+            break;
+        case 'h':
+            args->host = optarg;
             break;
         case 0:                 /* fall through */
         case '?':               /* fall through */
@@ -99,29 +107,147 @@ static int serve_sys_query(int sockfd,
                            struct raw_packet *req_pkt,
                            struct raw_packet *res_pkt)
 {
+    assert(req_pkt->p_type == RAW_PKT_TYPE_REQ);
+    assert(req_pkt->p.req.r_type == RAW_RTYPE_SYS_QUERY);
     int ret = 0;
     switch (req_pkt->p.req.r_addr) {
     case RAW_RADDR_SYS_NCHIPS:
-        log_INFO("request %u:SYS_NCHIPS, reply: %u", NCHIPS);
+        log_INFO("request %u: SYS_NCHIPS, reply: %u",
+                 raw_r_id(req_pkt), NCHIPS);
         if (reply(sockfd, req_pkt, res_pkt, NCHIPS) == -1) { ret = -1; }
         break;
     case RAW_RADDR_SYS_NLINES:
-        log_INFO("request %u: SYS_NLINES, reply: %u", NLINES);
+        log_INFO("request %u: SYS_NLINES, reply: %u",
+                 raw_r_id(req_pkt), NLINES);
         if (reply(sockfd, req_pkt, res_pkt, NLINES) == -1) { ret = -1; }
         break;
     default:
-        log_INFO("unsupported request %u", req_pkt->p_type);
+        log_INFO("unsupported sys query %u", req_pkt->p.req.r_addr);
         if (reply_unsupp(sockfd, req_pkt, res_pkt) == -1) { ret = -1; }
         break;
     }
     return ret;
 }
 
+struct acquire_status {
+    int acquiring;
+};
+
+static int serve_acq(int sockfd,
+                     struct raw_packet *req_pkt,
+                     struct raw_packet *res_pkt,
+                     struct acquire_status *status)
+{
+    assert(req_pkt->p_type == RAW_PKT_TYPE_REQ);
+    uint8_t flags = 0;
+    switch (req_pkt->p.req.r_type) {
+    case RAW_RTYPE_ACQ_START:
+        log_INFO("request %u: ACQ_START", raw_r_id(req_pkt));
+        if (status->acquiring) {
+            log_WARNING("already acquiring!");
+        }
+        status->acquiring = 1;
+        break;
+    case RAW_RTYPE_ACQ_STOP:
+        log_INFO("request %u: ACQ_STOP", raw_r_id(req_pkt));
+        if (!status->acquiring) {
+            log_WARNING("not acquiring!");
+        }
+        status->acquiring = 0;
+        break;
+    default:
+        log_WARNING("request %u: unexpected r_type %u",
+                    raw_r_id(req_pkt), raw_r_type(req_pkt));
+        flags |= RAW_FLAG_ERR;
+        break;
+    }
+    return init_and_reply(sockfd, req_pkt, res_pkt, flags, 0);
+}
+
+static int init_fakesamps(struct raw_packet **fakesamps, size_t nsamps)
+{
+    for (size_t i = 0; i < nsamps; i++) {
+        fakesamps[i] = raw_packet_create_bsamp(NCHIPS, NLINES);
+        if (fakesamps[i] == NULL) {
+            return -1;
+        }
+        struct raw_msg_bsamp *bsamp = &fakesamps[i]->p.bsamp;
+        bsamp->bs_idx = i;
+        for (size_t s = 0; s < raw_bsamp_nsamps(bsamp); s++) {
+            bsamp->bs_samples[s] = (uint16_t)s;
+        }
+    }
+    return 0;
+}
+
+/* Serve up some board samples. For now, refuses to do so if
+ * acquisition is ongoing. */
+#define NFAKESAMPS 1000
+static int serve_samp(int res_sockfd,
+                      int samp_sockfd,
+                      struct raw_packet *req_pkt,
+                      struct raw_packet *res_pkt,
+                      struct acquire_status *status) {
+    static struct raw_packet *fakesamps[NFAKESAMPS] = {NULL};
+    static struct raw_packet *send_bsamp = NULL; /* copy for sending */
+
+    if (fakesamps[0] == NULL) {
+        if (init_fakesamps(fakesamps, NFAKESAMPS) == -1 ||
+            init_fakesamps(&send_bsamp, 1) == -1) {
+            log_ERR("can't initialize fake samples; aborting");
+            exit(EXIT_FAILURE);
+        }
+        fakesamps[NFAKESAMPS - 1]->p_flags |= RAW_FLAG_BSAMP_IS_LAST;
+    }
+
+    assert(req_pkt->p_type == RAW_PKT_TYPE_REQ);
+    assert(raw_r_type(req_pkt) == RAW_RTYPE_SAMP_READ);
+
+    uint8_t nsamps = raw_r_addr(req_pkt);
+    uint32_t start_samp = raw_r_val(req_pkt);
+    uint16_t r_id = raw_r_id(req_pkt);
+
+    log_INFO("request %u: SAMP_READ, %u samples, start sample %u",
+             r_id, nsamps, start_samp);
+
+    /* Error checking and bounds clamping. */
+    if (status->acquiring || nsamps == 0) {
+        log_INFO("not acquiring or zero samples requested; bailing");
+        init_and_reply(res_sockfd, req_pkt, res_pkt, RAW_FLAG_ERR, 0);
+    }
+    if (start_samp > NFAKESAMPS - 1) {
+        log_INFO("start sample %u exceeds total; bailing", start_samp);
+        init_and_reply(res_sockfd, req_pkt, res_pkt, RAW_FLAG_BSAMP_ESIZE, 0);
+        return 0;
+    }
+    if (nsamps + start_samp > NFAKESAMPS) {
+        nsamps = NFAKESAMPS - start_samp;
+        log_INFO("clamped number of samples to %u", nsamps);
+    }
+
+    /* Everything looks legit; let's ship the packets. Errors aren't
+     * a problem, but we remember they happened. */
+    init_and_reply(res_sockfd, req_pkt, res_pkt, 0, 0);
+    int ret = 0;
+    for (uint8_t s = 0; s < nsamps; s++) {
+        uint32_t samp_idx = start_samp + (uint32_t)s;
+        raw_packet_copy(send_bsamp, fakesamps[samp_idx]);
+        if (raw_packet_send(samp_sockfd, send_bsamp, 0) == -1) {
+            log_INFO("failed to send packet %u", s);
+            ret = -1;
+        }
+    }
+    return ret;
+}
+
+/* Create a command/control socket and serve requests from it for as
+ * long as possible. Returns an exit status if an unrecoverable error
+ * occurs. */
 static int serve_requests(struct arguments *args)
 {
     int cc_sock = sockutil_get_tcp_passive(args->cport);
     if (cc_sock == -1) {
-        log_ERR("can't make cc_sock");
+        log_ERR("can't make cc_sock: %m");
         return EXIT_FAILURE;
     }
     int sockfd = accept(cc_sock, NULL, 0);
@@ -129,9 +255,14 @@ static int serve_requests(struct arguments *args)
         log_ERR("can't accept() on cc_sock: %m");
         goto bail;
     }
+    int bsamp_sockfd = sockutil_get_udp_connected_p(args->host, args->dport);
 
     struct raw_packet req_pkt = RAW_REQ_INIT;
     struct raw_packet res_pkt = RAW_RES_INIT;
+
+    struct acquire_status acq_status = {
+        .acquiring = 0,
+    };
 
     while (1) {
         /* Get the request. */
@@ -162,6 +293,21 @@ static int serve_requests(struct arguments *args)
                 goto bail;
             }
             break;
+        case RAW_RTYPE_ACQ_START: /* fall through */
+        case RAW_RTYPE_ACQ_STOP:
+            if (serve_acq(sockfd, &req_pkt, &res_pkt, &acq_status) == -1) {
+                goto bail;
+            }
+            break;
+        case RAW_RTYPE_SAMP_READ:
+            if (serve_samp(sockfd, bsamp_sockfd, &req_pkt, &res_pkt,
+                           &acq_status) == -1) {
+                goto bail;
+            }
+            break;
+        case RAW_RTYPE_SYS_CFG:    /* fall through (TODO) */
+        case RAW_RTYPE_CHIP_CFG:   /* fall through (TODO) */
+        case RAW_RTYPE_CHIP_QUERY: /* fall through (TODO) */
         default:
             if (reply_unsupp(sockfd, &req_pkt, &res_pkt) == -1) {
                 goto bail;
@@ -194,8 +340,8 @@ int main(int argc, char *argv[])
     parse_args(&args, argc, argv);
 
     /* Serve requests */
-    log_INFO("client command port: %u", args.cport);
-    log_INFO("daemon data port: %u", args.dport);
+    log_INFO("remote host: %s, C/C port %u, data port %u",
+             args.host, args.cport, args.dport);
     int ret = serve_requests(&args);
     logging_fini();
     exit(ret);
