@@ -249,25 +249,32 @@ static int write_h5_file(uint16_t *data, size_t len,
     return ret;
 }
 
-static int do_client_request(int sockfd,
-                             struct raw_packet *req,
-                             struct raw_packet *res) {
-    assert(req->p_type == RAW_PKT_TYPE_REQ);
-    assert(res->p_type == RAW_PKT_TYPE_RES);
-    uint16_t req_id = req->p.req.r_id;
-    if (raw_packet_send(sockfd, req, 0) == -1) {
+/* Do a request, wait for response, write .r_val to valptr if it's not
+ * NULL.  Assumes req_pkt->p.req is valid already. */
+static int do_req_res(int sockfd,
+                      struct raw_packet *req_pkt,
+                      struct raw_packet *res_pkt,
+                      uint32_t *valptr)
+{
+    raw_packet_init(req_pkt, RAW_PKT_TYPE_REQ, 0);
+    raw_packet_init(res_pkt, RAW_PKT_TYPE_RES, 0);
+    uint16_t req_id = raw_r_id(req_pkt); /* cache; sending mangles it. */
+    if (raw_packet_send(sockfd, req_pkt, 0) == -1) {
         log_ERR("can't send request: %m");
         return -1;
     }
     uint8_t packtype = RAW_PKT_TYPE_RES;
-    if (raw_packet_recv(sockfd, res, &packtype, 0) == -1) {
+    if (raw_packet_recv(sockfd, res_pkt, &packtype, 0) == -1) {
         log_ERR("can't get response: %m");
         return -1;
     }
-    if (res->p.res.r_id != req_id) {
-        log_ERR("expected response r_id=%u, but got %u",
-                req_id, res->p.res.r_id);
+    uint16_t res_id = raw_r_id(res_pkt);
+    if (res_id != req_id) {
+        log_ERR("expected response r_id=%u, but got %u", req_id, res_id);
         return -1;
+    }
+    if (valptr != NULL) {
+        *valptr = raw_r_val(res_pkt);
     }
     return 0;
 }
@@ -296,43 +303,89 @@ static int daemon_main(void)
 
     /* For getting remote's data packet configuration */
     struct {
-        uint16_t n_fpga_chips;
-        uint16_t n_chan_per_chip;
-    } client_config;
+        uint32_t n_chip;
+        uint32_t n_chan_p_chip;
+    } ccfg;
     struct raw_packet req_pkt = RAW_REQ_INIT;
     struct raw_packet res_pkt = RAW_RES_INIT;
     struct raw_msg_req *req = &req_pkt.p.req;
-    struct raw_msg_res *res = &res_pkt.p.res;
     uint16_t cur_req_id = 0;
 
     log_INFO("reading number of FPGA chips");
-    raw_packet_init(&req_pkt, RAW_PKT_TYPE_REQ, 0);
-    raw_packet_init(&res_pkt, RAW_PKT_TYPE_RES, 0);
     req->r_id = cur_req_id++;
     req->r_type = RAW_RTYPE_SYS_QUERY;
     req->r_addr = RAW_RADDR_SYS_NCHIPS;
-    if (do_client_request(cc_sock, &req_pkt, &res_pkt) == -1) {
+    if (do_req_res(cc_sock, &req_pkt, &res_pkt, &ccfg.n_chip) == -1) {
         goto bail;
     }
-    client_config.n_fpga_chips = (uint16_t)res->r_val;
 
     log_INFO("reading number of channels per chip");
-    raw_packet_init(&req_pkt, RAW_PKT_TYPE_REQ, 0);
-    raw_packet_init(&res_pkt, RAW_PKT_TYPE_RES, 0);
     req->r_id = cur_req_id++;
     req->r_type = RAW_RTYPE_SYS_QUERY;
     req->r_addr = RAW_RADDR_SYS_NLINES;
-    if (do_client_request(cc_sock, &req_pkt, &res_pkt) == -1) {
+    if (do_req_res(cc_sock, &req_pkt, &res_pkt, &ccfg.n_chan_p_chip) == -1) {
         goto bail;
     }
-    client_config.n_chan_per_chip = (uint16_t)res->r_val;
 
-    /* For now, just log the results. */
     log_INFO("client reports data dimensions %ux%u",
-             client_config.n_fpga_chips, client_config.n_chan_per_chip);
+             ccfg.n_chip, ccfg.n_chan_p_chip);
+    struct raw_packet *bsamp_pkt = raw_packet_create_bsamp(ccfg.n_chip,
+                                                           ccfg.n_chan_p_chip);
+    if (bsamp_pkt == 0) {
+        goto bail;
+    }
+
+    log_INFO("starting acquisition");
+    req->r_id = cur_req_id++;
+    req->r_type = RAW_RTYPE_ACQ_START;
+    if (do_req_res(cc_sock, &req_pkt, &res_pkt, NULL) == -1) {
+        goto bail;
+    }
+
+    log_INFO("stopping acquisition");
+    req->r_id = cur_req_id++;
+    req->r_type = RAW_RTYPE_ACQ_STOP;
+    if (do_req_res(cc_sock, &req_pkt, &res_pkt, NULL) == -1) {
+        goto bail;
+    }
+
+    /* FIXME add timeouts/re-requests */
+    log_INFO("reading out packets");
+    int got_last_packet = 0;
+    uint32_t samp_idx = 0;
+    while (!got_last_packet) {
+        log_INFO("requesting packet %u", samp_idx);
+        req->r_id = cur_req_id++;
+        req->r_type = RAW_RTYPE_SAMP_READ;
+        req->r_addr = 1;
+        req->r_val = samp_idx++;
+        if (do_req_res(cc_sock, &req_pkt, &res_pkt, NULL) == -1) {
+            goto bail;
+        }
+        if (raw_packet_err(&res_pkt)) {
+            log_ERR("exiting due to error in response; flags 0x%x",
+                    res_pkt.p_flags);
+        }
+        if (raw_packet_recv(dt_sock, bsamp_pkt, &bsamp_pkt->p_type, 0) == -1) {
+            goto bail;
+        }
+        assert(bsamp_pkt->p.bsamp.bs_nchips == ccfg.n_chip);
+        assert(bsamp_pkt->p.bsamp.bs_nlines == ccfg.n_chan_p_chip);
+        /* TODO write to file */
+        got_last_packet = bsamp_pkt->p_flags & RAW_FLAG_BSAMP_IS_LAST;
+        if (got_last_packet) {
+            log_INFO("that's the last packet");
+        }
+    }
+
+    log_INFO("Ok, done.");
+
     ret = EXIT_SUCCESS;
 
  bail:
+    if (ret == EXIT_FAILURE) {
+        log_ERR("exiting due to error");
+    }
     if (close(dt_sock) != 0) {
         log_ERR("unable to close data socket: %m");
     }
