@@ -12,10 +12,13 @@
 #define PACKET_HEADER_MAGIC      0x5A
 #define PACKET_HEADER_PROTO_VERS 0x00
 
-void raw_packet_init(struct raw_packet *packet)
+void raw_packet_init(struct raw_packet *packet,
+                     uint8_t type, uint8_t flags)
 {
     packet->_p_magic = PACKET_HEADER_MAGIC;
     packet->_p_proto_vers = PACKET_HEADER_PROTO_VERS;
+    packet->p_type = type;
+    packet->p_flags = flags;
 }
 
 struct raw_packet* raw_packet_create_bsamp(uint16_t nchips, uint16_t nlines)
@@ -27,8 +30,7 @@ struct raw_packet* raw_packet_create_bsamp(uint16_t nchips, uint16_t nlines)
                          (size_t)nchips * (size_t)nlines * sizeof(raw_samp_t));
     struct raw_packet *ret = malloc(bsamp_size);
     if (ret != 0) {
-        raw_packet_init(ret);
-        ret->p_type = RAW_PKT_TYPE_BSAMP;
+        raw_packet_init(ret, RAW_PKT_TYPE_BSAMP, 0);
         ret->p.bsamp.bs_nchips = nchips;
         ret->p.bsamp.bs_nlines = nlines;
     }
@@ -104,6 +106,10 @@ ssize_t raw_packet_recv(int sockfd, struct raw_packet *packet,
                         uint8_t *packtype, int flags)
 {
     size_t packsize = sizeof(struct raw_packet);
+    uint8_t pt = 0;
+    if (packtype == NULL) {
+        packtype = &pt;
+    }
     if (*packtype == RAW_PKT_TYPE_BSAMP) {
         packsize += raw_packet_sampsize(packet);
     }

@@ -48,16 +48,16 @@ struct raw_msg_bsamp {
 
 /* Request/response packet contents */
 
-#define RAW_RTYPE_CHIP_CFG   0x00
-#define RAW_RTYPE_CHIP_QUERY 0x01
-#define RAW_RTYPE_SYS_CFG    0x02
-#define RAW_RTYPE_SYS_QUERY  0x03
-#define RAW_RTYPE_ACQ_START  0x04
-#define RAW_RTYPE_ACQ_STOP   0x05
-#define RAW_RTYPE_SAMP_READ  0x06
+#define RAW_RTYPE_CHIP_CFG   0x00 /* configure a chip */
+#define RAW_RTYPE_CHIP_QUERY 0x01 /* request a chip config */
+#define RAW_RTYPE_SYS_CFG    0x02 /* configure the system */
+#define RAW_RTYPE_SYS_QUERY  0x03 /* request system configuration */
+#define RAW_RTYPE_ACQ_START  0x04 /* start acquisition */
+#define RAW_RTYPE_ACQ_STOP   0x05 /* stop acquisition */
+#define RAW_RTYPE_SAMP_READ  0x06 /* read a sample */
 
-#define RAW_RADDR_NCHIPS     0x00
-#define RAW_RADDR_NLINES     0x01
+#define RAW_RADDR_SYS_NCHIPS 0x00
+#define RAW_RADDR_SYS_NLINES 0x01
 
 /* Request and response packets contain the same data, but we enforce
  * a type system distinction between them.
@@ -136,13 +136,16 @@ struct raw_packet {
  * `flags' are as with send(). */
 ssize_t raw_packet_send(int sockfd, struct raw_packet *packet, int flags);
 
+/* TODO: remove packtype field and just read from packet->p_type;
+ * packtype is annoying to think about. */
+
 /* Receive a data packet.
  *
- * `*packtype' may be zero or a valid RAW_PKT_TYPE_* value. If
- * `*packtype' is zero, it will be modified to contain the received
- * packet header's p_type value.  If `*packtype' is nonzero, and the
- * packet read from the socket does not match its type, -1 is
- * returned, with errno set to EIO.
+ * `*packtype' may be a NULL pointer, or point to zero or a valid
+ * RAW_PKT_TYPE_* value. If `*packtype' is zero, it will be modified
+ * to contain the received packet header's p_type value.  If
+ * `*packtype' is nonzero, and the packet read from the socket does
+ * not match its type, -1 is returned, with errno set to EIO.
  *
  * Receiving a RAW_PKT_TYPE_BSAMP is a special case. In this case,
  * *packtype must be set appropriately, and the .bs_nchips and
@@ -153,12 +156,18 @@ ssize_t raw_packet_recv(int sockfd, struct raw_packet *packet,
                         uint8_t *packtype, int flags);
 
 /*********************************************************************
- * Other packet routines
+ * Other packet routines and help
  */
+
+/* For defining non-board sample packets, to reserve enough space in .p */
+#define RAW_REQ_INIT { .p = { .req = { .r_id = 0 } }}
+#define RAW_RES_INIT { .p = { .res = { .r_id = 0 } }}
+#define RAW_ERR_INIT { .p_type = RAW_PKT_TYPE_ERR, .p_flags = RAW_FLAG_ERR }
 
 /* Initialize a packet. Call this once before sending the packet
  * anywhere. */
-void raw_packet_init(struct raw_packet *packet);
+void raw_packet_init(struct raw_packet *packet,
+                     uint8_t type, uint8_t flags);
 
 /* Create a board sample packet.
  *
