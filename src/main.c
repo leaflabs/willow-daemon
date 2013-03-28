@@ -22,6 +22,7 @@
 #include "logging.h"
 #include "sockutil.h"
 #include "type_attrs.h"
+#include "raw_packets.h"
 
 /* main() initializes this before doing anything else. */
 static const char* program_name;
@@ -248,6 +249,101 @@ static int write_h5_file(uint16_t *data, size_t len,
     return ret;
 }
 
+static int do_client_request(int sockfd,
+                             struct raw_packet *req,
+                             struct raw_packet *res) {
+    assert(req->p_type == RAW_PKT_TYPE_REQ);
+    assert(res->p_type == RAW_PKT_TYPE_RES);
+    uint16_t req_id = req->p.req.r_id;
+    if (raw_packet_send(sockfd, req, 0) == -1) {
+        log_ERR("can't send request: %m");
+        return -1;
+    }
+    uint8_t packtype = RAW_PKT_TYPE_RES;
+    if (raw_packet_recv(sockfd, res, &packtype, 0) == -1) {
+        log_ERR("can't get response: %m");
+        return -1;
+    }
+    if (res->p.res.r_id != req_id) {
+        log_ERR("expected response r_id=%u, but got %u",
+                req_id, res->p.res.r_id);
+        return -1;
+    }
+    return 0;
+}
+
+/* Data node's hostname and command/control port, and local packet
+ * data port. */
+#define DNODE_HOST "127.0.0.1"
+#define DNODE_CC_PORT 8880
+#define PACKET_DATA_PORT 8881
+static int daemon_main(void)
+{
+    int ret = EXIT_FAILURE;
+
+    int cc_sock = sockutil_get_tcp_connected_p(DNODE_HOST, DNODE_CC_PORT);
+    if (cc_sock == -1) {
+        log_ERR("can't connect to %s port %d: %m",
+                DNODE_HOST, DNODE_CC_PORT);
+        goto nocc;
+    }
+    int dt_sock = sockutil_get_udp_socket(PACKET_DATA_PORT);
+    if (dt_sock == -1) {
+        log_ERR("can't create packet data socket on port %d: %m",
+                PACKET_DATA_PORT);
+        goto nodt;
+    }
+
+    /* For getting remote's data packet configuration */
+    struct {
+        uint16_t n_fpga_chips;
+        uint16_t n_chan_per_chip;
+    } client_config;
+    struct raw_packet req_pkt = RAW_REQ_INIT;
+    struct raw_packet res_pkt = RAW_RES_INIT;
+    struct raw_msg_req *req = &req_pkt.p.req;
+    struct raw_msg_res *res = &res_pkt.p.res;
+    uint16_t cur_req_id = 0;
+
+    log_INFO("reading number of FPGA chips");
+    raw_packet_init(&req_pkt, RAW_PKT_TYPE_REQ, 0);
+    raw_packet_init(&res_pkt, RAW_PKT_TYPE_RES, 0);
+    req->r_id = cur_req_id++;
+    req->r_type = RAW_RTYPE_SYS_QUERY;
+    req->r_addr = RAW_RADDR_SYS_NCHIPS;
+    if (do_client_request(cc_sock, &req_pkt, &res_pkt) == -1) {
+        goto bail;
+    }
+    client_config.n_fpga_chips = (uint16_t)res->r_val;
+
+    log_INFO("reading number of channels per chip");
+    raw_packet_init(&req_pkt, RAW_PKT_TYPE_REQ, 0);
+    raw_packet_init(&res_pkt, RAW_PKT_TYPE_RES, 0);
+    req->r_id = cur_req_id++;
+    req->r_type = RAW_RTYPE_SYS_QUERY;
+    req->r_addr = RAW_RADDR_SYS_NLINES;
+    if (do_client_request(cc_sock, &req_pkt, &res_pkt) == -1) {
+        goto bail;
+    }
+    client_config.n_chan_per_chip = (uint16_t)res->r_val;
+
+    /* For now, just log the results. */
+    log_INFO("client reports data dimensions %ux%u",
+             client_config.n_fpga_chips, client_config.n_chan_per_chip);
+    ret = EXIT_SUCCESS;
+
+ bail:
+    if (close(dt_sock) != 0) {
+        log_ERR("unable to close data socket: %m");
+    }
+ nodt:
+    if (close(cc_sock) != 0) {
+        log_ERR("unable to close command/control socket: %m");
+    }
+ nocc:
+    return ret;
+}
+
 int main(int argc, char *argv[])
 {
     struct arguments args = DEFAULT_ARGUMENTS;
@@ -272,44 +368,8 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    log_INFO("started successfully.");
-
-    /* These assume you've got a TCP echo server running on
-     * localhost at port 1234. */
-#define ECHO_SERVER_HOST "127.0.0.1"
-#define ECHO_SERVER_PORT 1234
-    log_INFO("connecting to echo server at %s:%u",
-             ECHO_SERVER_HOST, ECHO_SERVER_PORT);
-    int sock = sockutil_get_tcp_connected_p(ECHO_SERVER_HOST,
-                                            ECHO_SERVER_PORT);
-    if (sock == -1) {
-        log_INFO("you can start an echo server with \"%s\"",
-                 "ncat -e /bin/cat -k -l 1234");
-        exit(EXIT_FAILURE);
-    }
-
-    char wbuf[] = "hello, world!";
-    char rbuf[sizeof(wbuf)];
-    log_INFO("writing \"%s\"", wbuf);
-    ssize_t nwritten = write(sock, wbuf, strlen(wbuf));
-    assert(nwritten > 0 && (size_t)nwritten == strlen(wbuf));
-    ssize_t nread = 0;
-    while (nread < nwritten) {
-        ssize_t rd = read(sock, rbuf + nread, strlen(wbuf) - nread);
-        if (rd <= 0) {
-            log_ERR("wtf?");
-            goto out;
-        }
-        nread += rd;
-    }
-    assert(nread == sizeof(rbuf) - 1);
-    rbuf[nread] = '\0';
-    log_INFO("read back \"%s\"", rbuf);
-    log_INFO("ok, done");
-
- out:
-    close(sock);
-
+    /* Go! */
+    int ret = daemon_main();
     logging_fini();
-    return 0;
+    return ret;
 }
