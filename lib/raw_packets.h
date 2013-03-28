@@ -29,10 +29,18 @@
  * The main packet structure is struct raw_packet; see below.
  */
 
+/* Error flag for raw_packet.p_flags, may occur anywhere. Each packet
+ * type may define additional flags, as long as they don't conflict
+ * with this one. */
+#define RAW_FLAG_ERR       0x80
+
 /* Board sample packet contents */
 
-#define RAW_FLAG_BSAMP_IS_LIVE 0x01 /* "is_live" flag for ph.p_flags */
-#define RAW_FLAG_BSAMP_IS_LAST 0x02 /* "is_last_sample" flag for ph.p_flags */
+/* Flags for packet.p_flags */
+#define RAW_FLAG_BSAMP_IS_LIVE 0x01 /* streaming live recording */
+#define RAW_FLAG_BSAMP_IS_LAST 0x02 /* no more packets to send */
+#define RAW_FLAG_BSAMP_ESIZE (RAW_FLAG_ERR | 0x04) /* requested sample
+                                                      doesn't exist */
 
 typedef uint16_t raw_samp_t;
 
@@ -62,11 +70,27 @@ struct raw_msg_bsamp {
 /* Request and response packets contain the same data, but we enforce
  * a type system distinction between them.
  *
+ * Usually, these work like this:
+ *
  * ph: packet header
  * r_id: sequential request/response ID number; this can wrap
  * r_type: type of request/response being issued; see RAW_RTYPE_*
  * r_addr: notional "address" being written to or read from
  * r_val: value at r_addr to read or write
+ *
+ * In case of .r_type=RAW_RTYPE_SAMP_READ, the following fields have
+ * alternate meanings:
+ *
+ * r_addr: Number of board samples to read; must be > 0
+ * r_val: Starting board sample to read from
+ *
+ * If more board sample packets are requested than are available, it's
+ * not an error; the node just sends a packet with
+ * RAW_FLAG_BSAMP_IS_LAST after receiving the number that were
+ * available.
+ *
+ * If the starting board sample packet exceeds the number available,
+ * an error is returned.
  */
 #define _RAW_DATA_REQ_RES                       \
     uint16_t r_id;                              \
@@ -87,11 +111,6 @@ struct raw_msg_res { _RAW_DATA_REQ_RES };
 #define RAW_PKT_TYPE_REQ   0x02 /* Request */
 #define RAW_PKT_TYPE_RES   0x03 /* Response */
 #define RAW_PKT_TYPE_ERR   0xFF /* Error */
-
-/* Error flag for .p_flags, may occur anywhere. Each packet type may
- * define additional flags, as long as they don't conflict with this
- * one. */
-#define RAW_FLAG_ERR       0x80
 
 struct raw_packet {
     /* Packet header; this is common to packets of all types. */
