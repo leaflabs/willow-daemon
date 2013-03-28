@@ -72,6 +72,11 @@ static int sockutil_get_socket(int socktype, int passive,
 
 static int sockutil_cfg_bind_sock(int sock, struct addrinfo *arp)
 {
+    int reuse_addr = 1;
+    if (-1 == setsockopt(sock, SOL_SOCKET, SO_REUSEADDR,
+                         &reuse_addr, sizeof(int))) {
+        return -1;
+    }
     return bind(sock, arp->ai_addr, arp->ai_addrlen);
 }
 
