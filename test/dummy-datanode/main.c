@@ -17,21 +17,31 @@
 #include "raw_packets.h"
 #include "sockutil.h"
 #include "type_attrs.h"
+#include "chaos.h"
 
-#define DEFAULT_ARGUMENTS { .cport = 8880, .dport = 8881, .host = "127.0.0.1" }
+#define DEFAULT_ARGUMENTS                       \
+    { .chaos = 1,                               \
+      .cport = 8880,                            \
+      .dport = 8881,                            \
+      .host = "127.0.0.1" }
 
 struct arguments {
     const char *host;  /* Remote hostname to talk to */
     uint16_t cport;    /* Remote TCP port for command/control */
     uint16_t dport;    /* Remote UDP port listening for data packets */
+    int chaos;         /* Chaos mode: randomly fail according to chaos.h */
 };
 
 static const char* program_name;
 
 static void parse_args(struct arguments *args, int argc, char *const argv[])
 {
-    const char shortopts[] = "C:D:H:";
+    const char shortopts[] = "cC:D:H:";
     struct option longopts[] = {
+        { .name = "chaos",
+          .has_arg = optional_argument,
+          .flag = 0,
+          .val = 'c' },
         { .name = "cport",
           .has_arg = required_argument,
           .flag = 0,
@@ -53,6 +63,8 @@ static void parse_args(struct arguments *args, int argc, char *const argv[])
             break;
         }
         switch (c) {
+        case 'c':
+            args->chaos = strtol(optarg, (char**)0, 10);
         case 'C':
             args->cport = strtol(optarg, (char**)0, 10);
         case 'D':
@@ -182,7 +194,7 @@ static int init_fakesamps(struct raw_packet **fakesamps, size_t nsamps)
 
 /* Serve up some board samples. For now, refuses to do so if
  * acquisition is ongoing. */
-#define NFAKESAMPS 1000
+#define NFAKESAMPS 15
 static int serve_samp(int res_sockfd,
                       int samp_sockfd,
                       struct raw_packet *req_pkt,
@@ -225,16 +237,32 @@ static int serve_samp(int res_sockfd,
         log_INFO("clamped number of samples to %u", nsamps);
     }
 
-    /* Everything looks legit; let's ship the packets. Errors aren't
-     * a problem (yet), but we remember they happened. */
+    /* Everything looks legit; let's ship the packets. Errors
+     * simulated as determined by chaos.h API. */
     init_and_reply(res_sockfd, req_pkt, res_pkt, 0, 0);
     int ret = 0;
     for (uint8_t s = 0; s < nsamps; s++) {
-        uint32_t samp_idx = start_samp + (uint32_t)s;
-        raw_packet_copy(send_bsamp, fakesamps[samp_idx]);
-        if (raw_packet_send(samp_sockfd, send_bsamp, 0) == -1) {
-            log_INFO("failed to send packet %u", s);
-            ret = -1;
+        /* Simulate packet loss. */
+        if (chaos_bs_drop_p()) {
+            log_INFO("chaos: dropping board sample %u/%u", s, nsamps);
+            continue;
+        }
+        /* No simulated packet loss; actually try to ship it. */
+        while (1) {
+            uint32_t samp_idx = start_samp + (uint32_t)s;
+            raw_packet_copy(send_bsamp, fakesamps[samp_idx]);
+            if (raw_packet_send(samp_sockfd, send_bsamp, 0) == -1) {
+                /* That's a real network error. */
+                log_INFO("actually failed to send packet %u/%u", s, nsamps);
+                ret = -1;
+            }
+            /* Simulate packet duplication. */
+            if (chaos_bs_dup_p()) {
+                log_INFO("chaos: sending sample %u/%u again", s, nsamps);
+                continue;
+            } else {
+                break;
+            }
         }
     }
     return ret;
@@ -344,10 +372,10 @@ int main(int argc, char *argv[])
     }
     logging_init(program_name, LOG_DEBUG, log_to_stderr);
     parse_args(&args, argc, argv);
-
-    /* Serve requests */
-    log_INFO("remote host: %s, C/C port %u, data port %u",
-             args.host, args.cport, args.dport);
+    log_INFO("remote host: %s, C/C port %u, data port %u, chaos: %s",
+             args.host, args.cport, args.dport,
+             args.chaos ? "enabled" : "disabled");
+    chaos_init(args.chaos);
     int ret = serve_requests(&args);
     logging_fini();
     exit(ret);
