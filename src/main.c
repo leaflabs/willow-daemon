@@ -343,6 +343,31 @@ static int do_recording_session(int cc_sock,
     return 0;
 }
 
+static int read_packet_timeout(int dt_sock,
+                               struct raw_packet *bsamp_pkt,
+                               const struct timespec *timeout)
+{
+    /* TODO: consider signal safety once we e.g. accept SIGHUP */
+    uint8_t *ptype = &bsamp_pkt->p_type;
+    fd_set rfds;
+    int maxfdp1 = dt_sock + 1;
+    FD_ZERO(&rfds);
+    FD_SET(dt_sock, &rfds);
+    switch (pselect(maxfdp1, &rfds, NULL, NULL, timeout, NULL)) {
+    case -1:
+        return -1;
+    case 0:
+        return 0;
+    case 1:
+        assert(FD_ISSET(dt_sock, &rfds));
+        return raw_packet_recv(dt_sock, bsamp_pkt, ptype, 0);
+    default:
+        log_ERR("can't happen");
+        assert(0);
+        return -1;
+    }
+}
+
 /* Data node's hostname and command/control port, and local packet
  * data port. */
 #define DNODE_HOST "127.0.0.1"
@@ -387,16 +412,21 @@ static int daemon_main(void)
         goto bail;
     }
 
-    /* FIXME add timeouts/re-requests */
+    /* TODO serve protobuf requests forever */
+    /* FIXME resilience in the face of wedged/confused datanodes */
     log_INFO("reading out packets");
     int got_last_packet = 0;
     uint32_t samp_idx = 0;
+    const struct timespec timeout = {
+        .tv_sec = 0,
+        .tv_nsec = 100 * 1000 * 1000, /* 100 msec */
+    };
     while (!got_last_packet) {
-        log_INFO("requesting packet %u", samp_idx);
         req->r_id = cur_req_id++;
         req->r_type = RAW_RTYPE_SAMP_READ;
         req->r_addr = 1;
-        req->r_val = samp_idx++;
+        req->r_val = samp_idx;
+        log_INFO("request %u for board sample %u", req->r_id, samp_idx);
         if (do_req_res(cc_sock, &req_pkt, &res_pkt, NULL) == -1) {
             goto bail;
         }
@@ -404,19 +434,52 @@ static int daemon_main(void)
             log_ERR("exiting due to error in response; flags 0x%x",
                     res_pkt.p_flags);
         }
-        if (raw_packet_recv(dt_sock, bsamp_pkt, &bsamp_pkt->p_type, 0) == -1) {
-            goto bail;
+        /* Read from dt_sock until we get what we want or we time out. */
+        int rpts;
+        while (1) {
+            rpts = read_packet_timeout(dt_sock, bsamp_pkt, &timeout);
+            if (rpts <= 0) { break; } /* Error or timeout */
+
+            /* We got something; sanity-check the packet. */
+            struct raw_msg_bsamp *bs = &bsamp_pkt->p.bsamp;
+            if (bs->bs_nchips != dcfg.n_chip ||
+                bs->bs_nlines != dcfg.n_chan_p_chip) {
+                log_INFO("ignoring packet with unexpected dimensions %ux%u",
+                         bs->bs_nchips, bs->bs_nlines);
+                continue;
+            } else if (bs->bs_idx != samp_idx) {
+                log_INFO("ignoring unexpected sample number %u", bs->bs_idx);
+                continue;
+            } else if (raw_packet_err(bsamp_pkt)) {
+                log_ERR("board sample %u reports error (flags 0x%x); bailing",
+                        samp_idx, bsamp_pkt->p_flags);
+                goto bail;      /* TODO something smarter */
+            }
+            log_INFO("got board sample %u", bs->bs_idx);
+            break;
         }
-        assert(bsamp_pkt->p.bsamp.bs_nchips == dcfg.n_chip);
-        assert(bsamp_pkt->p.bsamp.bs_nlines == dcfg.n_chan_p_chip);
-        /* TODO write to file */
+        /* See if we exited due to error or timeout. */
+        switch (rpts) {
+        case -1:
+            log_ERR("error on request for board sample %u; bailing: %m",
+                    samp_idx);
+            goto bail;
+        case 0:
+            log_INFO("request for board sample %u timed out; retrying",
+                     samp_idx);
+            continue;
+        default:
+            /* success! */
+            break;
+        }
+        /* TODO write board sample to some fixed file
+         * TODO remember where we put it so protobuf can ask for it */
         got_last_packet = bsamp_pkt->p_flags & RAW_FLAG_BSAMP_IS_LAST;
         if (got_last_packet) {
             log_INFO("that's the last packet");
         }
+        samp_idx++;
     }
-
-    log_INFO("Ok, done.");
 
     ret = EXIT_SUCCESS;
 
