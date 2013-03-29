@@ -38,8 +38,8 @@
  *    logging_fini();
  */
 
-#ifndef _LOGGING_H_
-#define _LOGGING_H_
+#ifndef _LIB_LOGGING_H_
+#define _LIB_LOGGING_H_
 
 #include <syslog.h>
 

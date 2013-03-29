@@ -1,7 +1,7 @@
 /* Copyright (c) 2013 LeafLabs, LLC. All rights reserved. */
 
-#ifndef _DAEMON_H_
-#define _DAEMON_H_
+#ifndef _LIB_DAEMON_H_
+#define _LIB_DAEMON_H_
 
 #include <sys/select.h>
 

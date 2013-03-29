@@ -5,8 +5,8 @@
  * @brief Socket utility library
  */
 
-#ifndef _SOCKUTIL_H_
-#define _SOCKUTIL_H_
+#ifndef _LIB_SOCKUTIL_H_
+#define _LIB_SOCKUTIL_H_
 
 #include <stdint.h>
 

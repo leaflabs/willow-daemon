@@ -14,8 +14,8 @@
  * eventually.
  */
 
-#ifndef _RAW_DATA_PACKETS_H_
-#define _RAW_DATA_PACKETS_H_
+#ifndef _LIB_RAW_PACKETS_H_
+#define _LIB_RAW_PACKETS_H_
 
 #include <assert.h>
 #include <stdint.h>
@@ -262,4 +262,4 @@ static inline uint32_t raw_r_val(struct raw_packet *packet) {
     return packet->p.res.r_val;
 }
 
-#endif  /* _RAW_DATA_PACKETS_H_ */
+#endif

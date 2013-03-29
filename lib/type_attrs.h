@@ -8,8 +8,8 @@
  * GCC someday.
  */
 
-#ifndef _TYPE_ATTRS_H_
-#define _TYPE_ATTRS_H_
+#ifndef _LIB_TYPE_ATTRS_H_
+#define _LIB_TYPE_ATTRS_H_
 
 #ifdef __GNUC__
 #define __packed __attribute__((packed))
