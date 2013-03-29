@@ -379,7 +379,7 @@ static int daemon_main(void)
 
     struct raw_packet *bsamp_pkt = raw_packet_create_bsamp(dcfg.n_chip,
                                                            dcfg.n_chan_p_chip);
-    if (bsamp_pkt == 0) {
+    if (bsamp_pkt == NULL) {
         goto bail;
     }
 
