@@ -273,6 +273,10 @@ static int do_req_res(int sockfd,
         log_ERR("expected response r_id=%u, but got %u", req_id, res_id);
         return -1;
     }
+    if (raw_packet_err(res_pkt)) {
+        log_ERR("request returned error; flags 0x%x", res_pkt->p_flags);
+        return -1;
+    }
     if (valptr != NULL) {
         *valptr = raw_r_val(res_pkt);
     }
