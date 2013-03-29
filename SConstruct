@@ -38,7 +38,7 @@ VariantDir(build_test_dir, test_dir, duplicate=0)
 
 # Build environment. Note we don't copy os.environ here.
 env = Environment(CCFLAGS='-g -std=c99 -Wall -Wextra -Werror',
-                  CPPDEFINES={'_XOPEN_SOURCE': 500},
+                  CPPDEFINES={'_XOPEN_SOURCE': 600}, # 600=SUSv3
                   LIBS=lib_deps,
                   tools=['default', 'protocc'],
                   )
