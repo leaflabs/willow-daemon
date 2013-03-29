@@ -213,11 +213,12 @@ static int serve_samp(int res_sockfd,
     if (status->acquiring || nsamps == 0) {
         log_INFO("not acquiring or zero samples requested; bailing");
         init_and_reply(res_sockfd, req_pkt, res_pkt, RAW_FLAG_ERR, 0);
+        return -1;
     }
     if (start_samp > NFAKESAMPS - 1) {
         log_INFO("start sample %u exceeds total; bailing", start_samp);
         init_and_reply(res_sockfd, req_pkt, res_pkt, RAW_FLAG_BSAMP_ESIZE, 0);
-        return 0;
+        return -1;
     }
     if (nsamps + start_samp > NFAKESAMPS) {
         nsamps = NFAKESAMPS - start_samp;
