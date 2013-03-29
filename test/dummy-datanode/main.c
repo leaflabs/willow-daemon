@@ -205,10 +205,9 @@ static int serve_samp(int res_sockfd,
 
     uint8_t nsamps = raw_r_addr(req_pkt);
     uint32_t start_samp = raw_r_val(req_pkt);
-    uint16_t r_id = raw_r_id(req_pkt);
 
-    log_INFO("request %u: SAMP_READ, %u samples, start sample %u",
-             r_id, nsamps, start_samp);
+    log_INFO("request %u: SAMP_READ, start sample %u, nsamples %u",
+             raw_r_id(req_pkt), start_samp, nsamps);
 
     /* Error checking and bounds clamping. */
     if (status->acquiring || nsamps == 0) {
@@ -226,7 +225,7 @@ static int serve_samp(int res_sockfd,
     }
 
     /* Everything looks legit; let's ship the packets. Errors aren't
-     * a problem, but we remember they happened. */
+     * a problem (yet), but we remember they happened. */
     init_and_reply(res_sockfd, req_pkt, res_pkt, 0, 0);
     int ret = 0;
     for (uint8_t s = 0; s < nsamps; s++) {
@@ -331,7 +330,13 @@ int main(int argc, char *argv[])
     /* Setup */
     int log_to_stderr = 1;
     struct arguments args = DEFAULT_ARGUMENTS;
-    program_name = strdup(argv[0]);
+    char *pnamep = strrchr(argv[0], '/');
+    if (pnamep != NULL) {
+        pnamep++;
+    } else {
+        pnamep = argv[0];
+    }
+    program_name = strdup(pnamep);
     if (!program_name) {
         fprintf(stderr, "out of memory\n");
         exit(EXIT_FAILURE);
