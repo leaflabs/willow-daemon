@@ -279,6 +279,66 @@ static int do_req_res(int sockfd,
     return 0;
 }
 
+struct dnode_config {
+  uint32_t n_chip;
+  uint32_t n_chan_p_chip;
+};
+
+static int read_dnode_config(int cc_sock,
+                             struct dnode_config *dcfg,
+                             struct raw_packet *req_pkt,
+                             struct raw_packet *res_pkt,
+                             uint16_t *cur_req_id)
+{
+    struct raw_msg_req *req = &req_pkt->p.req;
+
+    log_INFO("reading number of FPGA chips");
+    req->r_id = (*cur_req_id)++;
+    req->r_type = RAW_RTYPE_SYS_QUERY;
+    req->r_addr = RAW_RADDR_SYS_NCHIPS;
+    if (do_req_res(cc_sock, req_pkt, res_pkt, &dcfg->n_chip) == -1) {
+      return -1;
+    }
+
+    log_INFO("reading number of channels per chip");
+    req->r_id = (*cur_req_id)++;
+    *cur_req_id += 1;
+    req->r_type = RAW_RTYPE_SYS_QUERY;
+    req->r_addr = RAW_RADDR_SYS_NLINES;
+    if (do_req_res(cc_sock, req_pkt, res_pkt, &dcfg->n_chan_p_chip) == -1) {
+      return -1;
+    }
+
+    log_INFO("client reports data dimensions %ux%u",
+             dcfg->n_chip, dcfg->n_chan_p_chip);
+    return 0;
+}
+
+/* Dummy version of a session recording routine. Just starts/stops;
+ * for now, we're assuming that the remote is the dummy datanode. */
+static int do_recording_session(int cc_sock,
+                                struct raw_packet *req_pkt,
+                                struct raw_packet *res_pkt,
+                                uint16_t *cur_req_id)
+{
+    struct raw_msg_req *req = &req_pkt->p.req;
+
+    log_INFO("starting acquisition");
+    req->r_id = (*cur_req_id)++;
+    req->r_type = RAW_RTYPE_ACQ_START;
+    if (do_req_res(cc_sock, req_pkt, res_pkt, NULL) == -1) {
+        return -1;
+    }
+
+    log_INFO("stopping acquisition");
+    req->r_id = (*cur_req_id)++;
+    req->r_type = RAW_RTYPE_ACQ_STOP;
+    if (do_req_res(cc_sock, req_pkt, res_pkt, NULL) == -1) {
+        return -1;
+    }
+    return 0;
+}
+
 /* Data node's hostname and command/control port, and local packet
  * data port. */
 #define DNODE_HOST "127.0.0.1"
@@ -301,51 +361,25 @@ static int daemon_main(void)
         goto nodt;
     }
 
-    /* For getting remote's data packet configuration */
-    struct {
-        uint32_t n_chip;
-        uint32_t n_chan_p_chip;
-    } ccfg;
+    /* For talking to remote */
+    struct dnode_config dcfg;
     struct raw_packet req_pkt = RAW_REQ_INIT;
     struct raw_packet res_pkt = RAW_RES_INIT;
     struct raw_msg_req *req = &req_pkt.p.req;
     uint16_t cur_req_id = 0;
 
-    log_INFO("reading number of FPGA chips");
-    req->r_id = cur_req_id++;
-    req->r_type = RAW_RTYPE_SYS_QUERY;
-    req->r_addr = RAW_RADDR_SYS_NCHIPS;
-    if (do_req_res(cc_sock, &req_pkt, &res_pkt, &ccfg.n_chip) == -1) {
+    if (read_dnode_config(cc_sock, &dcfg, &req_pkt, &res_pkt,
+                          &cur_req_id) == -1) {
         goto bail;
     }
 
-    log_INFO("reading number of channels per chip");
-    req->r_id = cur_req_id++;
-    req->r_type = RAW_RTYPE_SYS_QUERY;
-    req->r_addr = RAW_RADDR_SYS_NLINES;
-    if (do_req_res(cc_sock, &req_pkt, &res_pkt, &ccfg.n_chan_p_chip) == -1) {
-        goto bail;
-    }
-
-    log_INFO("client reports data dimensions %ux%u",
-             ccfg.n_chip, ccfg.n_chan_p_chip);
-    struct raw_packet *bsamp_pkt = raw_packet_create_bsamp(ccfg.n_chip,
-                                                           ccfg.n_chan_p_chip);
+    struct raw_packet *bsamp_pkt = raw_packet_create_bsamp(dcfg.n_chip,
+                                                           dcfg.n_chan_p_chip);
     if (bsamp_pkt == 0) {
         goto bail;
     }
 
-    log_INFO("starting acquisition");
-    req->r_id = cur_req_id++;
-    req->r_type = RAW_RTYPE_ACQ_START;
-    if (do_req_res(cc_sock, &req_pkt, &res_pkt, NULL) == -1) {
-        goto bail;
-    }
-
-    log_INFO("stopping acquisition");
-    req->r_id = cur_req_id++;
-    req->r_type = RAW_RTYPE_ACQ_STOP;
-    if (do_req_res(cc_sock, &req_pkt, &res_pkt, NULL) == -1) {
+    if (do_recording_session(cc_sock, &req_pkt, &res_pkt, &cur_req_id) == -1) {
         goto bail;
     }
 
@@ -369,8 +403,8 @@ static int daemon_main(void)
         if (raw_packet_recv(dt_sock, bsamp_pkt, &bsamp_pkt->p_type, 0) == -1) {
             goto bail;
         }
-        assert(bsamp_pkt->p.bsamp.bs_nchips == ccfg.n_chip);
-        assert(bsamp_pkt->p.bsamp.bs_nlines == ccfg.n_chan_p_chip);
+        assert(bsamp_pkt->p.bsamp.bs_nchips == dcfg.n_chip);
+        assert(bsamp_pkt->p.bsamp.bs_nlines == dcfg.n_chan_p_chip);
         /* TODO write to file */
         got_last_packet = bsamp_pkt->p_flags & RAW_FLAG_BSAMP_IS_LAST;
         if (got_last_packet) {
