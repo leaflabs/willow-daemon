@@ -336,7 +336,10 @@ static int copy_all_packets(int cc_sock, int dt_sock,
 static int daemon_main(void)
 {
     int ret = EXIT_FAILURE;
-    int cc_sock, dt_sock;
+    int cc_sock = -1, dt_sock = -1;
+    struct raw_packet *bsamp_pkt = NULL;
+    struct ch_storage *chns = NULL;
+    int cs_is_open = 0;
 
     /* Open connection to data node */
     try_open_dnode_sockets(&cc_sock, &dt_sock);
@@ -354,17 +357,21 @@ static int daemon_main(void)
     if (read_dnode_config(cc_sock, &dcfg, &req_pkt, &res_pkt) == -1) {
         goto bail;
     }
-    struct raw_packet *bsamp_pkt = raw_packet_create_bsamp(dcfg.n_chip,
-                                                           dcfg.n_chan_p_chip);
+    bsamp_pkt = raw_packet_create_bsamp(dcfg.n_chip, dcfg.n_chan_p_chip);
     if (bsamp_pkt == NULL ||
         do_recording_session(cc_sock, &req_pkt, &res_pkt) == -1) {
         goto bail;
     }
 
     /* Set up channel storage */
-    struct ch_storage *chns = alloc_ch_storage();
+    chns = alloc_ch_storage();
     if (!chns) {
         log_ERR("can't allocate channel storage object");
+        goto bail;
+    }
+    cs_is_open = chns->ops->cs_open(chns) != -1;
+    if (!cs_is_open) {
+        log_ERR("can't open channel storage: %m");
         goto bail;
     }
 
@@ -384,6 +391,9 @@ static int daemon_main(void)
     }
     free(bsamp_pkt);
     if (chns) {
+        if (cs_is_open && chns->ops->cs_close(chns) == -1) {
+            log_ERR("unable to close channel storage: %m");
+        }
         free_ch_storage(chns);
     }
     return ret;
