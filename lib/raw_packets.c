@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
 
 #define PACKET_HEADER_MAGIC      0x5A
 #define PACKET_HEADER_PROTO_VERS 0x00
@@ -138,4 +139,27 @@ ssize_t raw_packet_recv(int sockfd, struct raw_packet *packet, int flags)
         return -1;
     }
     return ret;
+}
+
+int raw_packet_recvmmsg(int sockfd,
+                        struct raw_packet **packets, unsigned plen,
+                        unsigned flags, struct timespec *timeout)
+{
+    if (plen == 0) {
+        return 0;
+    }
+    struct mmsghdr msgvec[plen];
+    struct iovec iovecs[plen];
+    for (unsigned i = 0; i < plen; i++) {
+        iovecs[i].iov_base = packets[i];
+        iovecs[i].iov_len = raw_packet_size(packets[i]);
+        struct msghdr *mhdr = &msgvec[i].msg_hdr;
+        mhdr->msg_name = NULL;
+        mhdr->msg_namelen = 0;
+        mhdr->msg_iov = &iovecs[i];
+        mhdr->msg_iovlen = 1;
+        mhdr->msg_control = NULL;
+        mhdr->msg_controllen = 0;
+    }
+    return recvmmsg(sockfd, msgvec, plen, flags, timeout);
 }

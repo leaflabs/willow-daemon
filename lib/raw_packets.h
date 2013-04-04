@@ -171,6 +171,20 @@ ssize_t raw_packet_send(int sockfd, struct raw_packet *packet, int flags);
  * `flags' are as with recv(). */
 ssize_t raw_packet_recv(int sockfd, struct raw_packet *packet, int flags);
 
+struct timespec;                /* forward-declare */
+/* Receive multiple data packets.
+ *
+ * `packets' points to an array of length `plen' struct raw_packet*s,
+ * which will be used to construct a call to recvmmsg() on
+ * `sockfd'. All of the packets in the array must have the same
+ * ->p_type.
+ *
+ * The `flags' and `timeout' parameters are as with recvmmsg(). The
+ * return value is from recvmmsg(). */
+int raw_packet_recvmmsg(int sockfd, struct raw_packet **packets,
+                        unsigned plen, unsigned flags,
+                        struct timespec *timeout);
+
 /*********************************************************************
  * Other packet routines and help
  */
