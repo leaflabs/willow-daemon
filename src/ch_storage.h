@@ -34,4 +34,26 @@ struct ch_storage_ops {
     ssize_t (*cs_write)(struct ch_storage*, uint16_t *ch_data, size_t len);
 };
 
+static inline int ch_storage_open(struct ch_storage *chns)
+{
+    return chns->ops->cs_open(chns);
+}
+
+static inline int ch_storage_close(struct ch_storage *chns)
+{
+    return chns->ops->cs_close(chns);
+}
+
+static inline int ch_storage_datasync(struct ch_storage *chns)
+{
+    return chns->ops->cs_datasync(chns);
+}
+
+static inline ssize_t ch_storage_write(struct ch_storage *chns,
+                                       uint16_t *ch_data,
+                                       size_t len)
+{
+    return chns->ops->cs_write(chns, ch_data, len);
+}
+
 #endif
