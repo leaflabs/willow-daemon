@@ -201,62 +201,63 @@ void raw_packet_init(struct raw_packet *packet,
 struct raw_packet* raw_packet_create_bsamp(uint16_t nchips, uint16_t nlines);
 
 /* True iff `packet' signals an error condition. */
-static inline int raw_packet_err(struct raw_packet *packet)
+static inline int raw_packet_err(const struct raw_packet *packet)
 {
     return (packet->p_flags & RAW_FLAG_ERR ||
             packet->p_type == RAW_PKT_TYPE_ERR);
 }
 
 /* Number of samples in a raw_msg_bsamp. */
-static inline size_t raw_bsamp_nsamps(struct raw_msg_bsamp *bsamp)
+static inline size_t raw_bsamp_nsamps(const struct raw_msg_bsamp *bsamp)
 {
     return (size_t)bsamp->bs_nchips * (size_t)bsamp->bs_nlines;
 }
 
 /* Number of samples in a packet of type RAW_PKT_TYPE_BSAMP. */
-static inline size_t raw_packet_nsamps(struct raw_packet *packet)
+static inline size_t raw_packet_nsamps(const struct raw_packet *packet)
 {
     return raw_bsamp_nsamps(&packet->p.bsamp);
 }
 
 /* Size of ->bs_samples in a raw_msg_bsamp. */
-static inline size_t raw_bsamp_sampsize(struct raw_msg_bsamp *bsamp)
+static inline size_t raw_bsamp_sampsize(const struct raw_msg_bsamp *bsamp)
 {
     return raw_bsamp_nsamps(bsamp) * sizeof(bsamp->bs_samples[0]);
 }
 
 /* Size of ->p.bsamp.bs_samples in a packet of type RAW_PKT_TYPE_BSAMP.  */
-static inline size_t raw_packet_sampsize(struct raw_packet *packet)
+static inline size_t raw_packet_sampsize(const struct raw_packet *packet)
 {
     return raw_bsamp_sampsize(&packet->p.bsamp);
 }
 
 /* TODO bounds-checking */
-void raw_packet_copy(struct raw_packet *dst, struct raw_packet *src);
+void raw_packet_copy(struct raw_packet *restrict dst,
+                     const struct raw_packet *restrict src);
 
 /* Request/response ID number */
-static inline uint16_t raw_r_id(struct raw_packet *packet) {
+static inline uint16_t raw_r_id(const struct raw_packet *packet) {
     assert(packet->p_type == RAW_PKT_TYPE_REQ ||
            packet->p_type == RAW_PKT_TYPE_RES);
     return packet->p.req.r_id;
 }
 
 /* Request/response type */
-static inline uint8_t raw_r_type(struct raw_packet *packet) {
+static inline uint8_t raw_r_type(const struct raw_packet *packet) {
     assert(packet->p_type == RAW_PKT_TYPE_REQ ||
            packet->p_type == RAW_PKT_TYPE_RES);
     return packet->p.req.r_type;
 }
 
 /* Request/response address */
-static inline uint8_t raw_r_addr(struct raw_packet *packet) {
+static inline uint8_t raw_r_addr(const struct raw_packet *packet) {
     assert(packet->p_type == RAW_PKT_TYPE_REQ ||
            packet->p_type == RAW_PKT_TYPE_RES);
     return packet->p.res.r_addr;
 }
 
 /* Request/response value */
-static inline uint32_t raw_r_val(struct raw_packet *packet) {
+static inline uint32_t raw_r_val(const struct raw_packet *packet) {
     assert(packet->p_type == RAW_PKT_TYPE_REQ ||
            packet->p_type == RAW_PKT_TYPE_RES);
     return packet->p.res.r_val;

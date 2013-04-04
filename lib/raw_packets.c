@@ -38,19 +38,20 @@ struct raw_packet* raw_packet_create_bsamp(uint16_t nchips, uint16_t nlines)
     return ret;
 }
 
-void raw_packet_copy(struct raw_packet *dst, struct raw_packet *src)
+void raw_packet_copy(struct raw_packet *restrict dst,
+                     const struct raw_packet *restrict src)
 {
     memcpy(dst, src, offsetof(struct raw_packet, p));
     switch (src->p_type) {
     case RAW_PKT_TYPE_BSAMP:
         memcpy((uint8_t*)dst + offsetof(struct raw_packet, p),
-               (uint8_t*)src + offsetof(struct raw_packet, p),
+               (const uint8_t*)src + offsetof(struct raw_packet, p),
                sizeof(struct raw_msg_bsamp) + raw_packet_sampsize(src));
         break;
     case RAW_PKT_TYPE_REQ:      /* fall through */
     case RAW_PKT_TYPE_RES:
         memcpy((uint8_t*)dst + offsetof(struct raw_packet, p),
-               (uint8_t*)src + offsetof(struct raw_packet, p),
+               (const uint8_t*)src + offsetof(struct raw_packet, p),
                sizeof(struct raw_msg_req));
         break;
     case RAW_PKT_TYPE_ERR:
