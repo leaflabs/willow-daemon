@@ -126,32 +126,26 @@ static void raw_msg_res_ntoh(struct raw_msg_res *msg)
     raw_msg_req_ntoh((struct raw_msg_req*)msg);
 }
 
-ssize_t raw_packet_recv(int sockfd, struct raw_packet *packet,
-                        uint8_t *packtype, int flags)
+ssize_t raw_packet_recv(int sockfd, struct raw_packet *packet, int flags)
 {
+    uint8_t expected_ptype = packet->p_type;
     size_t packsize = sizeof(struct raw_packet);
-    uint8_t pt = 0;
-    if (packtype == NULL) {
-        packtype = &pt;
-    }
-    if (*packtype == RAW_PKT_TYPE_BSAMP) {
+    if (packet->p_type == RAW_PKT_TYPE_BSAMP) {
         packsize += raw_packet_sampsize(packet);
     }
     int ret = recv(sockfd, packet, packsize, flags);
+
     if (packet->_p_magic != PACKET_HEADER_MAGIC) {
         errno = EPROTO;
         return -1;
-    }
-    if (ret == -1) {
+    } else if (ret == -1) {
         return -1;
-    }
-    if (*packtype == 0) {
-        *packtype = packet->p_type;
-    } else if (*packtype != packet->p_type) {
+    } else if (expected_ptype != 0 && expected_ptype != packet->p_type) {
         errno = EIO;
         return -1;
     }
-    switch (*packtype) {
+
+    switch (packet->p_type) {
     case RAW_PKT_TYPE_BSAMP:
         raw_msg_bsamp_ntoh(&packet->p.bsamp);
         break;
@@ -167,6 +161,5 @@ ssize_t raw_packet_recv(int sockfd, struct raw_packet *packet,
         errno = EPROTO;
         return -1;
     }
-
     return ret;
 }

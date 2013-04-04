@@ -145,7 +145,7 @@ struct raw_packet {
  *
  * Note that due to protocol implementation details, the return values
  * of these functions might differ from what you'd expect out of
- * ordinary send()/recv().
+ * ordinary send()/recv() and friends.
  */
 
 /* Send a data packet.
@@ -156,24 +156,19 @@ struct raw_packet {
  * `flags' are as with send(). */
 ssize_t raw_packet_send(int sockfd, struct raw_packet *packet, int flags);
 
-/* TODO: remove packtype field and just read from packet->p_type;
- * packtype is annoying to think about. */
-
 /* Receive a data packet.
  *
- * `*packtype' may be a NULL pointer, or point to zero or a valid
- * RAW_PKT_TYPE_* value. If `*packtype' is zero, it will be modified
- * to contain the received packet header's p_type value.  If
- * `*packtype' is nonzero, and the packet read from the socket does
- * not match its type, -1 is returned, with errno set to EIO.
+ * `packet->p_type' may be either zero or a valid RAW_PKT_TYPE_*
+ * value. If nonzero, and the packet read from the socket does not
+ * match its type, -1 is returned, with errno set to EIO.
  *
  * Receiving a RAW_PKT_TYPE_BSAMP is a special case. In this case,
- * *packtype must be set appropriately, and the .bs_nchips and
- * .bs_nlines fields in packet->b.bsamp must be initialized properly.
+ * `packet->p_type' must be set to RAW_PKT_TYPE_BSAMP, and the
+ * .bs_nchips and .bs_nlines fields in packet->b.bsamp must be
+ * initialized properly.
  *
  * `flags' are as with recv(). */
-ssize_t raw_packet_recv(int sockfd, struct raw_packet *packet,
-                        uint8_t *packtype, int flags);
+ssize_t raw_packet_recv(int sockfd, struct raw_packet *packet, int flags);
 
 /*********************************************************************
  * Other packet routines and help

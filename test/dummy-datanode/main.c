@@ -297,7 +297,7 @@ static int serve_requests(struct arguments *args)
     while (1) {
         /* Get the request. */
         raw_packet_init(&req_pkt, RAW_PKT_TYPE_REQ, 0);
-        int recv_val = raw_packet_recv(sockfd, &req_pkt, NULL, 0);
+        int recv_val = raw_packet_recv(sockfd, &req_pkt, 0);
         if (recv_val == -1) {
             log_ERR("can't receive request: %m");
             goto bail;

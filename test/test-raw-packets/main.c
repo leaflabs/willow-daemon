@@ -142,14 +142,12 @@ START_TEST(test_roundtrips)
         *rmsg = &rrecv->p.bsamp,
         *scmsg = &rsend_copy->p.bsamp;
 
-    /* We expect to get back what we sent. */
-    uint8_t packtype = rsend_copy->p_type;
-
     /* Round-trip rsend into rrecv through socket pair. */
     ck_assert(socketpair(AF_UNIX, SOCK_DGRAM, 0, sockfd) == 0);
     ssize_t send_status = raw_packet_send(sockfd[0], rsend, 0);
     ck_assert_int_gt(send_status, 0);
-    ssize_t recv_status = raw_packet_recv(sockfd[1], rrecv, &packtype, 0);
+    ck_assert_int_eq(rrecv->p_type, RAW_PKT_TYPE_BSAMP);
+    ssize_t recv_status = raw_packet_recv(sockfd[1], rrecv, 0);
     ck_assert_int_gt(recv_status, 0);
 
     /* White box: check rsend's multibyte fields got swapped properly. */
@@ -166,7 +164,7 @@ START_TEST(test_roundtrips)
     ck_assert_int_eq_h(rsend_copy->_p_magic, rrecv->_p_magic);
     ck_assert_int_eq_h(rsend_copy->_p_proto_vers, rrecv->_p_proto_vers);
     ck_assert_int_eq_h(rsend_copy->p_type, rrecv->p_type);
-    ck_assert_int_eq_h(packtype, rsend_copy->p_type);
+    ck_assert_int_eq_h(RAW_PKT_TYPE_BSAMP, rsend_copy->p_type);
     ck_assert_int_eq_h(rsend_copy->p_flags, rrecv->p_flags);
     ck_assert_int_eq_h(raw_bsamp_nsamps(scmsg), raw_bsamp_nsamps(rmsg));
     ck_assert_int_eq_h(scmsg->bs_idx, rmsg->bs_idx);

@@ -141,8 +141,7 @@ static int do_req_res(int sockfd,
         log_ERR("can't send request: %m");
         goto out;
     }
-    uint8_t packtype = RAW_PKT_TYPE_RES;
-    if (raw_packet_recv(sockfd, res_pkt, &packtype, 0) == -1) {
+    if (raw_packet_recv(sockfd, res_pkt, 0) == -1) {
         log_ERR("can't get response: %m");
         goto out;
     }
@@ -238,7 +237,6 @@ static int read_packet_timeout(int dt_sock,
                                const struct timespec *timeout)
 {
     /* TODO: consider signal safety once we e.g. accept SIGHUP */
-    uint8_t *ptype = &bsamp_pkt->p_type;
     fd_set rfds;
     int maxfdp1 = dt_sock + 1;
     FD_ZERO(&rfds);
@@ -250,7 +248,7 @@ static int read_packet_timeout(int dt_sock,
         return 0;
     case 1:
         assert(FD_ISSET(dt_sock, &rfds));
-        return raw_packet_recv(dt_sock, bsamp_pkt, ptype, 0);
+        return raw_packet_recv(dt_sock, bsamp_pkt, 0);
     default:
         log_ERR("can't happen");
         assert(0);
