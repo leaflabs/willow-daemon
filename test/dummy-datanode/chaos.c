@@ -4,7 +4,6 @@
 #include "config.h"
 #include "logging.h"
 
-#define __USE_MISC  /* FIXME: glibc hack to ensure we get drand48_r */
 #include <stdlib.h>
 #include <time.h>
 
