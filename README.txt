@@ -29,8 +29,9 @@ Build dependencies
 
 On Ubuntu 12.04:
 
-   $ sudo apt-get install libprotobuf-dev libprotobuf-c0-dev libhdf5-serial-dev \
-        protobuf-c-compiler scons python check
+   $ sudo apt-get install libprotobuf-dev libprotobuf-c0-dev \
+        libhdf5-serial-dev protobuf-c-compiler scons python check \
+        protobuf-c-compiler protobuf-compiler
 
 Repository contents
 -------------------
