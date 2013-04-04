@@ -20,6 +20,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <string.h>
 #include <sys/types.h>
 
 #include "type_attrs.h"
@@ -226,9 +227,18 @@ static inline size_t raw_packet_sampsize(const struct raw_packet *packet)
     return raw_bsamp_sampsize(&packet->p.bsamp);
 }
 
+/* Size of an entire raw packet, in bytes. */
+static inline size_t raw_packet_size(const struct raw_packet *packet)
+{
+    return sizeof(struct raw_packet) + (packet->p_type == RAW_PKT_TYPE_BSAMP ?
+                                        raw_packet_sampsize(packet) : 0);
+}
+
 /* TODO bounds-checking */
-void raw_packet_copy(struct raw_packet *restrict dst,
-                     const struct raw_packet *restrict src);
+static inline void raw_packet_copy(struct raw_packet *restrict dst,
+                                   const struct raw_packet *restrict src) {
+    memcpy(dst, src, raw_packet_size(dst));
+}
 
 /* Request/response ID number */
 static inline uint16_t raw_r_id(const struct raw_packet *packet) {
