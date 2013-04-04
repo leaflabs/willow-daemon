@@ -168,7 +168,10 @@ static int open_dnode_sockets(struct dnode_session *dnsession)
 }
 
 /* Do a request, wait for response, write response .r_val to valptr if
- * it's not NULL.  Assumes dnsess_req(dnsession) is valid already. */
+ * it's not NULL.  Assumes dnsess_req(dnsession) is valid already.
+ *
+ * Auto-increments request ID in dnsession->req regardless of success
+ * or failure. */
 static int do_req_res(int sockfd,
                       struct dnode_session *dnsession,
                       uint32_t *valptr)
@@ -178,22 +181,22 @@ static int do_req_res(int sockfd,
     int ret = -1;
     raw_packet_init(req_pkt, RAW_PKT_TYPE_REQ, 0);
     raw_packet_init(res_pkt, RAW_PKT_TYPE_RES, 0);
-    uint16_t req_id = raw_r_id(req_pkt); /* cache. */
+    uint16_t req_id = raw_r_id(req_pkt); /* (sending mangles r_id) */
     if (raw_packet_send(sockfd, req_pkt, 0) == -1) {
-        log_ERR("can't send request: %m");
+        log_ERR("request %u: can't send request: %m", req_id);
         goto out;
     }
     if (raw_packet_recv(sockfd, res_pkt, 0) == -1) {
-        log_ERR("can't get response: %m");
+        log_ERR("request %u: can't get response: %m", req_id);
         goto out;
     }
     uint16_t res_id = raw_r_id(res_pkt);
     if (res_id != req_id) {
-        log_ERR("expected response r_id=%u, but got %u", req_id, res_id);
+        log_ERR("request %u: unexpected response r_id=%u", req_id, res_id);
         goto out;
     }
     if (raw_packet_err(res_pkt)) {
-        log_ERR("request returned error; flags 0x%x", res_pkt->p_flags);
+        log_ERR("request %u: got error flags 0x%x", req_id, res_pkt->p_flags);
         goto out;
     }
     ret = 0;
@@ -201,7 +204,7 @@ static int do_req_res(int sockfd,
         *valptr = raw_r_val(res_pkt);
     }
  out:
-    dnsess_req(dnsession)->r_id = req_id + 1; /* Auto-increment request IDs. */
+    dnsess_req(dnsession)->r_id = req_id + 1;
     return ret;
 }
 
