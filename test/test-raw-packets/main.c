@@ -74,10 +74,7 @@ static void setup_raw(void)
         rsend->p.bsamp.bs_samples[i] = (raw_samp_t)i;
     }
 
-    memcpy(rsend_copy, rsend, sizeof(struct raw_packet));
-    memcpy(&rsend_copy->p.bsamp.bs_samples,
-           &rsend->p.bsamp.bs_samples,
-           raw_packet_sampsize(rsend));
+    raw_packet_copy(rsend_copy, rsend);
 }
 
 static void teardown_raw(void)
