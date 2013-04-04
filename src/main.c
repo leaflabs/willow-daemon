@@ -274,14 +274,21 @@ static int read_packet_timeout(struct dnode_session *dnsession,
     }
 }
 
-static int copy_all_packets(struct dnode_session *dnsession,
-                            struct raw_packet *bsamp_pkt)
+static int copy_all_packets(struct dnode_session *dnsession)
 {
     /* FIXME resilience in the face of wedged/confused datanodes */
+    int ret = -1;
+    struct raw_packet *bsamp_pkt =
+        raw_packet_create_bsamp(dnsession->dcfg.n_chip,
+                                dnsession->dcfg.n_chan_p_chip);
+    if (!bsamp_pkt) {
+        log_ERR("can't allocate packet buffer: %m");
+        goto bail;
+    }
+
     log_INFO("reading out packets");
     struct raw_msg_req *req = dnsess_req(dnsession);
     struct raw_msg_bsamp *bs = &bsamp_pkt->p.bsamp;
-    struct dnode_config *dcfg = &dnsession->dcfg;
     int got_last_packet = 0;
     uint32_t samp_idx = 0;
     while (!got_last_packet) {
@@ -290,7 +297,7 @@ static int copy_all_packets(struct dnode_session *dnsession,
         req->r_val = samp_idx;
         log_INFO("request %u for board sample %u", req->r_id, samp_idx);
         if (do_req_res(dnsession->cc_sock, dnsession, NULL) == -1) {
-            return -1;
+            goto bail;
         }
         /* Read from dnsession->dt_sock until we get what we want or
          * we time out. */
@@ -300,6 +307,7 @@ static int copy_all_packets(struct dnode_session *dnsession,
             if (rpts <= 0) { break; } /* Error or timeout */
 
             /* We got something; sanity-check the packet. */
+            struct dnode_config *dcfg = &dnsession->dcfg;
             if (bs->bs_nchips != dcfg->n_chip ||
                 bs->bs_nlines != dcfg->n_chan_p_chip) {
                 log_INFO("ignoring packet with unexpected dimensions %ux%u",
@@ -311,7 +319,7 @@ static int copy_all_packets(struct dnode_session *dnsession,
             } else if (raw_packet_err(bsamp_pkt)) {
                 log_ERR("board sample %u reports error (flags 0x%x); bailing",
                         samp_idx, bsamp_pkt->p_flags);
-                return -1;      /* TODO: something smarter */
+                goto bail;      /* TODO: something smarter */
             }
             log_INFO("got board sample %u", bs->bs_idx);
             break;
@@ -321,7 +329,7 @@ static int copy_all_packets(struct dnode_session *dnsession,
         case -1:
             log_ERR("error on request for board sample %u; bailing: %m",
                     samp_idx);
-            return -1;        /* TODO: something smarter */
+            goto bail;        /* TODO: something smarter */
         case 0:
             continue;         /* Timeout; retry the packet request. */
         default:
@@ -331,7 +339,7 @@ static int copy_all_packets(struct dnode_session *dnsession,
         ssize_t st = ch_storage_write(dnsession->chns, bs->bs_samples, nsamps);
         if (st == -1 || (size_t)st < nsamps) {
             log_ERR("error writing board sample to disk");
-            return -1;
+            goto bail;
         }
         /* TODO remember where we put it so protobuf can ask for it */
         got_last_packet = bsamp_pkt->p_flags & RAW_FLAG_BSAMP_IS_LAST;
@@ -340,7 +348,12 @@ static int copy_all_packets(struct dnode_session *dnsession,
         }
         samp_idx++;
     }
-    return 0;
+    ret = 0;
+ bail:
+    if (bsamp_pkt) {
+        free(bsamp_pkt);
+    }
+    return ret;
 }
 
 static int daemon_main(void)
@@ -362,7 +375,6 @@ static int daemon_main(void)
         .chns = NULL,
         .pkt_recv_timeout = &timeout,
     };
-    struct raw_packet *bsamp_pkt = NULL;
     int cs_is_open = 0;
 
     /* Set up channel storage */
@@ -388,14 +400,12 @@ static int daemon_main(void)
     }
 
     /* Do recording session. */
-    bsamp_pkt = raw_packet_create_bsamp(dn_session.dcfg.n_chip,
-                                        dn_session.dcfg.n_chan_p_chip);
-    if (bsamp_pkt == NULL || do_recording_session(&dn_session) == -1) {
+    if (do_recording_session(&dn_session) == -1) {
         goto bail;
     }
 
     /* Copy remote's packets to file */
-    ret = copy_all_packets(&dn_session, bsamp_pkt);
+    ret = copy_all_packets(&dn_session);
 
  bail:
     if (ret == EXIT_FAILURE) {
@@ -407,7 +417,6 @@ static int daemon_main(void)
     if (dn_session.cc_sock != -1 && close(dn_session.cc_sock) != 0) {
         log_ERR("unable to close command/control socket: %m");
     }
-    free(bsamp_pkt);
     if (dn_session.chns) {
         if (cs_is_open && ch_storage_close(dn_session.chns) == -1) {
             log_ERR("unable to close channel storage: %m");
