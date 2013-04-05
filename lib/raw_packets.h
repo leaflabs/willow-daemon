@@ -237,7 +237,7 @@ static inline size_t raw_packet_size(const struct raw_packet *packet)
 /* TODO bounds-checking */
 static inline void raw_packet_copy(struct raw_packet *restrict dst,
                                    const struct raw_packet *restrict src) {
-    memcpy(dst, src, raw_packet_size(dst));
+    memcpy(dst, src, raw_packet_size(src));
 }
 
 /* Request/response ID number */
