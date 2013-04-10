@@ -65,8 +65,10 @@ static void parse_args(struct arguments *args, int argc, char *const argv[])
         switch (c) {
         case 'c':
             args->chaos = strtol(optarg, (char**)0, 10);
+            break;
         case 'C':
             args->cport = strtol(optarg, (char**)0, 10);
+            break;
         case 'D':
             args->dport = strtol(optarg, (char**)0, 10);
             break;
