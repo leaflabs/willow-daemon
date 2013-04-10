@@ -37,7 +37,7 @@ VariantDir(build_src_dir, src_dir, duplicate=0)
 VariantDir(build_test_dir, test_dir, duplicate=0)
 
 # Build environment. Note we don't copy os.environ here.
-env = Environment(CCFLAGS='-g -std=c99 -Wall -Wextra -Werror',
+env = Environment(CCFLAGS='-g -std=c99 -Wall -Wextra -Wpointer-arith -Werror',
                   CPPDEFINES={'_GNU_SOURCE': 1}, # we need Linux extensions
                   LIBS=lib_deps,
                   tools=['default', 'protocc'],
