@@ -1,39 +1,41 @@
+NB:
 
-NB: - These are notes. They are incomplete and not yet a coherent draft or
-      proposal.
+- These are notes. They are incomplete and not yet a coherent draft or
+  proposal.
+- This file uses terms defined in system-overview.txt.
 
-    - This document uses terms as defined in system-overview.txt.
+TODO:
 
-# Context 
+- Board subsample configuration requests
+- Sector-based I/O commands
 
-This document proposes a UDP network protocol for bi-directional data
-acquisition and control communications between a "Wired Leaf" FPGA device and a
-daemon running on an analysis server or user workstation.
+# Context
 
-As a design goal, this protocol SHOULD be implementable in raw digital logic on
-the FPGA device without relying on a soft-core or hard-core general purpose
+This document proposes a network protocol for bi-directional data acquisition
+and control communications between a "Wired Leaf" data node and a daemon
+running on an analysis server or user workstation.
+
+It is not a design goal for this protocol to be implementable in raw digital
+logic on the FPGA device; it is expected that there is a translation layer from
+these packets to the FPGA which relies on a soft- or hard-core general purpose
 processor.
 
-The FPGA can/should be processing one command or request (aside from live data
-streaming) at a time; if another request arrives while processing, it will
-reply with a generic error.
+The data node SHOULD process one command or request (aside from live data
+streaming) at a time; if another request arrives while processing, it MAY queue
+the request or reply with an error.
 
-Two UDP sockets are used: one bi-directional command socket, and one
-uni-directional data socket streaming from the FPGA board to the computer.
-
-
-
+Two sockets are used: one bi-directional command/control socket (type
+SOCK_STREAM), and one uni-directional data socket (type SOCK_DGRAM). The data
+socket is used to stream sample data from the FPGA board to the computer. The
+command socket is bidirectional and low-bandwidth; the data socket is
+unidirectional and high-bandwidth.
 
 # Packet Format
 
 TODO: decide on port numbers
 
-There is a command socket and a data socket. It may be possible to combine the
-two and operate on a single socket in the future, or, if a processor is added
-to the FPGA board it may be possible to change the lower-bandwidth command
-socket to be TCP.
-
-The source address serves to identify the unique acquisition device.
+The source address serves to identify the unique acquisition device. All
+packets have a fixed size.
 
     [UDP/IPv4 pseudo header]
         Source address (4byte)
@@ -44,67 +46,117 @@ The source address serves to identify the unique acquisition device.
         Length (2byte) | Checksum (2byte)
     [SNG Wire Format Header]
         Magic number (1byte) | Proto Version (1byte) | Message Type (1byte) | Misc Flags (1byte)
-    [SNG Message-Specific Data]
+    [SNG Message Data]
+        (contents depend upon Message Type. Length fixed to 16 bytes on command
+        socket; variable on data socket)
 
-Standard Flags:
-- Error condition (in any response) indicates that error register should be
-  read/cleared
+Standard flags for "Misc Flags":
 
-## Message Types
+- Error: bit 7 signals an error condition. It's valid in in any data node
+  response, and indicates that an error has occurred. Additional error flags
+  defined on a per-message type basis may be used to further describe the
+  error.
 
-#### Error
+The valid values for the Message Type field, and their meanings, are:
 
-Can be used to indicate that there is an error which should be read out. Sent
-only from the FPGA board to the computer on the command socket.
+- Error: 0xFF
+- Request: 0x02
+- Response: 0x03
+- Board subsample: 0x04
+- Disk sectors: 0x05
 
-This packet contains no data, it just has the Error flag set. An error
-condition can also be detected in any response packet with the flag set high.
+# Message Types
 
-#### Request
+## Error (0xFF)
 
-Request types:
-- chip configure (chip ID or all, register addr, register data)
-- chip query (chip ID or all, register addr, register data)
-- system configure
-- system query
-- start acquire
-- stop acquire
-- read samples from disk
+A packet with Message Type equal to 0xFF indicates that a generic error has
+occurred. These packets are sent only from the data node to the daemon, on the
+command socket.
 
-    Request ID (2byte) | Request Type (1byte) | Address (1byte, or zeros)
-    Request value (4 bytes, or zero)
+This packet contains no data; it MUST also have the error flag set. (An error
+condition can still be detected in any other type of packet with the flag set
+high.)
 
-TODO: should request ID be random? or ordered? larger?
+## Request (0x02)
 
-#### Response
+A packet with Message type equal to 0x02 indicates a request. Request packets
+are sent only from the daemon to the data node, on the command socket.
 
-Same types as request.
+Additional flags:
 
-    Response ID (2byte) | Response Type (1byte) | Address (1byte, or zeros)
-    Response value (4 bytes, or zero)
+- I/O direction: bit 0 signals whether a request which performs some sort of
+  input/output is a read (bit 0 set) or a write (bit 0 uset).
 
-#### Board Sample
+Message Data:
 
-Contains 1k (or later up to 3k) channel samples.
+    Request ID (2byte) | Request Type (1byte) | Request Address (1byte, or zeros)
+    Extra data (12 bytes, or garbage)
 
-Contains up to 32 chips x 32 channels x 16bit x 1 sample, plus lower frequency
-extras (eg, the 32 chips x 3 channels x 16bit of auxiliary ADC input, sampled
-at, eg, 10kHz).
+The Request ID field is used to associate responses with requests. The request
+ID field SHOULD be an incrementing 16-bit unsigned integer which wraps back to
+zero after 0xFFFF is reached.
 
-Flags:
-- is_live (live acquisition vs. read from disk)
-- is_last_sample (no more samples will follow; makes daemon control structure
-  much simpler)
+The Request Type field identifies the data node subsystem to which the request
+pertains. Valid Request Types are:
 
-    Sample Index (4byte)
-    NCHIP = number of chips/board (2byte) | NCHAN = number of channels/chip (2byte)
-                [following is 2KB worth of sample data]
-    Chip 0, Chan 0 data (2 byte) | Chip 0, Chan 1 data (2 byte)
-    Chip 0, Chan 2 data (2 byte) | Chip 0, Chan 3 data (2 byte)
-    [...]
-    Chip 0, Chan NCHAN-2 data (2 byte) | Chip 0, Chan NCHAN-1 data (2 byte)
-    Chip 1, Chan 0 data (2 byte) | Chip 1, Chan 1 data (2 byte)
-    [...]
-    Chip NCHIP, Chan NCHAN-2 data (2 byte) | Chip NCHIP, Chan NCHAN-1 data (2 byte)
+- Storage/disk (0x02): e.g. disk sector index, I/O status
+- Impedance measurement (0x03): ???? TODO
+- Network (0x04): e.g. source/dest IP address, dest. MAC address
+- Expansion (0x05): e.g. GPIO configuration for expansion header pins
+- Acquisition (0x06): start, stop acquisition, configure board subsample
 
+The Request Address field identifies a register address. Whether the request is
+for a read or write to the address is determined by the I/O direction flag
+discussed above.
 
+TODO: spec out Request Address and Message Data on a per-r_type basis.
+
+## Response (0x3)
+
+A Response packet contains the same fields as a request packet. Response
+packets are sent from the data node to the daemon, on the command socket. The
+meaning of the I/O direction flag in a response packet is not defined.
+
+After processing a request packet, the data node replies with a response
+packet. The response packet has the same Request ID as that in the request
+packet. The Request Type and Request Address fields in the response packet
+SHOULD be the same as those in the request packet.
+
+TODO: spec out Message Data when different from Request packets
+
+## Board Subsample (0x4)
+
+Contains a variable number of channel samples, all taken from the same board
+sample. Board subsample packets are sent only from the data node to the daemon,
+on the data socket.
+
+Additional flags:
+
+- Is last sample: bit 1 set indicates no more samples will follow; this makes
+  daemon control structure much simpler.
+
+Message Data:
+
+    Start sample index (4 byte)
+    NSAMP=Number of samples (4 byte)
+    [... sequence of NSAMP channel readings ]
+
+The start sample index indicates the index of the first channel in the
+subsample, relative to the start of the board sample. We use 32 bits to allow
+for future expansion to systems with more than 65K channels.
+
+Sample indexes are calculated as follows:
+
+    sample index 0 = chip 0, channel 0
+    sample index 1 = chip 0, channel 1
+    ...
+    sample index n = chip 0, channel n
+    sample index n+1 = chip 1, channel 0
+
+## Sector reading (0x5)
+
+Contains a variable number of disk sectors read by the data node. Sector
+reading packets are sent only from the data node to the daemon, on the data
+socket.
+
+TODO finish.
