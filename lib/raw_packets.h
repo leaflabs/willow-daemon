@@ -128,7 +128,10 @@ struct raw_packet {
     /* (Optional) packet contents
      *
      * In case of a plain error packet (.p_type == RAW_PKT_TYPE_ERR),
-     * leave this uninitialized. */
+     * leave this uninitialized.
+     *
+     * HACK: note that this isn't legal C due to the flexible array at
+     * the end of p.bsamp. Works on GCC, though. */
 
     union {
         struct raw_msg_bsamp bsamp;
