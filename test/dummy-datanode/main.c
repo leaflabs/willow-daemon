@@ -332,7 +332,7 @@ static int serve_requests(struct arguments *args)
         case RAW_RTYPE_SAMP_READ:
             if (serve_samp(sockfd, bsamp_sockfd, &req_pkt, &res_pkt,
                            &acq_status) == -1) {
-                goto bail;
+                log_INFO("failed to serve samples");
             }
             break;
         case RAW_RTYPE_SYS_CFG:    /* fall through (TODO) */
