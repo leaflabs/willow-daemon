@@ -175,7 +175,7 @@ static ssize_t hdf5_cs_write(struct ch_storage *chns,
                 "%s skipping write of "
                 "%zu bytes from %p to %s (not implemented) "
                 "XXXXXXXXX",
-                __func__, len, ch_data, chns->cs_path);
+                __func__, len, (void*)ch_data, chns->cs_path);
     errno = EIO;
     return -1;
 }
