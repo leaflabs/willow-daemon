@@ -46,36 +46,24 @@ packets have a fixed size.
         Length (2byte) | Checksum (2byte)
     [SNG Wire Format Header]
         Magic number (1byte) | Proto Version (1byte) | Message Type (1byte) | Misc Flags (1byte)
+    [Error Status]
+        Error flags (4bytes)
     [SNG Message Data]
         (contents depend upon Message Type. Length fixed to 16 bytes on command
         socket; variable on data socket)
 
-Standard flags for "Misc Flags":
-
-- Error: bit 7 signals an error condition. It's valid in in any data node
-  response, and indicates that an error has occurred. Additional error flags
-  defined on a per-message type basis may be used to further describe the
-  error.
+The Error status word has up to 32 flags to indicate various error conditions.
+If any bit is high, the daemon should read and write to specific registers
+using request packets to resolve the error and reset the flag bits.
 
 The valid values for the Message Type field, and their meanings, are:
 
-- Error: 0xFF
 - Request: 0x02
 - Response: 0x03
 - Board subsample: 0x04
 - Disk sectors: 0x05
 
 # Message Types
-
-## Error (0xFF)
-
-A packet with Message Type equal to 0xFF indicates that a generic error has
-occurred. These packets are sent only from the data node to the daemon, on the
-command socket.
-
-This packet contains no data; it MUST also have the error flag set. (An error
-condition can still be detected in any other type of packet with the flag set
-high.)
 
 ## Request (0x02)
 
@@ -100,7 +88,7 @@ The Request Type field identifies the data node subsystem to which the request
 pertains. Valid Request Types are:
 
 - Storage/disk (0x02): e.g. disk sector index, I/O status
-- Impedance measurement (0x03): ???? TODO
+- DAQ (0x03): e.g. reconfiguration of front end, impedence measurement
 - Network (0x04): e.g. source/dest IP address, dest. MAC address
 - Expansion (0x05): e.g. GPIO configuration for expansion header pins
 - Acquisition (0x06): start, stop acquisition, configure board subsample
@@ -108,6 +96,13 @@ pertains. Valid Request Types are:
 The Request Address field identifies a register address. Whether the request is
 for a read or write to the address is determined by the I/O direction flag
 discussed above.
+
+NB: depending on the destination address (which represents a core register),
+the data width may vary from one to 12 bytes. It may also be the case that a
+single functional register will be spread across several subregisters of a
+fixed size (eg, a 64 bit value spread across 8x 8bit registers), each of which
+would need to be written to by a seperate request packet. This flexibility is
+reserved to make data node firmware implementation easier.
 
 TODO: spec out Request Address and Message Data on a per-r_type basis.
 
@@ -153,6 +148,13 @@ Sample indexes are calculated as follows:
     sample index n = chip 0, channel n
     sample index n+1 = chip 1, channel 0
 
+TBD: multiple board subsamples may get bundled into a single "Board Subsample"
+to improve agregate data throughput?
+
+NB: Board Subsample packets, which are received over the unidirectional UDP
+socket, are likely to be of a fixed length (18kilobit?), regardless of how much
+meaningful data is enclosed.
+
 ## Sector reading (0x5)
 
 Contains a variable number of disk sectors read by the data node. Sector
@@ -160,3 +162,7 @@ reading packets are sent only from the data node to the daemon, on the data
 socket.
 
 TODO finish.
+
+NB: Board Subsample packets, which are received over the unidirectional UDP
+socket, are likely to be of a fixed length (18kilobit?), regardless of how much
+meaningful data is enclosed.
