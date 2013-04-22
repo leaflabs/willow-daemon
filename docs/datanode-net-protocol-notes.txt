@@ -56,17 +56,15 @@ packets have a fixed size.
         Source Port (2byte) | Destination Port (2byte)
         Length (2byte) | Checksum (2byte)
     [SNG Wire Format Header]
-        Magic number (1byte) | Proto Version (1byte) | Message Type (1byte) | Misc Flags (1byte)
-    [Status]
-        status flags (4bytes)
+        Magic number (1byte) | Proto Version (1byte) | Message Type (1byte) | Status Flags (1byte)
     [SNG Message Data]
         (contents depend upon Message Type. Length fixed to 16 bytes on command
         socket; variable on data socket)
 
-The Status word has up to 32 flags to indicate various error or reserved conditions.
+The Status word has 8 flags to indicate various error or reserved conditions.
 If any bit is high, the daemon should read and write to specific registers
 using request packets to resolve the error and reset the flag bits. Specific
-meanings for these bits are  currently unspecified.
+meanings for these bits are currently unspecified.
 
 The valid values for the Message Type field, and their meanings, are:
 
@@ -124,6 +122,11 @@ done over multiple packets. This is done for ease of implementation. It is
 expected that in the future specific registers may vary in length between 1 and
 12 bytes.
 
+NOTE: AJ, would it make more sense to have registers all 32-bits? I think there
+will be a lot of long-ish values, like Board Sample numbers, IPs, MAC
+addresses, etc. Also 32-bit error registers leave plenty of room for (eg) lots
+of weird SATA errors.
+
 ### Storage/Disk (0x02)
 ### DAQ (0x03)
 ### Network (0x04)
@@ -160,7 +163,8 @@ on the data socket.
 
 Additional flags:
 
-- Is last sample: bit 1 set indicates no more samples will follow; this makes
+- is_live (live acquisition vs. read from disk)
+- is_last_sample: bit 1 set indicates no more samples will follow; this makes
   daemon control structure much simpler.
 
 Message Data:
@@ -197,7 +201,9 @@ lower frequency extras (the 32 chips x 3 channels x 16bit of auxiliary ADC
 input). Totals to 1120 channels, or 2240 bytes.
 
 A 64bit "Experiment Timestamp" is used as a unique identifier for a given
-acquisition run.
+acquisition run. A 32bit sample index identifies both a unique board sample
+within an experimental acquisition run and a position on the node's disk cache.
+A 32bit Board ID is a unique identifier for the acquistion node's hardware.
 
 Flags:
 - is_live (live acquisition vs. read from disk)
@@ -220,13 +226,16 @@ NB: The Board Sample has the same binary representation as the "Wrapped Board
 Sample"; see documentation in the FPGA HDL repository (sng-firmware) for the
 exact channel ordering and round-robin scheme.
 
+
 ## Error Packet (0x06)
 
 Error packets are transmitted asynchronously from the data node over the command
 socket. In the FPGA firmware, a fixed number of registers can be configured as
 error registers. Any changes on these registers will cause an Error Packet to be
-transmitted, along with the current values of all other error registers. More
-than one error register may be changed within a single error packet.
+transmitted.
 
-In order to prevent flooding, the remote host must clear the error register with
-a typical request packet.
+Error packets have no extra data.
+
+In order to prevent flooding, the remote host must clear all error registers (with
+request packets) before further Error Packets are transmitted.
+
