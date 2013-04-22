@@ -18,18 +18,18 @@ running on an analysis server or user workstation.
 It is a design goal that at least a useful subset of this protocol can be
 implemented in HDL running on the FPGA so that a basic system can be brought
 online without any additional processor firmware beyond a trivial management of
-the TCP interface and data pass through. 
+the TCP interface and data pass through.
 
 To achieve this property, each of the primary cores that comprise the FPGA
 firmware will expose key operational and configuration registers to a global
 regmap. This regmap can be accessed via this protocol. Thus, the burden of the
 application and other glue logic *can* be moved to the remote server by issuing
-longer sequences of reads and writes on this exposed regmap. 
+longer sequences of reads and writes on this exposed regmap.
 
 Ideally, any command which poses a substantial additional burden on the logic of
 the FPGA core or demands the inclusion of substantial firmware running on a soft
 or hard processor can be circumvented via an appropriate sequence of operations
-on the system registers. 
+on the system registers.
 
 The data node SHOULD process one command or request (aside from live data
 streaming) at a time; if another request arrives while processing, it MAY queue
@@ -57,22 +57,24 @@ packets have a fixed size.
         Length (2byte) | Checksum (2byte)
     [SNG Wire Format Header]
         Magic number (1byte) | Proto Version (1byte) | Message Type (1byte) | Misc Flags (1byte)
-    [Error Status]
-        Error flags (4bytes)
+    [Status]
+        status flags (4bytes)
     [SNG Message Data]
         (contents depend upon Message Type. Length fixed to 16 bytes on command
         socket; variable on data socket)
 
-The Error status word has up to 32 flags to indicate various error conditions.
+The Status word has up to 32 flags to indicate various error or reserved conditions.
 If any bit is high, the daemon should read and write to specific registers
-using request packets to resolve the error and reset the flag bits.
+using request packets to resolve the error and reset the flag bits. Specific
+meanings for these bits are  currently unspecified.
 
 The valid values for the Message Type field, and their meanings, are:
 
 - Request: 0x02
 - Response: 0x03
 - Board subsample: 0x04
-- Disk sectors: 0x05
+- Board Sample Packets: 0x05
+- Remote Error: 0x06
 
 # Message Types
 
@@ -93,29 +95,47 @@ Message Data:
 
 The Request ID field is used to associate responses with requests. The request
 ID field SHOULD be an incrementing 16-bit unsigned integer which wraps back to
-zero after 0xFFFF is reached.
+zero after 0xFFFF is reached. While the command socket uses TCP, thus obviating
+the need for the Request ID field, some responses are transmitted over the data
+socket, which is UDP.
+
 
 The Request Type field identifies the data node subsystem to which the request
-pertains. Valid Request Types are:
+pertains. Each of the request types correspond to a specific HDL core that
+comprises the toplevel FPGA firmware. This guarantees that each such module has
+a full byte of address space dedicated to its own registers.
+Valid Request Types are:
 
 - Storage/disk (0x02): e.g. disk sector index, I/O status
 - DAQ (0x03): e.g. reconfiguration of front end, impedence measurement
 - Network (0x04): e.g. source/dest IP address, dest. MAC address
 - Expansion (0x05): e.g. GPIO configuration for expansion header pins
 - Acquisition (0x06): start, stop acquisition, configure board subsample
+- Retrieval (0x07): Read board sample packets off disk.
+- Error (0x08)
 
 The Request Address field identifies a register address. Whether the request is
 for a read or write to the address is determined by the I/O direction flag
 discussed above.
 
-NB: depending on the destination address (which represents a core register),
-the data width may vary from one to 12 bytes. It may also be the case that a
-single functional register will be spread across several subregisters of a
-fixed size (eg, a 64 bit value spread across 8x 8bit registers), each of which
-would need to be written to by a seperate request packet. This flexibility is
-reserved to make data node firmware implementation easier.
+Currently, all specified registers are 8-bits long. Accessing registers that are
+functionally longer than 1 byte - for example the dest MAC accress - must be
+done over multiple packets. This is done for ease of implementation. It is
+expected that in the future specific registers may vary in length between 1 and
+12 bytes.
 
-TODO: spec out Request Address and Message Data on a per-r_type basis.
+### Storage/Disk (0x02)
+### DAQ (0x03)
+### Network (0x04)
+### Expansion (0x05)
+### Acquisition (0x06)
+
+### Retrieval (0x07)
+
+
+### Error (0x08)
+There is only one error register, 0x00, which must be cleared in order to allow
+additional error packets to be transmitted over the asynchronous error channel.
 
 ## Response (0x3)
 
@@ -166,14 +186,28 @@ NB: Board Subsample packets, which are received over the unidirectional UDP
 socket, are likely to be of a fixed length (18kilobit?), regardless of how much
 meaningful data is enclosed.
 
-## Sector reading (0x5)
 
-Contains a variable number of disk sectors read by the data node. Sector
-reading packets are sent only from the data node to the daemon, on the data
-socket.
+## Board Sample Packet (0x05)
 
-TODO finish.
+A Board Sample Packet contains a complete board sample - roughly 18kb - along
+with a sample ID.
 
-NB: Board Subsample packets, which are received over the unidirectional UDP
-socket, are likely to be of a fixed length (18kilobit?), regardless of how much
-meaningful data is enclosed.
+TBD: ideally there is exactly one type of on-disk data object. This should be
+that object. Is there anything else we want to include besides the data? sample
+ID, wall clock timestamp, recording ID, ? If so then a board sample packet is
+comprised of a header, which includes the fields above, and then the data in
+roughly the same format they are stored on disk.
+
+Board sample packets are retrieved by request packets being sent of type 0x06.
+
+
+## Error Packet (0x06)
+
+Error packets are transmitted asynchronously from the data node over the command
+socket. In the FPGA firmware, a fixed number of registers can be configured as
+error registers. Any changes on these registers will cause an Error Packet to be
+transmitted, along with the current values of all other error registers. More
+than one error register may be changed within a single error packet.
+
+In order to prevent flooding, the remote host must clear the error register with
+a typical request packet.
