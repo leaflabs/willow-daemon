@@ -93,9 +93,7 @@ Message Data:
 
 The Request ID field is used to associate responses with requests. The request
 ID field SHOULD be an incrementing 16-bit unsigned integer which wraps back to
-zero after 0xFFFF is reached. While the command socket uses TCP, thus obviating
-the need for the Request ID field, some responses are transmitted over the data
-socket, which is UDP.
+zero after 0xFFFF is reached.
 
 
 The Request Type field identifies the data node subsystem to which the request
@@ -116,28 +114,23 @@ The Request Address field identifies a register address. Whether the request is
 for a read or write to the address is determined by the I/O direction flag
 discussed above.
 
-Currently, all specified registers are 8-bits long. Accessing registers that are
-functionally longer than 1 byte - for example the dest MAC accress - must be
+Currently, all specified registers are 32-bits long. Accessing registers that are
+functionally longer than 4 bytes - for example the dest MAC address - must be
 done over multiple packets. This is done for ease of implementation. It is
 expected that in the future specific registers may vary in length between 1 and
 12 bytes.
-
-NOTE: AJ, would it make more sense to have registers all 32-bits? I think there
-will be a lot of long-ish values, like Board Sample numbers, IPs, MAC
-addresses, etc. Also 32-bit error registers leave plenty of room for (eg) lots
-of weird SATA errors.
 
 ### Storage/Disk (0x02)
 ### DAQ (0x03)
 ### Network (0x04)
 ### Expansion (0x05)
 ### Acquisition (0x06)
-
 ### Retrieval (0x07)
 
 ### Error (0x08)
 There is only one error register, 0x00, which must be cleared in order to allow
 additional error packets to be transmitted over the asynchronous error channel.
+
 
 ## Response (0x3)
 
@@ -169,6 +162,9 @@ Additional flags:
 
 Message Data:
 
+    Experiment Timestamp High (4 bytes)
+    Experiment Timestamp Low (4 bytes)
+    Board ID (4byte)
     Start channel index (4 byte)
     NSAMP=Number of channels (4 byte)
     [... sequence of NSAMP channel readings ]
