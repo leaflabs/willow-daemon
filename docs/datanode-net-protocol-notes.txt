@@ -15,10 +15,21 @@ This document proposes a network protocol for bi-directional data acquisition
 and control communications between a "Wired Leaf" data node and a daemon
 running on an analysis server or user workstation.
 
-It is not a design goal for this protocol to be implementable in raw digital
-logic on the FPGA device; it is expected that there is a translation layer from
-these packets to the FPGA which relies on a soft- or hard-core general purpose
-processor.
+It is a design goal that at least a useful subset of this protocol can be
+implemented in HDL running on the FPGA so that a basic system can be brought
+online without any additional processor firmware beyond a trivial management of
+the TCP interface and data pass through. 
+
+To achieve this property, each of the primary cores that comprise the FPGA
+firmware will expose key operational and configuration registers to a global
+regmap. This regmap can be accessed via this protocol. Thus, the burden of the
+application and other glue logic *can* be moved to the remote server by issuing
+longer sequences of reads and writes on this exposed regmap. 
+
+Ideally, any command which poses a substantial additional burden on the logic of
+the FPGA core or demands the inclusion of substantial firmware running on a soft
+or hard processor can be circumvented via an appropriate sequence of operations
+on the system registers. 
 
 The data node SHOULD process one command or request (aside from live data
 streaming) at a time; if another request arrives while processing, it MAY queue
