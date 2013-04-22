@@ -18,18 +18,18 @@ running on an analysis server or user workstation.
 It is a design goal that at least a useful subset of this protocol can be
 implemented in HDL running on the FPGA so that a basic system can be brought
 online without any additional processor firmware beyond a trivial management of
-the TCP interface and data pass through. 
+the TCP interface and data pass through.
 
 To achieve this property, each of the primary cores that comprise the FPGA
 firmware will expose key operational and configuration registers to a global
 regmap. This regmap can be accessed via this protocol. Thus, the burden of the
 application and other glue logic *can* be moved to the remote server by issuing
-longer sequences of reads and writes on this exposed regmap. 
+longer sequences of reads and writes on this exposed regmap.
 
 Ideally, any command which poses a substantial additional burden on the logic of
 the FPGA core or demands the inclusion of substantial firmware running on a soft
 or hard processor can be circumvented via an appropriate sequence of operations
-on the system registers. 
+on the system registers.
 
 The data node SHOULD process one command or request (aside from live data
 streaming) at a time; if another request arrives while processing, it MAY queue
@@ -99,7 +99,7 @@ The Request Type field identifies the data node subsystem to which the request
 pertains. Valid Request Types are:
 
 - Storage/disk (0x02): e.g. disk sector index, I/O status
-- DAQ (0x03): e.g. reconfiguration of front end, impedence measurement
+- DAQ (0x03): e.g. reconfiguration of front end, impedance measurement
 - Network (0x04): e.g. source/dest IP address, dest. MAC address
 - Expansion (0x05): e.g. GPIO configuration for expansion header pins
 - Acquisition (0x06): start, stop acquisition, configure board subsample
@@ -112,7 +112,7 @@ NB: depending on the destination address (which represents a core register),
 the data width may vary from one to 12 bytes. It may also be the case that a
 single functional register will be spread across several subregisters of a
 fixed size (eg, a 64 bit value spread across 8x 8bit registers), each of which
-would need to be written to by a seperate request packet. This flexibility is
+would need to be written to by a separate request packet. This flexibility is
 reserved to make data node firmware implementation easier.
 
 TODO: spec out Request Address and Message Data on a per-r_type basis.
@@ -160,7 +160,7 @@ Sample indexes are calculated as follows:
     sample index n+1 = chip 1, channel 0
 
 TBD: multiple board subsamples may get bundled into a single "Board Subsample"
-to improve agregate data throughput?
+to improve aggregate data throughput?
 
 NB: Board Subsample packets, which are received over the unidirectional UDP
 socket, are likely to be of a fixed length (18kilobit?), regardless of how much
