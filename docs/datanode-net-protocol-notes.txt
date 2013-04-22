@@ -162,9 +162,9 @@ Sample indexes are calculated as follows:
 TBD: multiple board subsamples may get bundled into a single "Board Subsample"
 to improve aggregate data throughput?
 
-NB: Board Subsample packets, which are received over the unidirectional UDP
-socket, are likely to be of a fixed length (18kilobit?), regardless of how much
-meaningful data is enclosed.
+NB: Board Subsample packets, which are received over the data socket, are
+likely to be of a fixed length (18kilobit?), regardless of how much meaningful
+data is enclosed.
 
 ## Sector reading (0x5)
 
@@ -173,7 +173,3 @@ reading packets are sent only from the data node to the daemon, on the data
 socket.
 
 TODO finish.
-
-NB: Board Subsample packets, which are received over the unidirectional UDP
-socket, are likely to be of a fixed length (18kilobit?), regardless of how much
-meaningful data is enclosed.
