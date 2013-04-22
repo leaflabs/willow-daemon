@@ -48,8 +48,6 @@ TODO: decide on port numbers
 The source address serves to identify the unique acquisition device. All
 packets have a fixed size.
 
-The source address serves to identify the unique acquisition device.
-
     [UDP/IPv4 pseudo header]
         Source address (4byte)
         Destination address (4byte)
@@ -184,8 +182,8 @@ Sample indexes are calculated as follows:
     sample index n = chip 0, channel n
     sample index n+1 = chip 1, channel 0
 
-TBD: multiple board subsamples may get bundled into a single "Board Subsample"
-to improve aggregate data throughput?
+TBD: multiple board subsamples may get bundled into a single packet to improve
+aggregate ethernet data throughput?
 
 NB: Board Subsample packets, which are received over the data socket, are
 likely to be of a fixed length (18kilobit?), regardless of how much meaningful
@@ -194,30 +192,33 @@ data is enclosed.
 
 ## Board Sample Packet (0x05)
 
-Contains 1k (or later up to 3k) channel samples.
+The raw channel data is up to 32 chips x 32 channels x 16bit x 1 sample, plus
+lower frequency extras (the 32 chips x 3 channels x 16bit of auxiliary ADC
+input). Totals to 1120 channels, or 2240 bytes.
 
-Contains up to 32 chips x 32 channels x 16bit x 1 sample, plus lower frequency
-extras (eg, the 32 chips x 3 channels x 16bit of auxiliary ADC input, sampled
-at, eg, 10kHz).
+A 64bit "Experiment Timestamp" is used as a unique identifier for a given
+acquisition run.
 
 Flags:
 - is_live (live acquisition vs. read from disk)
 - is_last_sample (no more samples will follow; makes daemon control structure
   much simpler)
 
+    Experiment Timestamp High (4 bytes)
+    Experiment Timestamp Low (4 bytes)
+    Board ID (4byte)
     Sample Index (4byte)
-    NCHIP = number of chips/board (2byte) | NCHAN = number of channels/chip (2byte)
-                [following is 2KB worth of sample data]
-    TIMESTAMP_HIGH (4 bytes)
-	TIMESTAMP_LOW (4 bytes)
-    Chip 0, Chan 0 data (2 byte) | Chip 0, Chan 1 data (2 byte)
-    Chip 0, Chan 2 data (2 byte) | Chip 0, Chan 3 data (2 byte)
+        [2240 bytes of channel and AUX data follow]
+    Channel 00 (2 byte) | Channel 01 (2 byte)
+    Channel 02 (2 byte) | Channel 03 (2 byte)
     [...]
-    Chip 0, Chan NCHAN-2 data (2 byte) | Chip 0, Chan NCHAN-1 data (2 byte)
-    Chip 1, Chan 0 data (2 byte) | Chip 1, Chan 1 data (2 byte)
-    [...]
-    Chip NCHIP, Chan NCHAN-2 data (2 byte) | Chip NCHIP, Chan NCHAN-1 data (2 byte)
+    Channel 1118 (2 byte) | Channel 1119 (2 byte)
 
+This totals to 2256 bytes, so a board sample packet is 2284 bytes total.
+
+NB: The Board Sample has the same binary representation as the "Wrapped Board
+Sample"; see documentation in the FPGA HDL repository (sng-firmware) for the
+exact channel ordering and round-robin scheme.
 
 ## Error Packet (0x06)
 
