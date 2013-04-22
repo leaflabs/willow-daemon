@@ -107,7 +107,7 @@ a full byte of address space dedicated to its own registers.
 Valid Request Types are:
 
 - Storage/disk (0x02): e.g. disk sector index, I/O status
-- DAQ (0x03): e.g. reconfiguration of front end, impedence measurement
+- DAQ (0x03): e.g. reconfiguration of front end, impedance measurement
 - Network (0x04): e.g. source/dest IP address, dest. MAC address
 - Expansion (0x05): e.g. GPIO configuration for expansion header pins
 - Acquisition (0x06): start, stop acquisition, configure board subsample
@@ -131,7 +131,6 @@ expected that in the future specific registers may vary in length between 1 and
 ### Acquisition (0x06)
 
 ### Retrieval (0x07)
-
 
 ### Error (0x08)
 There is only one error register, 0x00, which must be cleared in order to allow
@@ -180,15 +179,16 @@ Sample indexes are calculated as follows:
     sample index n+1 = chip 1, channel 0
 
 TBD: multiple board subsamples may get bundled into a single "Board Subsample"
-to improve agregate data throughput?
+to improve aggregate data throughput?
 
-NB: Board Subsample packets, which are received over the unidirectional UDP
-socket, are likely to be of a fixed length (18kilobit?), regardless of how much
-meaningful data is enclosed.
+NB: Board Subsample packets, which are received over the data socket, are
+likely to be of a fixed length (18kilobit?), regardless of how much meaningful
+data is enclosed.
 
 
 ## Board Sample Packet (0x05)
 
+<<<<<<< HEAD
 A Board Sample Packet contains a complete board sample - roughly 18kb - along
 with a sample ID.
 
@@ -211,3 +211,6 @@ than one error register may be changed within a single error packet.
 
 In order to prevent flooding, the remote host must clear the error register with
 a typical request packet.
+=======
+TODO finish.
+>>>>>>> 5d1b3aba48fb67cc0f9dac765e19923a761b1ec4
