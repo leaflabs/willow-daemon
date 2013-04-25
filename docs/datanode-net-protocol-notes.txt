@@ -89,7 +89,7 @@ Additional flags:
 
 Message Data:
 
-    Request ID (2 B) | Request Type (1 B) | Request Address (1 B, or zeros)
+    Request ID (2 B) | Request Type (1 B) | Request Address (1 B)
     Request Value (4 B)
 
 The Request ID field is used to associate responses with requests. The request
@@ -115,11 +115,14 @@ The Request Address field identifies a register address. Whether the request is
 for a read or write to the address is determined by the I/O direction flag
 discussed above.
 
-Currently, all specified registers are 32-bits long. Accessing registers that are
-functionally longer than 4 bytes - for example the dest MAC address - must be
-done over multiple packets. This is done for ease of implementation. It is
-expected that in the future specific registers may vary in length between 1 and
-12 bytes.
+In case of a write Request, the Request Value contains 4 bytes to be written to
+the register. In case of a read Request, the Request Value MUST be zero.
+
+All registers are 32 bits wide. Accessing registers that are functionally
+longer than 4 bytes - for example, the destination MAC address - must be done
+using multiple Requests.
+
+TODO: specify the valid addresses for these Request Types:
 
 ### Storage/Disk (0x02)
 ### DAQ (0x03)
@@ -147,7 +150,10 @@ SHOULD be the same as those in the request packet.
     Response ID (2 B) | Response Type (1 B) | Address (1 B, or zeros)
     Response value (4 B, or zero)
 
-TODO: spec out Message Data when different from Request packets
+In case of a Response to a write Request (i.e., I/O direction bit unset), the
+Response Value will equal the value written. In case of a Response to a read
+Request (i.e., I/O direction bit set), the Response Value will contain the value
+of the register which was read.
 
 ## Board Sub-Sample Packet (0x4)
 
