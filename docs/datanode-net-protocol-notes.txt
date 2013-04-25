@@ -61,10 +61,8 @@ packets have a fixed size.
         (contents depend upon Message Type. Length fixed to 8 bytes on command
         socket; variable on data socket)
 
-The Status word has 8 flags to indicate various error or reserved conditions.
-If any bit is high, the daemon should read and write to specific registers
-using request packets to resolve the error and reset the flag bits. Specific
-meanings for these bits are currently unspecified.
+The Status Flags byte reserves the high bit (bit 7) to indicate a generic error
+condition. The other bits are reserved on a per-Message Type basis.
 
 The valid values for the Message Type field, and their meanings, are:
 
