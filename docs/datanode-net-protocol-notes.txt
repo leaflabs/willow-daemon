@@ -49,14 +49,14 @@ The source address serves to identify the unique acquisition device. All
 packets have a fixed size.
 
     [UDP/IPv4 pseudo header]
-        Source address (4byte)
-        Destination address (4byte)
-        Zeros (0x00) | Protocol Number (0x11 for UDP) | UDP length (2byte)
+        Source address (4 B)
+        Destination address (4 B)
+        Zeros (0x00) | Protocol Number (0x11 for UDP) | UDP length (2 B)
     [UDP header]
-        Source Port (2byte) | Destination Port (2byte)
-        Length (2byte) | Checksum (2byte)
+        Source Port (2 B) | Destination Port (2 B)
+        Length (2 B) | Checksum (2 B)
     [SNG Wire Format Header]
-        Magic number (1byte) | Proto Version (1byte) | Message Type (1byte) | Status Flags (1byte)
+        Magic number (1 B) | Proto Version (1 B) | Message Type (1 B) | Status Flags (1 B)
     [SNG Message Data]
         (contents depend upon Message Type. Length fixed to 16 bytes on command
         socket; variable on data socket)
@@ -88,7 +88,7 @@ Additional flags:
 
 Message Data:
 
-    Request ID (2byte) | Request Type (1byte) | Request Address (1byte, or zeros)
+    Request ID (2 B) | Request Type (1 B) | Request Address (1 B, or zeros)
     Extra data (12 bytes, or garbage)
 
 The Request ID field is used to associate responses with requests. The request
@@ -143,8 +143,8 @@ packet. The response packet has the same Request ID as that in the request
 packet. The Request Type and Request Address fields in the response packet
 SHOULD be the same as those in the request packet.
 
-    Response ID (2byte) | Response Type (1byte) | Address (1byte, or zeros)
-    Response value (4 bytes, or zero)
+    Response ID (2 B) | Response Type (1 B) | Address (1 B, or zeros)
+    Response value (4 B, or zero)
 
 TODO: spec out Message Data when different from Request packets
 
@@ -162,13 +162,13 @@ Additional flags:
 
 Message Data:
 
-    Experiment Timestamp High (4 bytes)
-    Experiment Timestamp Low (4 bytes)
-    Board ID (4byte)
-    Start channel index (4 byte)
-    NSAMP=Number of channels (4 byte)
+    Experiment Timestamp High (4 B)
+    Experiment Timestamp Low (4 B)
+    Board ID (4 B)
+    Start channel index (4 B)
+    NSAMP=Number of channels (4 B)
     [... sequence of NSAMP channel readings ]
-    Chip N, Chan M data (2 byte) | Chip N, Chan M+1 data (2 byte)
+    Chip N, Chan M data (2 B) | Chip N, Chan M+1 data (2 B)
 
 The start sample index indicates the index of the first channel in the
 subsample, relative to the start of the board sample. We use 32 bits to allow
@@ -206,15 +206,15 @@ Flags:
 - is_last_sample (no more samples will follow; makes daemon control structure
   much simpler)
 
-    Experiment Timestamp High (4 bytes)
-    Experiment Timestamp Low (4 bytes)
-    Board ID (4byte)
-    Sample Index (4byte)
-        [2240 bytes of channel and AUX data follow]
-    Channel 00 (2 byte) | Channel 01 (2 byte)
-    Channel 02 (2 byte) | Channel 03 (2 byte)
+    Experiment Timestamp High (4 B)
+    Experiment Timestamp Low (4 B)
+    Board ID (4 B)
+    Sample Index (4 B)
+        [2240 Bs of channel and AUX data follow]
+    Channel 00 (2 B) | Channel 01 (2 B)
+    Channel 02 (2 B) | Channel 03 (2 B)
     [...]
-    Channel 1118 (2 byte) | Channel 1119 (2 byte)
+    Channel 1118 (2 B) | Channel 1119 (2 B)
 
 This totals to 2256 bytes, so a board sample packet is 2284 bytes total.
 
