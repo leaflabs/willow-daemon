@@ -168,7 +168,7 @@ socket. In the FPGA firmware, a fixed number of registers can be configured as
 error registers. Any changes on these registers will cause an Error Packet to be
 transmitted.
 
-Error packets have no extra data.
+Error packets have no extra data. Their SNG Message Data area MUST be zero.
 
 In order to prevent flooding, the remote host must clear all error registers (with
 request packets) before further Error Packets are transmitted.
