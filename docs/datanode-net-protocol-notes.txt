@@ -46,20 +46,20 @@ unidirectional and high-bandwidth.
 TODO: decide on port numbers
 
 The source address serves to identify the unique acquisition device. All
-packets have a fixed size.
+command packets have a fixed size; this makes it easy to segment the stream
+into packets. Data packets have variable size. Both types of packets contain
+the following fields.
 
-    [UDP/IPv4 pseudo header]
-        Source address (4 B)
-        Destination address (4 B)
-        Zeros (0x00) | Protocol Number (0x11 for UDP) | UDP length (2 B)
-    [UDP header]
-        Source Port (2 B) | Destination Port (2 B)
-        Length (2 B) | Checksum (2 B)
     [SNG Wire Format Header]
         Magic number (1 B) | Proto Version (1 B) | Message Type (1 B) | Status Flags (1 B)
     [SNG Message Data]
         (contents depend upon Message Type. Length fixed to 8 bytes on command
         socket; variable on data socket)
+
+The data streamed in each direction on the command socket is thus a sequence of
+12 byte command packets. The datagrams streamed on the data socket are a
+sequence of data commands, each of which begins with the above fields at
+payload offset zero.
 
 The Status Flags byte reserves the high bit (bit 7) to indicate a generic error
 condition. The other bits are reserved on a per-Message Type basis.
