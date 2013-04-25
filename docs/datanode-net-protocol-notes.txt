@@ -84,8 +84,8 @@ are sent only from the daemon to the data node, on the command socket.
 
 Additional flags:
 
-- I/O direction: bit 0 signals whether a request which performs some sort of
-  input/output is a read (bit 0 set) or a write (bit 0 unset).
+- I/O direction: bit 0 signals whether a request is a read (bit 0 set) or a
+  write (bit 0 unset).
 
 Message Data:
 
