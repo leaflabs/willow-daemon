@@ -192,14 +192,20 @@ data is enclosed.
 
 ## Board Sample Packet (0x05)
 
+Contains a sample from each available channel, all taken during the same
+sampling interval. Board sample packets are sent only from the data node to
+the daemon, on the data socket.
+
 The raw channel data is up to 32 chips x 32 channels x 16bit x 1 sample, plus
 lower frequency extras (the 32 chips x 3 channels x 16bit of auxiliary ADC
 input). Totals to 1120 channels, or 2240 bytes.
 
-A 64bit "Experiment Timestamp" is used as a unique identifier for a given
-acquisition run. A 32bit sample index identifies both a unique board sample
-within an experimental acquisition run and a position on the node's disk cache.
-A 32bit Board ID is a unique identifier for the acquistion node's hardware.
+A 64bit "Experiment Cookie" is used as a unique identifier for a given
+acquisition run (initially, we'll use a Unix timestamp as a cookie, but you
+should treat it as an opaque value). A 32bit sample index identifies both a
+unique board sample within an experimental acquisition run and a position on
+the node's disk cache.  A 32bit Board ID is a unique identifier for the
+acquistion node's hardware.
 
 Flags:
 - is_live (live acquisition vs. read from disk)
