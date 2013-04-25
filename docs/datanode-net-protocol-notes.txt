@@ -188,8 +188,8 @@ Additional flags:
 
 Message Data:
 
-    Experiment Timestamp High (4 B)
-    Experiment Timestamp Low (4 B)
+    Experiment Cookie High (4 B)
+    Experiment Cookie Low (4 B)
     Board ID (4 B)
     Start channel index (4 B)
     NSAMP=Number of channels (4 B)
@@ -238,8 +238,8 @@ Flags:
 - is_last_sample (no more samples will follow; makes daemon control structure
   much simpler)
 
-    Experiment Timestamp High (4 B)
-    Experiment Timestamp Low (4 B)
+    Experiment Cookie High (4 B)
+    Experiment Cookie Low (4 B)
     Board ID (4 B)
     Sample Index (4 B)
         [2240 Bs of channel and AUX data follow]
