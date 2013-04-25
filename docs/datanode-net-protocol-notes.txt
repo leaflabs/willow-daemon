@@ -56,6 +56,8 @@ the following fields.
         (contents depend upon Message Type. Length fixed to 8 bytes on command
         socket; variable on data socket)
 
+The Magic number is 0x5A.
+
 The data streamed in each direction on the command socket is thus a sequence of
 12 byte command packets. The datagrams streamed on the data socket are a
 sequence of data commands, each of which begins with the above fields at
