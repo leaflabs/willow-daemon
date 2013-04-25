@@ -66,18 +66,23 @@ condition. The other bits are reserved on a per-Message Type basis.
 
 The valid values for the Message Type field, and their meanings, are:
 
-- Request: 0x02
-- Response: 0x03
-- Board Sub-Sample: 0x04
-- Board Sample: 0x05
-- Remote Error: 0x06
+Command packets:
+
+- Request: 0x01
+- Response: 0x02
+- Remote Error: 0x7F
+
+Data packets:
+
+- Board Sub-Sample: 0x80
+- Board Sample: 0x81
 
 Important: 0x00 is an invalid Message Type, which is reserved for internal use
 by the daemon.
 
 # Message Types
 
-## Request (0x02)
+## Request (0x01)
 
 A packet with Message type equal to 0x02 indicates a request. Request packets
 are sent only from the daemon to the data node, on the command socket.
@@ -136,7 +141,7 @@ There is only one error register, 0x00, which must be cleared in order to allow
 additional error packets to be transmitted over the asynchronous error channel.
 
 
-## Response (0x3)
+## Response (0x02)
 
 A Response packet contains the same fields as a request packet. Response
 packets are sent from the data node to the daemon, on the command socket. The
@@ -155,7 +160,21 @@ Response Value will equal the value written. In case of a Response to a read
 Request (i.e., I/O direction bit set), the Response Value will contain the value
 of the register which was read.
 
-## Board Sub-Sample Packet (0x4)
+
+## Remote Error (0x7F)
+
+Error packets are transmitted asynchronously from the data node over the command
+socket. In the FPGA firmware, a fixed number of registers can be configured as
+error registers. Any changes on these registers will cause an Error Packet to be
+transmitted.
+
+Error packets have no extra data.
+
+In order to prevent flooding, the remote host must clear all error registers (with
+request packets) before further Error Packets are transmitted.
+
+
+## Board Sub-Sample Packet (0x80)
 
 Contains a variable number of channel samples, all taken from the same board
 sample. Board subsample packets are sent only from the data node to the daemon,
@@ -197,7 +216,7 @@ likely to be of a fixed length (18kilobit?), regardless of how much meaningful
 data is enclosed.
 
 
-## Board Sample Packet (0x05)
+## Board Sample Packet (0x81)
 
 Contains a sample from each available channel, all taken during the same
 sampling interval. Board sample packets are sent only from the data node to
@@ -236,15 +255,4 @@ Sample"; see documentation in the FPGA HDL repository (sng-firmware) for the
 exact channel ordering and round-robin scheme.
 
 
-## Error Packet (0x06)
-
-Error packets are transmitted asynchronously from the data node over the command
-socket. In the FPGA firmware, a fixed number of registers can be configured as
-error registers. Any changes on these registers will cause an Error Packet to be
-transmitted.
-
-Error packets have no extra data.
-
-In order to prevent flooding, the remote host must clear all error registers (with
-request packets) before further Error Packets are transmitted.
 
