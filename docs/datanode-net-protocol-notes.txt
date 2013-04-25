@@ -74,6 +74,9 @@ The valid values for the Message Type field, and their meanings, are:
 - Board Sample: 0x05
 - Remote Error: 0x06
 
+Important: 0x00 is an invalid Message Type, which is reserved for internal use
+by the daemon.
+
 # Message Types
 
 ## Request (0x02)
