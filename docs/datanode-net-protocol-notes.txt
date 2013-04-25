@@ -58,7 +58,7 @@ packets have a fixed size.
     [SNG Wire Format Header]
         Magic number (1 B) | Proto Version (1 B) | Message Type (1 B) | Status Flags (1 B)
     [SNG Message Data]
-        (contents depend upon Message Type. Length fixed to 16 bytes on command
+        (contents depend upon Message Type. Length fixed to 8 bytes on command
         socket; variable on data socket)
 
 The Status word has 8 flags to indicate various error or reserved conditions.
@@ -92,7 +92,7 @@ Additional flags:
 Message Data:
 
     Request ID (2 B) | Request Type (1 B) | Request Address (1 B, or zeros)
-    Extra data (12 bytes, or garbage)
+    Request Value (4 B)
 
 The Request ID field is used to associate responses with requests. The request
 ID field SHOULD be an incrementing 16-bit unsigned integer which wraps back to
