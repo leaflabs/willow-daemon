@@ -73,6 +73,8 @@ size_t raw_pkt_size(const void *pkt)
 #define raw_samp_ntoh(samp_val) ntohs(samp_val)
 #define raw_err_hton(pkt) ((void)0)
 #define raw_err_ntoh(pkt) ((void)0)
+#define raw_mtype_hton(mtype) (mtype)
+#define raw_mtype_ntoh(mtype) (mtype)
 
 static void raw_req_hton(struct raw_pkt_cmd *req)
 {
@@ -219,21 +221,29 @@ ssize_t raw_cmd_recv(int sockfd, struct raw_pkt_cmd *pkt, int flags)
 
 ssize_t raw_bsub_recv(int sockfd, struct raw_pkt_bsub *bsub, int flags)
 {
+    size_t nsamp = bsub->b_nsamp;
     int ret = recv(sockfd, bsub, raw_bsub_size(bsub), flags);
-    if (ret == 0) {
-        raw_bsub_ntoh(bsub);
+    if (ret == -1) {
+        return -1;
     }
-    if (raw_mtype(bsub) != RAW_MTYPE_BSUB) {
+    if (raw_mtype_ntoh(raw_mtype(bsub)) != RAW_MTYPE_BSUB) {
         errno = EPROTO;
         return -1;
     }
+    if (ntohl(bsub->b_nsamp) > nsamp) {
+        /* Caller's raw_pkt_bsub is too small; the following
+         * raw_bsub_ntoh() will touch random memory. */
+        errno = EINVAL;
+        return -1;
+    }
+    raw_bsub_ntoh(bsub);
     return ret;
 }
 
 ssize_t raw_bsmp_recv(int sockfd, struct raw_pkt_bsmp *bsmp, int flags)
 {
     int ret = recv(sockfd, bsmp, raw_bsmp_size(bsmp), flags);
-    if (ret == 0) {
+    if (ret != 0) {
         raw_bsmp_ntoh(bsmp);
     }
     if (raw_mtype(bsmp) != RAW_MTYPE_BSMP) {
@@ -245,12 +255,14 @@ ssize_t raw_bsmp_recv(int sockfd, struct raw_pkt_bsmp *bsmp, int flags)
 
 ssize_t raw_bsub_send(int sockfd, struct raw_pkt_bsub *bsub, int flags)
 {
+    const size_t size = raw_bsub_size(bsub);
     raw_bsub_hton(bsub);
-    return send(sockfd, bsub, raw_bsub_size(bsub), flags);
+    return send(sockfd, bsub, size, flags);
 }
 
 ssize_t raw_bsmp_send(int sockfd, struct raw_pkt_bsmp *bsmp, int flags)
 {
+    const size_t size = raw_bsmp_size(bsmp);
     raw_bsmp_hton(bsmp);
-    return send(sockfd, bsmp, raw_bsmp_size(bsmp), flags);
+    return send(sockfd, bsmp, size, flags);
 }
