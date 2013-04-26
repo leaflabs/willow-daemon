@@ -8,158 +8,249 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/uio.h>
 
 #define PACKET_HEADER_MAGIC      0x5A
 #define PACKET_HEADER_PROTO_VERS 0x00
 
-void raw_packet_init(struct raw_packet *packet,
-                     uint8_t type, uint8_t flags)
+/*********************************************************************
+ * Initialization and convenience
+ */
+
+void raw_packet_init(void *packet, uint8_t mtype, uint8_t flags)
 {
-    packet->_p_magic = PACKET_HEADER_MAGIC;
-    packet->_p_proto_vers = PACKET_HEADER_PROTO_VERS;
-    packet->p_type = type;
-    packet->p_flags = flags;
+    struct raw_pkt_header *ph = packet;
+    ph->_p_magic = PACKET_HEADER_MAGIC;
+    ph->p_proto_vers = PACKET_HEADER_PROTO_VERS;
+    ph->p_mtype = mtype;
+    ph->p_flags = flags;
+
+    if (mtype == RAW_MTYPE_ERR) {
+        struct raw_pkt_cmd *pkt = packet;
+        memset(&pkt->p, 0, sizeof(struct raw_cmd_err));
+    }
 }
 
-struct raw_packet* raw_packet_create_bsamp(uint16_t nchips, uint16_t nlines)
+struct raw_pkt_bsub* raw_alloc_bsub(size_t nsamp)
 {
-    /* This is pretty chummy with the packet type implementation,
-     * which is a bit brittle. */
-    size_t bsamp_size = (offsetof(struct raw_packet, p) +
-                         offsetof(struct raw_msg_bsamp, bs_samples) +
-                         (size_t)nchips * (size_t)nlines * sizeof(raw_samp_t));
-    struct raw_packet *ret = malloc(bsamp_size);
-    if (ret != 0) {
-        raw_packet_init(ret, RAW_PKT_TYPE_BSAMP, 0);
-        ret->p.bsamp.bs_nchips = nchips;
-        ret->p.bsamp.bs_nlines = nlines;
+    struct raw_pkt_bsub *ret = malloc(sizeof(struct raw_pkt_bsub) +
+                                      nsamp * sizeof(raw_samp_t));
+    if (ret) {
+        raw_packet_init(ret, RAW_MTYPE_BSUB, 0);
+        ret->b_nsamp = nsamp;
     }
     return ret;
 }
 
-static void raw_msg_bsamp_hton(struct raw_msg_bsamp *msg)
+void raw_pkt_copy(void *dst, const void *src)
 {
-    for (size_t i = 0; i < raw_bsamp_nsamps(msg); i++) {
-        msg->bs_samples[i] = htons(msg->bs_samples[i]);
+    memcpy(dst, src, raw_pkt_size(src));
+}
+
+size_t raw_pkt_size(const void *pkt)
+{
+    uint8_t mtype = raw_mtype(pkt);
+    switch (mtype) {
+    case RAW_MTYPE_REQ: /* fall through */
+    case RAW_MTYPE_RES: /* fall through */
+    case RAW_MTYPE_ERR:
+        return sizeof(struct raw_pkt_cmd);
+    case RAW_MTYPE_BSUB:
+        return raw_bsub_size(pkt);
+    case RAW_MTYPE_BSMP:
+        return raw_bsmp_size(pkt);
     }
-    msg->bs_idx = htonl(msg->bs_idx);
-    msg->bs_nchips = htons(msg->bs_nchips);
-    msg->bs_nlines = htons(msg->bs_nlines);
+    assert(0 && "invalid packet type");
+    return 0;
 }
 
-static void raw_msg_req_hton(struct raw_msg_req *msg)
+/*********************************************************************
+ * Network I/O
+ */
+
+#define raw_ph_hton(ph) ((void)0)
+#define raw_ph_ntoh(ph) ((void)0)
+#define raw_samp_hton(samp_val) htons(samp_val)
+#define raw_samp_ntoh(samp_val) ntohs(samp_val)
+#define raw_err_hton(pkt) ((void)0)
+#define raw_err_ntoh(pkt) ((void)0)
+
+static void raw_req_hton(struct raw_pkt_cmd *req)
 {
-    msg->r_id = htons(msg->r_id);
-    msg->r_val = htonl(msg->r_val);
+    struct raw_cmd_req *rcmd = raw_req(req);
+    raw_ph_hton(&req->ph);
+    rcmd->r_id = htons(raw_r_id(req));
+    rcmd->r_val = htonl(raw_r_val(req));
 }
 
-static void raw_msg_res_hton(struct raw_msg_res *msg)
+static void raw_res_hton(struct raw_pkt_cmd *res)
 {
-    raw_msg_req_hton((struct raw_msg_req*)msg);
+    struct raw_cmd_res *rcmd = raw_res(res);
+    raw_ph_hton(&res->ph);
+    rcmd->r_id = htons(raw_r_id(res));
+    rcmd->r_val = htonl(raw_r_val(res));
 }
 
-ssize_t raw_packet_send(int sockfd, struct raw_packet *packet, int flags)
+static int raw_cmd_hton(struct raw_pkt_cmd *pkt)
 {
-    size_t packet_size = sizeof(struct raw_packet);
-    switch (packet->p_type) {
-    case RAW_PKT_TYPE_BSAMP:
-        packet_size += raw_packet_sampsize(packet);
-        raw_msg_bsamp_hton(&packet->p.bsamp);
-        break;
-    case RAW_PKT_TYPE_REQ:
-        raw_msg_req_hton(&packet->p.req);
-        break;
-    case RAW_PKT_TYPE_RES:
-        raw_msg_res_hton(&packet->p.res);
-        break;
-    case RAW_PKT_TYPE_ERR:
-        break;
+    switch (raw_mtype(pkt)) {
+    case RAW_MTYPE_REQ:
+        raw_req_hton(pkt);
+        return 0;
+    case RAW_MTYPE_RES:
+        raw_res_hton(pkt);
+        return 0;
+    case RAW_MTYPE_ERR:
+        raw_err_hton(pkt);
+        return 0;
     default:
+        return -1;
+    }
+}
+
+static void raw_req_ntoh(struct raw_pkt_cmd *req)
+{
+    struct raw_cmd_req *rcmd = raw_req(req);
+    raw_ph_ntoh(&req->ph);
+    rcmd->r_id = ntohs(raw_r_id(req));
+    rcmd->r_val = ntohl(raw_r_val(req));
+}
+
+static void raw_res_ntoh(struct raw_pkt_cmd *res)
+{
+    struct raw_cmd_res *rcmd = raw_res(res);
+    raw_ph_ntoh(&res->ph);
+    rcmd->r_id = ntohs(raw_r_id(res));
+    rcmd->r_val = ntohl(raw_r_val(res));
+}
+
+static int raw_cmd_ntoh(struct raw_pkt_cmd *pkt)
+{
+    switch (raw_mtype(pkt)) {
+    case RAW_MTYPE_REQ:
+        raw_req_ntoh(pkt);
+        return 0;
+    case RAW_MTYPE_RES:
+        raw_res_ntoh(pkt);
+        return 0;
+    case RAW_MTYPE_ERR:
+        raw_err_ntoh(pkt);
+        return 0;
+    default:
+        return -1;
+    }
+}
+
+static void raw_bsub_hton(struct raw_pkt_bsub *bsub)
+{
+    raw_ph_hton(&bsub->ph);
+    bsub->b_cookie_h = htonl(bsub->b_cookie_h);
+    bsub->b_cookie_l = htonl(bsub->b_cookie_l);
+    bsub->b_id = htonl(bsub->b_id);
+    bsub->b_sidx = htonl(bsub->b_sidx);
+    for (size_t i = 0; i < bsub->b_nsamp; i++) {
+        bsub->b_samps[i] = raw_samp_hton(bsub->b_samps[i]);
+    }
+    bsub->b_nsamp = htonl(bsub->b_nsamp);
+}
+
+static void raw_bsub_ntoh(struct raw_pkt_bsub *bsub)
+{
+    raw_ph_ntoh(&bsub->ph);
+    bsub->b_cookie_h = ntohl(bsub->b_cookie_h);
+    bsub->b_cookie_l = ntohl(bsub->b_cookie_l);
+    bsub->b_id = ntohl(bsub->b_id);
+    bsub->b_sidx = ntohl(bsub->b_sidx);
+    bsub->b_nsamp = ntohl(bsub->b_nsamp);
+    for (size_t i = 0; i < bsub->b_nsamp; i++) {
+        bsub->b_samps[i] = raw_samp_ntoh(bsub->b_samps[i]);
+    }
+}
+
+static void raw_bsmp_hton(struct raw_pkt_bsmp *bsmp)
+{
+    raw_ph_hton(&bsmp->ph);
+    bsmp->b_cookie_h = htonl(bsmp->b_cookie_h);
+    bsmp->b_cookie_l = htonl(bsmp->b_cookie_l);
+    bsmp->b_id = htonl(bsmp->b_id);
+    bsmp->b_sidx = htonl(bsmp->b_sidx);
+    for (size_t i = 0; i < raw_bsmp_nsamp(bsmp); i++) {
+        bsmp->b_samps[i] = raw_samp_hton(bsmp->b_samps[i]);
+    }
+}
+
+static void raw_bsmp_ntoh(struct raw_pkt_bsmp *bsmp)
+{
+    raw_ph_ntoh(&bsmp->ph);
+    bsmp->b_cookie_h = ntohl(bsmp->b_cookie_h);
+    bsmp->b_cookie_l = ntohl(bsmp->b_cookie_l);
+    bsmp->b_id = ntohl(bsmp->b_id);
+    bsmp->b_sidx = ntohl(bsmp->b_sidx);
+    for (size_t i = 0; i < raw_bsmp_nsamp(bsmp); i++) {
+        bsmp->b_samps[i] = raw_samp_ntoh(bsmp->b_samps[i]);
+    }
+}
+
+ssize_t raw_cmd_send(int sockfd, struct raw_pkt_cmd *pkt, int flags)
+{
+    if (raw_cmd_hton(pkt) == -1) {
         errno = EINVAL;
         return -1;
     }
-    return send(sockfd, packet, packet_size, flags);
+    return send(sockfd, pkt, sizeof(struct raw_pkt_cmd), flags);
 }
 
-static void raw_msg_bsamp_ntoh(struct raw_msg_bsamp *msg)
+ssize_t raw_cmd_recv(int sockfd, struct raw_pkt_cmd *pkt, int flags)
 {
-    msg->bs_idx = ntohl(msg->bs_idx);
-    msg->bs_nchips = ntohs(msg->bs_nchips);
-    msg->bs_nlines = ntohs(msg->bs_nlines);
-    for (size_t i = 0; i < raw_bsamp_nsamps(msg); i++) {
-        msg->bs_samples[i] = ntohs(msg->bs_samples[i]);
+    uint8_t expected_mtype = raw_mtype(pkt);
+    int ret = recv(sockfd, pkt, sizeof(struct raw_pkt_cmd), flags);
+    if (ret == -1) {
+        return -1;
     }
-}
-
-static void raw_msg_req_ntoh(struct raw_msg_req *msg)
-{
-    msg->r_id = ntohs(msg->r_id);
-    msg->r_val = ntohl(msg->r_val);
-}
-
-static void raw_msg_res_ntoh(struct raw_msg_res *msg)
-{
-    raw_msg_req_ntoh((struct raw_msg_req*)msg);
-}
-
-ssize_t raw_packet_recv(int sockfd, struct raw_packet *packet, int flags)
-{
-    uint8_t expected_ptype = packet->p_type;
-    size_t packsize = sizeof(struct raw_packet);
-    if (packet->p_type == RAW_PKT_TYPE_BSAMP) {
-        packsize += raw_packet_sampsize(packet);
-    }
-    int ret = recv(sockfd, packet, packsize, flags);
-
-    if (packet->_p_magic != PACKET_HEADER_MAGIC) {
+    raw_cmd_ntoh(pkt);
+    if (pkt->ph._p_magic != PACKET_HEADER_MAGIC) {
         errno = EPROTO;
         return -1;
-    } else if (ret == -1) {
-        return -1;
-    } else if (expected_ptype != 0 && expected_ptype != packet->p_type) {
+    } else if (expected_mtype != 0 && expected_mtype != raw_mtype(pkt)) {
         errno = EIO;
         return -1;
     }
+    return ret;
+}
 
-    switch (packet->p_type) {
-    case RAW_PKT_TYPE_BSAMP:
-        raw_msg_bsamp_ntoh(&packet->p.bsamp);
-        break;
-    case RAW_PKT_TYPE_REQ:
-        raw_msg_req_ntoh(&packet->p.req);
-        break;
-    case RAW_PKT_TYPE_RES:
-        raw_msg_res_ntoh(&packet->p.res);
-        break;
-    case RAW_PKT_TYPE_ERR:
-        break;
-    default:
+ssize_t raw_bsub_recv(int sockfd, struct raw_pkt_bsub *bsub, int flags)
+{
+    int ret = recv(sockfd, bsub, raw_bsub_size(bsub), flags);
+    if (ret == 0) {
+        raw_bsub_ntoh(bsub);
+    }
+    if (raw_mtype(bsub) != RAW_MTYPE_BSUB) {
         errno = EPROTO;
         return -1;
     }
     return ret;
 }
 
-int raw_packet_recvmmsg(int sockfd,
-                        struct raw_packet **packets, unsigned plen,
-                        unsigned flags, struct timespec *timeout)
+ssize_t raw_bsmp_recv(int sockfd, struct raw_pkt_bsmp *bsmp, int flags)
 {
-    if (plen == 0) {
-        return 0;
+    int ret = recv(sockfd, bsmp, raw_bsmp_size(bsmp), flags);
+    if (ret == 0) {
+        raw_bsmp_ntoh(bsmp);
     }
-    struct mmsghdr msgvec[plen];
-    struct iovec iovecs[plen];
-    for (unsigned i = 0; i < plen; i++) {
-        iovecs[i].iov_base = packets[i];
-        iovecs[i].iov_len = raw_packet_size(packets[i]);
-        struct msghdr *mhdr = &msgvec[i].msg_hdr;
-        mhdr->msg_name = NULL;
-        mhdr->msg_namelen = 0;
-        mhdr->msg_iov = &iovecs[i];
-        mhdr->msg_iovlen = 1;
-        mhdr->msg_control = NULL;
-        mhdr->msg_controllen = 0;
+    if (raw_mtype(bsmp) != RAW_MTYPE_BSMP) {
+        errno = EPROTO;
+        return -1;
     }
-    return recvmmsg(sockfd, msgvec, plen, flags, timeout);
+    return ret;
+}
+
+ssize_t raw_bsub_send(int sockfd, struct raw_pkt_bsub *bsub, int flags)
+{
+    raw_bsub_hton(bsub);
+    return send(sockfd, bsub, raw_bsub_size(bsub), flags);
+}
+
+ssize_t raw_bsmp_send(int sockfd, struct raw_pkt_bsmp *bsmp, int flags)
+{
+    raw_bsmp_hton(bsmp);
+    return send(sockfd, bsmp, raw_bsmp_size(bsmp), flags);
 }

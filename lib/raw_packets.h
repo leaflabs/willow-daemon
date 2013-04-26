@@ -26,119 +26,267 @@
 #include "type_attrs.h"
 
 /*********************************************************************
- * Packet data structures
- *
- * The main packet structure is struct raw_packet; see below.
+ * Common packet header
  */
 
-/* Error flag for raw_packet.p_flags, may occur anywhere. Each packet
- * type may define additional flags, as long as they don't conflict
- * with this one. */
-#define RAW_FLAG_ERR       0x80
+/* Message Types */
+#define RAW_MTYPE_REQ   0x01 /* Request */
+#define RAW_MTYPE_RES   0x02 /* Response */
+#define RAW_MTYPE_ERR   0x7F /* Error */
+#define RAW_MTYPE_BSUB  0x80 /* Board sub-sample */
+#define RAW_MTYPE_BSMP  0x81 /* Board sample */
 
-/* Board sample packet contents */
+/* Error flag for raw_packet.p_flags. */
+#define RAW_PFLAG_ERR   0x80
 
-/* Flags for packet.p_flags */
-#define RAW_FLAG_BSAMP_IS_LIVE 0x01 /* streaming live recording */
-#define RAW_FLAG_BSAMP_IS_LAST 0x02 /* no more packets to send */
-#define RAW_FLAG_BSAMP_ESIZE (RAW_FLAG_ERR | 0x04) /* requested sample
-                                                      doesn't exist */
+/* Packet header. */
+struct raw_pkt_header {
+    /* These are set by raw_packet_init(). */
+    uint8_t _p_magic;
+    uint8_t p_proto_vers;
 
-typedef uint16_t raw_samp_t;
-
-__packed
-struct raw_msg_bsamp {
-    uint32_t   bs_idx;          /* Sample index */
-    uint16_t   bs_nchips;       /* Number of chips on this board */
-    uint16_t   bs_nlines;       /* Number of data samples per chip */
-    raw_samp_t bs_samples[];    /* The samples themselves; this is in
-                                 * chip-major order, and has length =
-                                 * bs_nchips*bs_nlines. */
+    uint8_t p_mtype;            /* Message Type */
+    uint8_t p_flags;            /* Status Flags */
 };
 
-/* Request/response packet contents */
+/*********************************************************************
+ * Command packets
+ */
 
-#define RAW_RTYPE_CHIP_CFG   0x00 /* configure a chip */
-#define RAW_RTYPE_CHIP_QUERY 0x01 /* request a chip config */
-#define RAW_RTYPE_SYS_CFG    0x02 /* configure the system */
-#define RAW_RTYPE_SYS_QUERY  0x03 /* request system configuration */
-#define RAW_RTYPE_ACQ_START  0x04 /* start acquisition */
-#define RAW_RTYPE_ACQ_STOP   0x05 /* stop acquisition */
-#define RAW_RTYPE_SAMP_READ  0x06 /* read a sample */
+/*
+ * Request/Response packet (RAW_MTYPE_REQ, RAW_MTYPE_RES) data
+ */
 
-#define RAW_RADDR_SYS_NCHIPS 0x00
-#define RAW_RADDR_SYS_NLINES 0x01
-
-/* Request and response packets contain the same data, but we enforce
+/* Request and response packets contain the same data, but we provide
  * a type system distinction between them.
  *
- * Usually, these work like this:
- *
- * ph: packet header
- * r_id: sequential request/response ID number; this can wrap
+ * r_id: sequential request/response ID number; this wraps
  * r_type: type of request/response being issued; see RAW_RTYPE_*
- * r_addr: notional "address" being written to or read from
- * r_val: value at r_addr to read or write
- *
- * In case of .r_type=RAW_RTYPE_SAMP_READ, the following fields have
- * alternate meanings:
- *
- * r_addr: Number of board samples to read; must be > 0
- * r_val: Starting board sample to read from
- *
- * If more board sample packets are requested than are available, it's
- * not an error; the node just sends a packet with
- * RAW_FLAG_BSAMP_IS_LAST after receiving the number that were
- * available.
- *
- * If the starting board sample packet exceeds the number available,
- * an error is returned.
+ * r_addr: register address being read from or written to
+ * r_val: value read or written
  */
-#define _RAW_DATA_REQ_RES                       \
+#define _RAW_C_REQ_RES                          \
     uint16_t r_id;                              \
     uint8_t r_type;                             \
     uint8_t r_addr;                             \
     uint32_t r_val;
-struct raw_msg_req { _RAW_DATA_REQ_RES };
-struct raw_msg_res { _RAW_DATA_REQ_RES };
-#undef _RAW_DATA_REQ_RES
+struct raw_cmd_req { _RAW_C_REQ_RES };
+struct raw_cmd_res { _RAW_C_REQ_RES };
+#undef _RAW_C_REQ_RES
 
-/* Packet structure */
+#define RAW_RTYPE_STOR 0x02     /* Storage/disk */
+#define RAW_RTYPE_DAQ  0x03     /* DAQ */
+#define RAW_RTYPE_NET  0x04     /* Network */
+#define RAW_RTYPE_EXP  0x05     /* Expansion */
+#define RAW_RTYPE_ACQ  0x06     /* Acquisition */
+#define RAW_RTYPE_RET  0x07     /* Retrieval */
+#define RAW_RTYPE_ERR  0x08     /* Error */
 
-/* Packet message types for .p_type.
- *
- * Note: don't use zero as a packet type value; that's reserved for
- * raw_packet_recv(). */
-#define RAW_PKT_TYPE_BSAMP 0x01 /* Board sample */
-#define RAW_PKT_TYPE_REQ   0x02 /* Request */
-#define RAW_PKT_TYPE_RES   0x03 /* Response */
-#define RAW_PKT_TYPE_ERR   0xFF /* Error */
+/* I/O direction flag */
+#define RAW_PFLAG_RIOD   (0x1)
+#define RAW_PFLAG_RIOD_W (0U << 0)
+#define RAW_PFLAG_RIOD_R (1U << 0)
 
-struct raw_packet {
-    /* Packet header; this is common to packets of all types. */
+/*
+ * Per-r_type Registers
+ */
 
-    /* These are set by raw_packet_init(). You should probably leave
-     * them alone. */
-    uint8_t _p_magic;
-    uint8_t _p_proto_vers;
+/* RAW_RTYPE_STOR */ /* TODO */
 
-    uint8_t p_type;             /* Packet type */
-    uint8_t p_flags;            /* Extra flags */
+/* RAW_RTYPE_DAQ */
+#define RAW_RADDR_DAQ_CMD 0x00
 
-    /* (Optional) packet contents
-     *
-     * In case of a plain error packet (.p_type == RAW_PKT_TYPE_ERR),
-     * leave this uninitialized.
-     *
-     * HACK: note that this isn't legal C due to the flexible array at
-     * the end of p.bsamp. Works on GCC, though. */
+/* RAW_RTYPE_NET */  /* TODO real ones */
+#define RAW_RADDR_NET_IPV4_DT_FROM 0x00 /* data "from" IPv4 addr. (r/w) */
+#define RAW_RADDR_NET_IPV4_DT_TO   0x01 /* data "to" IPv4 addr. (r/w) */
+#define RAW_RADDR_NET_DT_SRC_MAC   0x02 /* data source MAC addr. (r-o) */
+#define RAW_RADDR_NET_DT_DST_MAC_H 0x03 /* data dest MAC addr., high (r/w) */
+#define RAW_RADDR_NET_DT_DST_MAC_L 0x04 /* data dest MAC addr., low (r/w) */
 
+/* RAW_RTYPE_EXP */  /* TODO real ones */
+
+/* RAW_RTYPE_ACQ */  /* TODO real ones */
+#define RAW_RADDR_ACQ_COOKIE_H     0x00 /* experiment cookie, high (r/w) */
+#define RAW_RADDR_ACQ_COOKIE_L     0x01 /* experiment cookie, low (r/w) */
+
+/* RAW_RTYPE_RET */  /* TODO real ones */
+#define RAW_RADDR_RET_BSMP_START   0x00 /* start board sample (r/w) */
+#define RAW_RADDR_RET_BSMP_NSMAMP  0x01 /* number of board samples (r/w) */
+
+/* RAW_RTYPE_ERR */
+#define RAW_RADDR_ERR              0x00 /* global error register (r/w) */
+
+/*
+ * Error packet (RAW_MTYPE_ERR) data
+ */
+
+#define _RAW_CSIZE 8
+struct raw_cmd_err {
+    uint8_t pad_must_be_zero[_RAW_CSIZE];
+};
+
+/*
+ * Command packet structure
+ */
+
+struct raw_pkt_cmd {
+    struct raw_pkt_header ph;
     union {
-        struct raw_msg_bsamp bsamp;
-        struct raw_msg_req req;
-        struct raw_msg_res res;
+        struct raw_cmd_req req;
+        struct raw_cmd_res res;
+        struct raw_cmd_err err;
     } p;
 };
+
+/*********************************************************************
+ * Data packets
+ */
+
+/* Flags */
+#define RAW_PFLAG_B_LIVE  0x01  /* streaming live recording */
+#define RAW_PFLAG_B_LAST  0x02  /* no more packets to send */
+
+typedef uint16_t raw_samp_t;
+
+/*
+ * Board subsample packet (RAW_MTYPE_BSUB) data
+ */
+
+struct raw_pkt_bsub {
+    struct raw_pkt_header ph;
+    uint32_t b_cookie_h;        /* experiment cookie high word */
+    uint32_t b_cookie_l;        /* experiment cookie low word */
+    uint32_t b_id;              /* board id */
+    uint32_t b_sidx;            /* sample index */
+    uint32_t b_nsamp;           /* number of samples */
+    raw_samp_t b_samps[];       /* ... of length b_nsamp */
+};
+
+/*
+ * Board sample packet (RAW_MTYPE_BSMP) data
+ */
+
+#define _RAW_BSMP_NSAMP (32*35) /* TODO (eventually) configurability */
+
+struct raw_pkt_bsmp {
+    struct raw_pkt_header ph;
+    uint32_t b_cookie_h;        /* experiment cookie high word */
+    uint32_t b_cookie_l;        /* experiment cookie low word */
+    uint32_t b_id;              /* board id */
+    uint32_t b_sidx;            /* sample index */
+    raw_samp_t b_samps[_RAW_BSMP_NSAMP]; /* samples */
+};
+
+/*********************************************************************
+ * Packet initialization
+ */
+
+/* Initialize a packet.
+ *
+ * packet: Pointer to a packet structure (i.e. a struct raw_pkt_cmd,
+ *         struct raw_pkt_bsub, or struct raw_pkt_bsmp).
+ * mtype: Type of packet to initialize in `packet' (RAW_MTYPE_*).
+ * flags: Initial packet->ph.p_flags.
+ */
+void raw_packet_init(void *packet, uint8_t mtype, uint8_t flags);
+
+/* Allocate and initialize a board subsample packet. Free it with free(). */
+struct raw_pkt_bsub* raw_alloc_bsub(size_t nsamp);
+
+/* Type-generic packet copy. */
+void raw_pkt_copy(void *dst, const void *src);
+
+/*********************************************************************
+ * Access conveniences
+ */
+
+/* These assume offsetof(typeof(*pktp), ph) == 0, which we check in
+ * the unit tests */
+#define raw_proto_vers(pktp) (((struct raw_pkt_header*)(pktp))->p_proto_vers)
+#define raw_mtype(pktp)      (((struct raw_pkt_header*)(pktp))->p_mtype)
+#define raw_flags(pktp)      (((struct raw_pkt_header*)(pktp))->p_flags)
+/* Is this an error packet? */
+#define raw_pkt_is_err(pktp) ({                                           \
+    struct raw_pkt_header *__pkt_ph = (struct raw_pkt_header*)pktp; \
+    (raw_flags(__pkt_ph) & RAW_PFLAG_ERR ||                               \
+     raw_mtype(__pkt_ph) == RAW_MTYPE_ERR); })
+
+static inline struct raw_cmd_req* raw_req(struct raw_pkt_cmd *pkt)
+{
+    return &pkt->p.req;
+}
+
+static inline struct raw_cmd_res* raw_res(struct raw_pkt_cmd *pkt)
+{
+    return &pkt->p.res;
+}
+
+static inline uint16_t raw_r_id(const struct raw_pkt_cmd *pkt)
+{
+    return raw_req((struct raw_pkt_cmd*)pkt)->r_id;
+}
+
+static inline uint8_t raw_r_type(const struct raw_pkt_cmd *pkt)
+{
+    return raw_req((struct raw_pkt_cmd*)pkt)->r_type;
+}
+
+static inline uint8_t raw_r_addr(const struct raw_pkt_cmd *pkt)
+{
+    return raw_req((struct raw_pkt_cmd*)pkt)->r_addr;
+}
+
+static inline uint32_t raw_r_val(const struct raw_pkt_cmd *pkt)
+{
+    return raw_req((struct raw_pkt_cmd*)pkt)->r_val;
+}
+
+/* Full uint64_t experiment cookie */
+#define raw_exp_cookie(pktp) ({                                 \
+    __typeof__(pktp) __pktp = pktp;                             \
+    ((uint64_t)__pktp->b_cookie_h << 32) | (uint64_t)__pktp->b_cookie_l; })
+
+/* Number of samples in a board sample (for future-proofing). */
+static inline size_t raw_bsmp_nsamp(__unused const struct raw_pkt_bsmp *bsmp)
+{
+    return _RAW_BSMP_NSAMP;
+}
+
+/* Size of samples array in a board sample. */
+static inline size_t raw_bsmp_sampsize(const struct raw_pkt_bsmp *bsmp)
+{
+    return raw_bsmp_nsamp(bsmp) * sizeof(raw_samp_t);
+}
+
+/* Overall size of a board sample (for future-proofing). */
+static inline size_t raw_bsmp_size(__unused const struct raw_pkt_bsmp *bsmp)
+{
+    return sizeof(struct raw_pkt_bsmp);
+}
+
+/* Number of samples in a board subsample. */
+static inline size_t raw_bsub_nsamp(const struct raw_pkt_bsub *bsub)
+{
+    return bsub->b_nsamp;
+}
+
+/* Size of samples array in a board sample. */
+static inline size_t raw_bsub_sampsize(const struct raw_pkt_bsub *bsub)
+{
+    return raw_bsub_nsamp(bsub) * sizeof(raw_samp_t);
+}
+
+/* Overall size of a board subsample. */
+static inline size_t raw_bsub_size(const struct raw_pkt_bsub *bsub)
+{
+    return sizeof(struct raw_pkt_bsub) + raw_bsub_sampsize(bsub);
+}
+
+/* Type-generic packet size
+ *
+ * pkt: pointer to struct raw_pkt_cmd, raw_pkt_bsub, or
+ *      raw_pkt_bsmp. */
+size_t raw_pkt_size(const void *pkt);
 
 /*********************************************************************
  * Packet send/recv primitives.
@@ -146,143 +294,43 @@ struct raw_packet {
  * These convenience routines handle byte order swapping and some
  * protocol implementation details. They return a positive number on
  * success and -1 on failure, with errno set.
- *
- * Note that due to protocol implementation details, the return values
- * of these functions might differ from what you'd expect out of
- * ordinary send()/recv() and friends.
  */
 
-/* Send a data packet.
+/* Send a command packet.
  *
  * This function modifies `packet'. You should treat the value in
  * `packet->p' as undefined after this call returns.
  *
  * `flags' are as with send(). */
-ssize_t raw_packet_send(int sockfd, struct raw_packet *packet, int flags);
+ssize_t raw_cmd_send(int sockfd, struct raw_pkt_cmd *pkt, int flags);
 
 /* Receive a data packet.
  *
- * `packet->p_type' may be either zero or a valid RAW_PKT_TYPE_*
+ * `packet->p_type' may be either zero or a valid RAW_MTYPE_*
  * value. If nonzero, and the packet read from the socket does not
  * match its type, -1 is returned, with errno set to EIO.
  *
- * Receiving a RAW_PKT_TYPE_BSAMP is a special case. In this case,
- * `packet->p_type' must be set to RAW_PKT_TYPE_BSAMP, and the
- * .bs_nchips and .bs_nlines fields in packet->b.bsamp must be
- * initialized properly.
- *
  * `flags' are as with recv(). */
-ssize_t raw_packet_recv(int sockfd, struct raw_packet *packet, int flags);
+ssize_t raw_cmd_recv(int sockfd, struct raw_pkt_cmd *pkt, int flags);
 
-struct timespec;                /* forward-declare */
-/* Receive multiple data packets.
+/* Like raw_cmd_recv(), but for RAW_MTYPE_BSUB packets.
  *
- * `packets' points to an array of length `plen' struct raw_packet*s,
- * which will be used to construct a call to recvmmsg() on
- * `sockfd'. All of the packets in the array must have the same
- * ->p_type.
- *
- * The `flags' and `timeout' parameters are as with recvmmsg(). The
- * return value is from recvmmsg(). */
-int raw_packet_recvmmsg(int sockfd, struct raw_packet **packets,
-                        unsigned plen, unsigned flags,
-                        struct timespec *timeout);
-
-/*********************************************************************
- * Other packet routines and help
+ * `bsub' must be properly initalized to reflect how many samples you
+ * expect to receive.
  */
+ssize_t raw_bsub_recv(int sockfd, struct raw_pkt_bsub *bsub, int flags);
 
-/* For defining non-board sample packets, to reserve enough space in .p */
-#define RAW_REQ_INIT { .p = { .req = { .r_id = 0 } }}
-#define RAW_RES_INIT { .p = { .res = { .r_id = 0 } }}
-#define RAW_ERR_INIT { .p_type = RAW_PKT_TYPE_ERR, .p_flags = RAW_FLAG_ERR }
+/* Like raw_cmd_recv(), but for RAW_MTYPE_BSMP packets. */
+ssize_t raw_bsmp_recv(int sockfd, struct raw_pkt_bsmp *bsmp, int flags);
 
-/* Initialize a packet. Call this once before sending the packet
- * anywhere. */
-void raw_packet_init(struct raw_packet *packet,
-                     uint8_t type, uint8_t flags);
-
-/* Create a board sample packet.
+/* Like raw_cmd_send(), but for RAW_MTYPE_BSUB packets.
  *
- * Allocates a struct raw_packet of sufficient size to store `nchips *
- * nlines' samples. It initializes its ->p.bsamp.bs_nchips and
- * ->p.bsamp.bs_nlines fields to match nchips and nlines, and its
- * ->p_type field to RAW_PKT_TYPE_BSAMP. It additionally calls
- * raw_packet_init() on the result.
+ * This is mostly for debugging. */
+ssize_t raw_bsub_send(int sockfd, struct raw_pkt_bsub *bsub, int flags);
+
+/* Like raw_cmd_send(), but for RAW_MTYPE_BSMP packets.
  *
- * Returns NULL when out of memory. */
-struct raw_packet* raw_packet_create_bsamp(uint16_t nchips, uint16_t nlines);
-
-/* True iff `packet' signals an error condition. */
-static inline int raw_packet_err(const struct raw_packet *packet)
-{
-    return (packet->p_flags & RAW_FLAG_ERR ||
-            packet->p_type == RAW_PKT_TYPE_ERR);
-}
-
-/* Number of samples in a raw_msg_bsamp. */
-static inline size_t raw_bsamp_nsamps(const struct raw_msg_bsamp *bsamp)
-{
-    return (size_t)bsamp->bs_nchips * (size_t)bsamp->bs_nlines;
-}
-
-/* Number of samples in a packet of type RAW_PKT_TYPE_BSAMP. */
-static inline size_t raw_packet_nsamps(const struct raw_packet *packet)
-{
-    return raw_bsamp_nsamps(&packet->p.bsamp);
-}
-
-/* Size of ->bs_samples in a raw_msg_bsamp. */
-static inline size_t raw_bsamp_sampsize(const struct raw_msg_bsamp *bsamp)
-{
-    return raw_bsamp_nsamps(bsamp) * sizeof(bsamp->bs_samples[0]);
-}
-
-/* Size of ->p.bsamp.bs_samples in a packet of type RAW_PKT_TYPE_BSAMP.  */
-static inline size_t raw_packet_sampsize(const struct raw_packet *packet)
-{
-    return raw_bsamp_sampsize(&packet->p.bsamp);
-}
-
-/* Size of an entire raw packet, in bytes. */
-static inline size_t raw_packet_size(const struct raw_packet *packet)
-{
-    return sizeof(struct raw_packet) + (packet->p_type == RAW_PKT_TYPE_BSAMP ?
-                                        raw_packet_sampsize(packet) : 0);
-}
-
-/* TODO bounds-checking */
-static inline void raw_packet_copy(struct raw_packet *restrict dst,
-                                   const struct raw_packet *restrict src) {
-    memcpy(dst, src, raw_packet_size(src));
-}
-
-/* Request/response ID number */
-static inline uint16_t raw_r_id(const struct raw_packet *packet) {
-    assert(packet->p_type == RAW_PKT_TYPE_REQ ||
-           packet->p_type == RAW_PKT_TYPE_RES);
-    return packet->p.req.r_id;
-}
-
-/* Request/response type */
-static inline uint8_t raw_r_type(const struct raw_packet *packet) {
-    assert(packet->p_type == RAW_PKT_TYPE_REQ ||
-           packet->p_type == RAW_PKT_TYPE_RES);
-    return packet->p.req.r_type;
-}
-
-/* Request/response address */
-static inline uint8_t raw_r_addr(const struct raw_packet *packet) {
-    assert(packet->p_type == RAW_PKT_TYPE_REQ ||
-           packet->p_type == RAW_PKT_TYPE_RES);
-    return packet->p.res.r_addr;
-}
-
-/* Request/response value */
-static inline uint32_t raw_r_val(const struct raw_packet *packet) {
-    assert(packet->p_type == RAW_PKT_TYPE_REQ ||
-           packet->p_type == RAW_PKT_TYPE_RES);
-    return packet->p.res.r_val;
-}
+ * This is mostly for debugging. */
+ssize_t raw_bsmp_send(int sockfd, struct raw_pkt_bsmp *bsmp, int flags);
 
 #endif
