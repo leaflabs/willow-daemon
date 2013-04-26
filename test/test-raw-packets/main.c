@@ -42,40 +42,40 @@
 int sockfd[2];
 
 /* Dummy packets */
-struct raw_pkt_cmd req;
+struct raw_pkt_cmd req1;
 struct raw_pkt_cmd req2;
 struct raw_pkt_cmd err;
 const size_t bs_nsamp = 213;
-struct raw_pkt_bsub *bsub;
+struct raw_pkt_bsub *bsub1;
 struct raw_pkt_bsub *bsub2;
-struct raw_pkt_bsmp bsmp;
+struct raw_pkt_bsmp bsmp1;
 struct raw_pkt_bsmp bsmp2;
 
 static void setup_raw(void)
 {
-    raw_packet_init(&req, RAW_MTYPE_REQ, 0);
+    raw_packet_init(&req1, RAW_MTYPE_REQ, 0);
     raw_packet_init(&req2, RAW_MTYPE_REQ, 0);
     raw_packet_init(&err, RAW_MTYPE_ERR, 0);
-    raw_packet_init(&bsmp, RAW_MTYPE_BSMP, 0);
+    raw_packet_init(&bsmp1, RAW_MTYPE_BSMP, 0);
     raw_packet_init(&bsmp2, RAW_MTYPE_BSMP, 0);
-    bsub = raw_alloc_bsub(bs_nsamp);
+    bsub1 = raw_alloc_bsub(bs_nsamp);
     bsub2 = raw_alloc_bsub(bs_nsamp);
-    if (bsub == 0 || bsub2 == 0 ||
+    if (bsub1 == 0 || bsub2 == 0 ||
         socketpair(AF_UNIX, SOCK_DGRAM, 0, sockfd) != 0) {
         sockfd[0] = -1;
         sockfd[1] = -1;
         return;
     }
     memset(&req2.p, 0xFF, sizeof(struct raw_cmd_req));
-    memset(&bsub->b_samps, 0x00, raw_bsub_sampsize(bsub));
+    memset(&bsub1->b_samps, 0x00, raw_bsub_sampsize(bsub1));
     memset(bsub2, 0xFF, raw_pkt_size(bsub2));
-    memset(&bsmp.b_samps, 0x00, raw_bsmp_sampsize(&bsmp));
+    memset(&bsmp1.b_samps, 0x00, raw_bsmp_sampsize(&bsmp1));
     memset(&bsmp2, 0xFF, raw_pkt_size(&bsmp2));
 }
 
 static void teardown_raw(void)
 {
-    free(bsub);
+    free(bsub1);
     free(bsub2);
     if (sockfd[0] != -1) {
         close(sockfd[0]);
@@ -87,7 +87,7 @@ static void teardown_raw(void)
 
 START_TEST(test_sizes_packing)
 {
-    ck_assert(bsub != 0);
+    ck_assert(bsub1 != 0);
 
     /* Make sure all the command packet structs are the same size. */
     ck_assert_int_eq(sizeof(struct raw_cmd_req), sizeof(struct raw_cmd_res));
@@ -126,7 +126,8 @@ START_TEST(test_sizes_packing)
     ck_assert_int_eq(offsetof(struct raw_pkt_bsub, b_samps), 24);
 
     /* White box: packet headers are always at offset 0 (prevents
-     * careless insertions, and some routines rely on it) */
+     * careless insertions, and some routines rely on it -- we should
+     * be using container_of() instead, but oh well.) */
 
     ck_assert_int_eq(offsetof(struct raw_pkt_cmd, ph),0);
     ck_assert_int_eq(offsetof(struct raw_pkt_bsub, ph), 0);
@@ -135,13 +136,13 @@ START_TEST(test_sizes_packing)
     /* Check that packet sizing works as intended */
 
     ck_assert_int_eq(raw_pkt_size(&err), sizeof(err));
-    if (bsub) {
+    if (bsub1) {
         const size_t bsub_size = (sizeof(struct raw_pkt_bsub) +
                                   bs_nsamp * sizeof(raw_samp_t));
-        ck_assert_int_eq(raw_pkt_size(bsub), bsub_size);
-        ck_assert_int_eq(raw_bsub_size(bsub), bsub_size);
+        ck_assert_int_eq(raw_pkt_size(bsub1), bsub_size);
+        ck_assert_int_eq(raw_bsub_size(bsub1), bsub_size);
     }
-    ck_assert_int_eq(raw_pkt_size(&bsmp),
+    ck_assert_int_eq(raw_pkt_size(&bsmp1),
                      offsetof(struct raw_pkt_bsmp, b_samps) +
                      _RAW_BSMP_NSAMP * sizeof(raw_samp_t));
 }
@@ -149,20 +150,20 @@ END_TEST
 
 START_TEST(test_copy)
 {
-    ck_assert(bsub != 0);
+    ck_assert(bsub1 != 0);
     ck_assert(bsub2 != 0);
 
     /* Copy requests */
-    raw_pkt_copy(&req2, &req);
-    ck_assert_int_eq(memcmp(&req2, &req, raw_pkt_size(&req)), 0);
+    raw_pkt_copy(&req2, &req1);
+    ck_assert_int_eq(memcmp(&req2, &req1, raw_pkt_size(&req1)), 0);
 
     /* Copy board subsamples */
-    raw_pkt_copy(bsub2, bsub);
-    ck_assert_int_eq(memcmp(bsub2, bsub, raw_bsub_size(bsub)), 0);
+    raw_pkt_copy(bsub2, bsub1);
+    ck_assert_int_eq(memcmp(bsub2, bsub1, raw_bsub_size(bsub1)), 0);
 
     /* Copy board samples */
-    raw_pkt_copy(&bsmp2, &bsmp);
-    ck_assert_int_eq(memcmp(&bsmp2, &bsmp, raw_bsmp_size(&bsmp)), 0);
+    raw_pkt_copy(&bsmp2, &bsmp1);
+    ck_assert_int_eq(memcmp(&bsmp2, &bsmp1, raw_bsmp_size(&bsmp1)), 0);
 }
 END_TEST
 
