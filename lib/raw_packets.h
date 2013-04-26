@@ -313,6 +313,11 @@ ssize_t raw_cmd_send(int sockfd, struct raw_pkt_cmd *pkt, int flags);
  * `flags' are as with recv(). */
 ssize_t raw_cmd_recv(int sockfd, struct raw_pkt_cmd *pkt, int flags);
 
+/* Like raw_cmd_send(), but for RAW_MTYPE_BSUB packets.
+ *
+ * This is mostly for debugging. */
+ssize_t raw_bsub_send(int sockfd, struct raw_pkt_bsub *bsub, int flags);
+
 /* Like raw_cmd_recv(), but for RAW_MTYPE_BSUB packets.
  *
  * `bsub' must be properly initalized to reflect how many samples you
@@ -320,17 +325,12 @@ ssize_t raw_cmd_recv(int sockfd, struct raw_pkt_cmd *pkt, int flags);
  */
 ssize_t raw_bsub_recv(int sockfd, struct raw_pkt_bsub *bsub, int flags);
 
-/* Like raw_cmd_recv(), but for RAW_MTYPE_BSMP packets. */
-ssize_t raw_bsmp_recv(int sockfd, struct raw_pkt_bsmp *bsmp, int flags);
-
-/* Like raw_cmd_send(), but for RAW_MTYPE_BSUB packets.
- *
- * This is mostly for debugging. */
-ssize_t raw_bsub_send(int sockfd, struct raw_pkt_bsub *bsub, int flags);
-
 /* Like raw_cmd_send(), but for RAW_MTYPE_BSMP packets.
  *
  * This is mostly for debugging. */
 ssize_t raw_bsmp_send(int sockfd, struct raw_pkt_bsmp *bsmp, int flags);
+
+/* Like raw_cmd_recv(), but for RAW_MTYPE_BSMP packets. */
+ssize_t raw_bsmp_recv(int sockfd, struct raw_pkt_bsmp *bsmp, int flags);
 
 #endif
