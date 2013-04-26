@@ -46,6 +46,7 @@ static const char* program_name;
 #endif
 #define PACKET_DATASET_NAME "ANONYMOUS_DATASET"
 
+#if 0                           /* FIXME port to new raw_packets.h */
 /* Data node configuration */
 struct dnode_config {
   uint32_t n_chip;
@@ -74,6 +75,7 @@ static inline struct raw_msg_res* dnsess_res(struct dnode_session *dnsession)
 {
     return &dnsession->res_pkt->p.res;
 }
+#endif
 
 static void usage(int exit_status)
 {
@@ -138,6 +140,7 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
     }
 }
 
+#if 0                           /* FIXME port to new raw_packets.h */
 static struct ch_storage* alloc_ch_storage(void)
 {
     struct ch_storage *chns;
@@ -470,6 +473,14 @@ static int benchmark_write(struct ch_storage *chns, uint16_t *ch_data,
     /* Success! */
     log_results(len, nbytes, &t_start, &t_finish);
     return 0;
+}
+#endif
+
+/* FIXME remove once above is ported to new raw_packets.h */
+static int daemon_main()
+{
+    log_ERR("need to port to the new raw_packets.h");
+    return EXIT_FAILURE;
 }
 
 int main(int argc, char *argv[])

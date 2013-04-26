@@ -83,6 +83,7 @@ static void parse_args(struct arguments *args, int argc, char *const argv[])
     }
 }
 
+#if 0                           /* FIXME port to new raw_packets.h */
 static int init_and_reply(int sockfd,
                           struct raw_packet *req_pkt,
                           struct raw_packet *res_pkt,
@@ -353,6 +354,14 @@ static int serve_requests(struct arguments *args)
     if (close(cc_sock) == -1) {
         log_ERR("can't close cc_sock: %m");
     }
+    return EXIT_FAILURE;
+}
+#endif
+
+/* FIXME remove when above is ported to new raw_packets.h */
+static int serve_requests(__unused struct arguments *args)
+{
+    log_ERR("need to port to new raw_packets.h");
     return EXIT_FAILURE;
 }
 
