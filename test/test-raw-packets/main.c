@@ -41,41 +41,66 @@
 /* A socket pair to send and receive packets. */
 int sockfd[2];
 
-/* Dummy packets */
-struct raw_pkt_cmd req1;
-struct raw_pkt_cmd req2;
-struct raw_pkt_cmd err;
-const size_t bs_nsamp = 213;
+/* Dummy packets. The copies are because sending mangles the originals. */
+struct raw_pkt_cmd req1_pkt;
+struct raw_pkt_cmd req1copy_pkt;
+struct raw_pkt_cmd req2_pkt;
+struct raw_pkt_cmd *req1 = &req1_pkt;
+struct raw_pkt_cmd *req1copy = &req1copy_pkt;
+struct raw_pkt_cmd *req2 = &req2_pkt;
+struct raw_pkt_cmd err_pkt;
+struct raw_pkt_cmd *err = &err_pkt;
+const size_t bs_nsamp = 17;
 struct raw_pkt_bsub *bsub1;
+struct raw_pkt_bsub *bsub1copy;
 struct raw_pkt_bsub *bsub2;
-struct raw_pkt_bsmp bsmp1;
-struct raw_pkt_bsmp bsmp2;
+struct raw_pkt_bsmp bsmp1_pkt;
+struct raw_pkt_bsmp bsmp1copy_pkt;
+struct raw_pkt_bsmp bsmp2_pkt;
+struct raw_pkt_bsmp *bsmp1 = &bsmp1_pkt;
+struct raw_pkt_bsmp *bsmp1copy = &bsmp1copy_pkt;
+struct raw_pkt_bsmp *bsmp2 = &bsmp2_pkt;
 
 static void setup_raw(void)
 {
-    raw_packet_init(&req1, RAW_MTYPE_REQ, 0);
-    raw_packet_init(&req2, RAW_MTYPE_REQ, 0);
-    raw_packet_init(&err, RAW_MTYPE_ERR, 0);
-    raw_packet_init(&bsmp1, RAW_MTYPE_BSMP, 0);
-    raw_packet_init(&bsmp2, RAW_MTYPE_BSMP, 0);
+    raw_packet_init(req1, RAW_MTYPE_REQ, 0);
+    raw_packet_init(req1copy, RAW_MTYPE_REQ, 0);
+    raw_packet_init(req2, RAW_MTYPE_REQ, 0);
+
+    raw_packet_init(err, RAW_MTYPE_ERR, 0);
+
+    raw_packet_init(bsmp1, RAW_MTYPE_BSMP, 0);
+    raw_packet_init(bsmp1copy, RAW_MTYPE_BSMP, 0);
+    raw_packet_init(bsmp2, RAW_MTYPE_BSMP, 0);
+
     bsub1 = raw_alloc_bsub(bs_nsamp);
+    bsub1copy = raw_alloc_bsub(bs_nsamp);
     bsub2 = raw_alloc_bsub(bs_nsamp);
-    if (bsub1 == 0 || bsub2 == 0 ||
+
+    if (bsub1 == 0 || bsub2 == 0 || bsub1copy == 0 ||
         socketpair(AF_UNIX, SOCK_DGRAM, 0, sockfd) != 0) {
         sockfd[0] = -1;
         sockfd[1] = -1;
         return;
     }
-    memset(&req2.p, 0xFF, sizeof(struct raw_cmd_req));
-    memset(&bsub1->b_samps, 0x00, raw_bsub_sampsize(bsub1));
-    memset(bsub2, 0xFF, raw_pkt_size(bsub2));
-    memset(&bsmp1.b_samps, 0x00, raw_bsmp_sampsize(&bsmp1));
-    memset(&bsmp2, 0xFF, raw_pkt_size(&bsmp2));
+
+    memset(&req1->p, 0xAA, sizeof(struct raw_cmd_req));
+    memset(&req2->p, 0x55, sizeof(struct raw_cmd_req));
+    raw_pkt_copy(req1copy, req1);
+
+    memset(&bsub1->b_samps, 0xAA, raw_bsub_sampsize(bsub1));
+    memset(&bsub2->b_samps, 0x55, raw_bsub_sampsize(bsub2));
+    raw_pkt_copy(bsub1copy, bsub1);
+
+    memset(&bsmp1->b_samps, 0xAA, raw_bsmp_sampsize(bsmp1));
+    memset(&bsmp2->b_samps, 0x55, raw_bsmp_sampsize(bsmp2));
+    raw_pkt_copy(bsmp1copy, bsmp1);
 }
 
 static void teardown_raw(void)
 {
     free(bsub1);
+    free(bsub1copy);
     free(bsub2);
     if (sockfd[0] != -1) {
         close(sockfd[0]);
@@ -134,15 +159,16 @@ START_TEST(test_sizes_packing)
     ck_assert_int_eq(offsetof(struct raw_pkt_bsmp, ph), 0);
 
     /* Check that packet sizing works as intended */
-
-    ck_assert_int_eq(raw_pkt_size(&err), sizeof(err));
+    ck_assert_int_eq(raw_pkt_size(req1), sizeof(*req1));
+    ck_assert_int_eq(raw_pkt_size(req1), sizeof(struct raw_pkt_cmd));
+    ck_assert_int_eq(raw_pkt_size(err), sizeof(*err));
     if (bsub1) {
         const size_t bsub_size = (sizeof(struct raw_pkt_bsub) +
                                   bs_nsamp * sizeof(raw_samp_t));
         ck_assert_int_eq(raw_pkt_size(bsub1), bsub_size);
         ck_assert_int_eq(raw_bsub_size(bsub1), bsub_size);
     }
-    ck_assert_int_eq(raw_pkt_size(&bsmp1),
+    ck_assert_int_eq(raw_pkt_size(bsmp1),
                      offsetof(struct raw_pkt_bsmp, b_samps) +
                      _RAW_BSMP_NSAMP * sizeof(raw_samp_t));
 }
@@ -153,32 +179,92 @@ START_TEST(test_copy)
     ck_assert(bsub1 != 0);
     ck_assert(bsub2 != 0);
 
-    /* Copy requests */
-    raw_pkt_copy(&req2, &req1);
-    ck_assert_int_eq(memcmp(&req2, &req1, raw_pkt_size(&req1)), 0);
-
-    /* Copy board subsamples */
-    raw_pkt_copy(bsub2, bsub1);
-    ck_assert_int_eq(memcmp(bsub2, bsub1, raw_bsub_size(bsub1)), 0);
-
-    /* Copy board samples */
-    raw_pkt_copy(&bsmp2, &bsmp1);
-    ck_assert_int_eq(memcmp(&bsmp2, &bsmp1, raw_bsmp_size(&bsmp1)), 0);
+    ck_assert_int_eq(memcmp(req1copy, req1, raw_pkt_size(req1)), 0);
+    ck_assert_int_eq(memcmp(bsub1copy, bsub1, raw_pkt_size(bsub1)), 0);
+    ck_assert_int_eq(memcmp(bsmp1copy, bsmp1, raw_pkt_size(bsmp1)), 0);
 }
 END_TEST
 
+#define do_roundtrip(dst, src, send_fn, recv_fn) do {           \
+        size_t src_size = raw_pkt_size(src);                    \
+        ssize_t send_status = send_fn(sockfd[0], src, 0);       \
+        ck_assert_int_gt(send_status, 0);                       \
+        ck_assert_int_eq((size_t)send_status, src_size);        \
+        ssize_t recv_status = recv_fn(sockfd[1], dst, 0);       \
+        ck_assert_int_gt(recv_status, 0);                       \
+        ck_assert_int_eq((size_t)recv_status, src_size);        \
+    } while (0)
+
+#include <stdio.h>
 START_TEST(test_roundtrips)
 {
-    /* Round-trip rsend into rrecv through socket pair. */
-    /* TODO */
+    /* Round-trip packets through the socket pair. */
+    do_roundtrip(req2, req1,
+                 raw_cmd_send,
+                 raw_cmd_recv);
+    ck_assert_int_eq(raw_bsub_nsamp(bsub1), raw_bsub_nsamp(bsub2));
+    do_roundtrip(bsub2, bsub1,
+                 raw_bsub_send,
+                 raw_bsub_recv);
+    do_roundtrip(bsmp2, bsmp1,
+                 raw_bsmp_send,
+                 raw_bsmp_recv);
 
-    /* White box: check rsend's multibyte fields got swapped properly. */
-    /* TODO */
+    /* White box: check that multibyte fields are in network byte order. */
+    size_t i;
+    ck_assert_int_eq_h(raw_r_id(req1), htons(raw_r_id(req1copy)));
+    ck_assert_int_eq_h(raw_r_val(req1), htonl(raw_r_val(req1copy)));
+    ck_assert_int_eq_h(bsub1->b_cookie_h, htonl(bsub1copy->b_cookie_h));
+    ck_assert_int_eq_h(bsub1->b_cookie_l, htonl(bsub1copy->b_cookie_l));
+    ck_assert_int_eq_h(bsub1->b_id, htonl(bsub1copy->b_id));
+    ck_assert_int_eq_h(bsub1->b_sidx, htonl(bsub1copy->b_sidx));
+    ck_assert_int_eq_h(bsub1->b_nsamp, htonl(bsub1copy->b_nsamp));
+    for (i = 0; i < raw_bsub_nsamp(bsub1copy); i++) {
+        ck_assert_int_eq_h(bsub1->b_samps[i], htons(bsub1copy->b_samps[i]));
+    }
+    ck_assert_int_eq_h(bsmp1->b_cookie_h, htonl(bsmp1copy->b_cookie_h));
+    ck_assert_int_eq_h(bsmp1->b_cookie_l, htonl(bsmp1copy->b_cookie_l));
+    ck_assert_int_eq_h(bsmp1->b_id, htonl(bsmp1copy->b_id));
+    ck_assert_int_eq_h(bsmp1->b_sidx, htonl(bsmp1copy->b_sidx));
+    for (i = 0; i < raw_bsmp_nsamp(bsmp1copy); i++) {
+        ck_assert_int_eq_h(bsmp1->b_samps[i], htons(bsmp1copy->b_samps[i]));
+    }
 
-    /* Make sure the packet came back correctly by checking against
-     * rsend_copy.  Use hex macros here; any errors are probably from
-     * byte order. */
-    /* TODO */
+    /* Make sure the packets round-tripped correctly. */
+    ck_assert_int_eq(memcmp(&req2->ph, &req1copy->ph,
+                            sizeof(struct raw_pkt_header)),
+                     0);
+    ck_assert_int_eq(memcmp(&bsub2->ph, &bsub1copy->ph,
+                            sizeof(struct raw_pkt_header)),
+                     0);
+    ck_assert_int_eq(memcmp(&bsmp2->ph, &bsmp1copy->ph,
+                            sizeof(struct raw_pkt_header)),
+                     0);
+    struct raw_cmd_req *cmd2 = raw_req(req2), *cmd1copy = raw_req(req1copy);
+    ck_assert_int_eq_h(cmd2->r_id, cmd1copy->r_id);
+    ck_assert_int_eq_h(cmd2->r_type, cmd1copy->r_type);
+    ck_assert_int_eq_h(cmd2->r_addr, cmd1copy->r_addr);
+    ck_assert_int_eq_h(cmd2->r_val, cmd1copy->r_val);
+    ck_assert_int_eq_h(bsub2->b_cookie_h, bsub1copy->b_cookie_h);
+    ck_assert_int_eq_h(bsub2->b_cookie_l, bsub1copy->b_cookie_l);
+    ck_assert_int_eq_h(bsub2->b_id, bsub1copy->b_id);
+    ck_assert_int_eq_h(bsub2->b_sidx, bsub1copy->b_sidx);
+    ck_assert_int_eq_h(bsub2->b_nsamp, bsub1copy->b_nsamp);
+    for (i = 0; i < raw_bsub_nsamp(bsub1copy); i++) {
+        ck_assert_int_eq_h(bsub2->b_samps[i], bsub1copy->b_samps[i]);
+    }
+    ck_assert_int_eq_h(bsmp2->b_cookie_h, bsmp1copy->b_cookie_h);
+    ck_assert_int_eq_h(bsmp2->b_cookie_l, bsmp1copy->b_cookie_l);
+    ck_assert_int_eq_h(bsmp2->b_id, bsmp1copy->b_id);
+    ck_assert_int_eq_h(bsmp2->b_sidx, bsmp1copy->b_sidx);
+    for (i = 0; i< raw_bsmp_nsamp(bsmp1copy); i++) {
+        ck_assert_int_eq_h(bsmp2->b_samps[i], bsmp1copy->b_samps[i]);
+    }
+    /* These memcmp()s are redundant if the above is up to date, but
+     * they're future-proofing against additional fields being added */
+    ck_assert_int_eq(memcmp(req2, req1copy, raw_pkt_size(req1copy)), 0);
+    ck_assert_int_eq(memcmp(bsub2, bsub1copy, raw_pkt_size(bsub1copy)), 0);
+    ck_assert_int_eq(memcmp(bsmp2, bsmp1copy, raw_pkt_size(bsmp1copy)), 0);
 }
 END_TEST
 
