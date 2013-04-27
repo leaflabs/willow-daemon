@@ -24,7 +24,8 @@ build_dir = '#build/' # Scons requires this to live in the source tree :(.
 build_src_dir = toplevel_join(build_dir, src_dir)
 build_lib_dir = toplevel_join(build_dir, lib_dir)
 build_test_dir = toplevel_join(build_dir, test_dir)
-lib_deps = ['hdf5', 'protobuf', 'protobuf-c', 'm'] # External dependencies
+lib_deps = ['hdf5', 'protobuf', 'protobuf-c', # External dependencies
+            'm', 'rt'] # Extra system dependencies
 test_lib_deps = ['check'] # External dependencies for tests
 verbosity_level = int(ARGUMENTS.get('V', 0))
 skip_test_build = str_to_bool(ARGUMENTS.get('SKIP_TESTS', 'n'))
