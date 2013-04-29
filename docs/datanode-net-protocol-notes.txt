@@ -3,6 +3,7 @@ NB:
 - These are notes. They are incomplete and not yet a coherent draft or
   proposal.
 - This file uses terms defined in system-overview.txt.
+- In this file, the unit 'B' means "byte", not to be confused with "bit"
 
 TODO:
 
@@ -103,20 +104,18 @@ The Request ID field is used to associate responses with requests. The request
 ID field SHOULD be an incrementing 16-bit unsigned integer which wraps back to
 zero after 0xFFFF is reached.
 
-
 The Request Type field identifies the data node subsystem to which the request
 pertains. Each of the request types correspond to a specific HDL core that
 comprises the toplevel FPGA firmware. This guarantees that each such module has
 a full byte of address space dedicated to its own registers.
 Valid Request Types are:
 
-- Storage/disk (0x02): e.g. disk sector index, I/O status
-- DAQ (0x03): e.g. reconfiguration of front end, impedance measurement
-- Network (0x04): e.g. source/dest IP address, dest. MAC address
-- Expansion (0x05): e.g. GPIO configuration for expansion header pins
-- Acquisition (0x06): start, stop acquisition, configure board subsample
-- Retrieval (0x07): Read board sample packets off disk.
-- Error (0x08)
+- Error (0x00): bitmask of module error statuses
+- Top Level Module (0x01): top-level system coordination module
+- SATA Module (0x02): e.g. disk sector index, I/O status
+- DAQ Module (0x03): e.g. reconfiguration of front end, impedance measurement
+- UDP Module (0x04): e.g. source/dest IP address, dest. MAC address
+- Expansion Pins (0x05): e.g. GPIO configuration for expansion header pins
 
 The Request Address field identifies a register address. Whether the request is
 for a read or write to the address is determined by the I/O direction flag
@@ -131,16 +130,65 @@ using multiple Requests.
 
 TODO: specify the valid addresses for these Request Types:
 
-### Storage/Disk (0x02)
-### DAQ (0x03)
-### Network (0x04)
-### Expansion (0x05)
-### Acquisition (0x06)
-### Retrieval (0x07)
+### Error (0x00)
 
-### Error (0x08)
+0x00    R/W     Unused (3 B) | Module error flags (1 B)
+
 There is only one error register, 0x00, which must be cleared in order to allow
 additional error packets to be transmitted over the asynchronous error channel.
+Each bit of this register represents a module, with the bit number being the
+module address used in Requests.
+
+### Top Level Module (0x01)
+
+0x00    R/W     Unused (3 B) | Module error flags (1 B)
+0x01    R/W     Unused (3 B) | Top Level Module State (1 B)
+0x02    R/W     Experiment Identifier, top bytes (4 B)
+0x03    R/W     Experiment Identifier, bottom bytes (4 B)
+0x10    R/W     Partial sample channel bitmask, Ch 0 to 31 (4 B)
+0x11    R/W     Partial sample channel bitmask, Ch 32 to 63 (4 B)
+[...]
+0x2F    R/W     Partial sample channel bitmask, Ch 992 to 1023 (4 B)
+
+### SATA Module (0x02)
+
+0x00    R/W     Error/Status (TBD)
+0x01    R/W     Unused (3 B) | SATA Module State (1 B)
+0x02    R/O     Disk Identifier (?)
+0x03    R/W     Disk I/O parameters (eg, speed?)
+0x04    R/W     Next Read Index (4 B)
+0x05    R/W     Read Length (4 B)
+0x06    R/O     Last Write Index (4 B)
+
+### DAQ Module (0x03)
+
+0x00    R/W     Error/Status (TBD)
+0x01    R/W     Unused (3 B) | DAQ Module State (1 B)
+0x02    R/W     Desired Start Board Sample Number (4 B)
+0x03    R/O     Current Board Sample Number (4 B)
+0x04    R/O     Chip alive bitmask (4 B)
+0x05    R/W     CMD Write Enable (1 B) | CMD Chip Address (1 B) | CMD Command (2 B)
+
+### UDP Module (0x04)
+
+0x00    R/W     Error/Status (TBD)
+0x00    R/W     Unused (3 B) | UDP Module State (1 B)
+0x01    R/O     Unused (2 B) | Source MAC-48 Address Top bytes (2 B)
+0x02    R/O     Source MAC-48 Address Bottom bytes (4 B)
+0x03    R/W     Unused (2 B) | Destination MAC-48 Address Top bytes (2 B)
+0x04    R/W     Destination MAC-48 Address Bottom bytes (4 B)
+0x05    R/W     Source IPv4 Address (4 B)
+0x06    R/W     Destination IPv4 Address (4 B)
+0x07    R/W     Unused (2 B) | Source IPv4 Port (2 B)
+0x08    R/W     Unused (2 B) | Destination IPv4 Port (2 B)
+0x09    R/W     More configuration (TBD)
+
+### Expansion Pins (0x05)
+
+0x00    R/W     Error/Status (TBD)
+0x01    N/A     (no state machine for GPIO pins)
+0x02    R/0     Unused (2 B) | Available GPIO mask (2 B)
+0x03    R/W     Unused (2 B) | GPIO state (2 B)
 
 
 ## Response (0x02)
@@ -244,17 +292,16 @@ Flags:
     Experiment Cookie Low (4 B)
     Board ID (4 B)
     Sample Index (4 B)
+    Chip Live Status (4 B)
         [2240 Bs of channel and AUX data follow]
     Channel 00 (2 B) | Channel 01 (2 B)
     Channel 02 (2 B) | Channel 03 (2 B)
     [...]
     Channel 1118 (2 B) | Channel 1119 (2 B)
 
-This totals to 2256 bytes, so a board sample packet is 2284 bytes total.
+This totals to 2260 bytes, so a board sample packet is 2288 bytes total.
 
 NB: The Board Sample has the same binary representation as the "Wrapped Board
 Sample"; see documentation in the FPGA HDL repository (sng-firmware) for the
 exact channel ordering and round-robin scheme.
-
-
 
