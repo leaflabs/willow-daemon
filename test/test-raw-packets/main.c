@@ -147,8 +147,8 @@ START_TEST(test_sizes_packing)
     ck_assert_int_eq(offsetof(struct raw_pkt_bsmp, b_cookie_l), 8);
     ck_assert_int_eq(offsetof(struct raw_pkt_bsmp, b_id), 12);
     ck_assert_int_eq(offsetof(struct raw_pkt_bsmp, b_sidx), 16);
-    ck_assert_int_eq(offsetof(struct raw_pkt_bsub, b_nsamp), 20);
-    ck_assert_int_eq(offsetof(struct raw_pkt_bsub, b_samps), 24);
+    ck_assert_int_eq(offsetof(struct raw_pkt_bsmp, b_chip_live), 20);
+    ck_assert_int_eq(offsetof(struct raw_pkt_bsmp, b_samps), 24);
 
     /* White box: packet headers are always at offset 0 (prevents
      * careless insertions, and some routines rely on it -- we should
@@ -226,6 +226,7 @@ START_TEST(test_roundtrips)
     ck_assert_int_eq_h(bsmp1->b_cookie_l, htonl(bsmp1copy->b_cookie_l));
     ck_assert_int_eq_h(bsmp1->b_id, htonl(bsmp1copy->b_id));
     ck_assert_int_eq_h(bsmp1->b_sidx, htonl(bsmp1copy->b_sidx));
+    ck_assert_int_eq_h(bsmp1->b_chip_live, htonl(bsmp1copy->b_chip_live));
     for (i = 0; i < raw_bsmp_nsamp(bsmp1copy); i++) {
         ck_assert_int_eq_h(bsmp1->b_samps[i], htons(bsmp1copy->b_samps[i]));
     }
@@ -257,6 +258,7 @@ START_TEST(test_roundtrips)
     ck_assert_int_eq_h(bsmp2->b_cookie_l, bsmp1copy->b_cookie_l);
     ck_assert_int_eq_h(bsmp2->b_id, bsmp1copy->b_id);
     ck_assert_int_eq_h(bsmp2->b_sidx, bsmp1copy->b_sidx);
+    ck_assert_int_eq_h(bsmp2->b_chip_live, bsmp1copy->b_chip_live);
     for (i = 0; i< raw_bsmp_nsamp(bsmp1copy); i++) {
         ck_assert_int_eq_h(bsmp2->b_samps[i], bsmp1copy->b_samps[i]);
     }

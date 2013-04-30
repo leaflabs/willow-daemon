@@ -175,6 +175,7 @@ static void raw_bsmp_hton(struct raw_pkt_bsmp *bsmp)
     bsmp->b_cookie_l = htonl(bsmp->b_cookie_l);
     bsmp->b_id = htonl(bsmp->b_id);
     bsmp->b_sidx = htonl(bsmp->b_sidx);
+    bsmp->b_chip_live = htonl(bsmp->b_chip_live);
     for (size_t i = 0; i < raw_bsmp_nsamp(bsmp); i++) {
         bsmp->b_samps[i] = raw_samp_hton(bsmp->b_samps[i]);
     }
@@ -187,6 +188,7 @@ static void raw_bsmp_ntoh(struct raw_pkt_bsmp *bsmp)
     bsmp->b_cookie_l = ntohl(bsmp->b_cookie_l);
     bsmp->b_id = ntohl(bsmp->b_id);
     bsmp->b_sidx = ntohl(bsmp->b_sidx);
+    bsmp->b_chip_live = ntohl(bsmp->b_chip_live);
     for (size_t i = 0; i < raw_bsmp_nsamp(bsmp); i++) {
         bsmp->b_samps[i] = raw_samp_ntoh(bsmp->b_samps[i]);
     }

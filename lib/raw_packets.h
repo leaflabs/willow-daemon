@@ -74,13 +74,13 @@ struct raw_cmd_req { _RAW_C_REQ_RES };
 struct raw_cmd_res { _RAW_C_REQ_RES };
 #undef _RAW_C_REQ_RES
 
-#define RAW_RTYPE_STOR 0x02     /* Storage/disk */
-#define RAW_RTYPE_DAQ  0x03     /* DAQ */
-#define RAW_RTYPE_NET  0x04     /* Network */
-#define RAW_RTYPE_EXP  0x05     /* Expansion */
-#define RAW_RTYPE_ACQ  0x06     /* Acquisition */
-#define RAW_RTYPE_RET  0x07     /* Retrieval */
-#define RAW_RTYPE_ERR  0x08     /* Error */
+/* Request types */
+#define RAW_RTYPE_ERR  0x00     /* Error */
+#define RAW_RTYPE_TOP  0x01     /* Top-level module */
+#define RAW_RTYPE_SATA 0x02     /* SATA storage */
+#define RAW_RTYPE_DAQ  0x03     /* DAQ: e.g. front-end config, impedance */
+#define RAW_RTYPE_UDP  0x04     /* UDP module config */
+#define RAW_RTYPE_EXP  0x05     /* GPIO config for expansion pins */
 
 /* I/O direction flag */
 #define RAW_PFLAG_RIOD   (0x1)
@@ -91,30 +91,51 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
  * Per-r_type Registers
  */
 
-/* RAW_RTYPE_STOR */ /* TODO */
+/* RAW_RTYPE_ERR */
+#define RAW_RADDR_ERR_ERR0 0x00 /* global error register 0 (r/w) */
+
+/* RAW_RTYPE_TOP */
+#define RAW_RADDR_TOP_ERR         0x00 /* Module error flags */
+#define RAW_RADDR_TOP_STATE       0x01 /* Module state */
+#define RAW_RADDR_TOP_EXP_ID_H    0x02 /* Experiment ID, high word */
+#define RAW_RADDR_TOP_EXP_ID_L    0x03 /* Experiment ID, low word */
+#define RAW_RADDR_TOP_BSUB_CH_MIN 0x10 /* Subsample bitmask, ch.   0-  31 */
+#define RAW_RADDR_TOP_BSUB_CH_MAX 0x2F /*               ..., ch. 992-1023 */
+
+/* RAW_RTYPE_SATA */
+#define RAW_RADDR_SATA_ERR      0x00 /* Module error flags */
+#define RAW_RADDR_SATA_STATE    0x01 /* Module state */
+#define RAW_RADDR_SATA_DISK_ID  0x02 /* Disk identifier (TBD) */
+#define RAW_RADDR_SATA_IO_PARAM 0x03 /* Disk I/O parameters (TBD) */
+#define RAW_RADDR_SATA_R_IDX    0x04 /* Next read index */
+#define RAW_RADDR_SATA_R_LEN    0x05 /* Read length */
+#define RAW_RADDR_SATA_W_IDX    0x06 /* Last write index */
 
 /* RAW_RTYPE_DAQ */
-#define RAW_RADDR_DAQ_CMD 0x00
+#define RAW_RADDR_DAQ_ERR        0x00 /* Module error flags */
+#define RAW_RADDR_DAQ_STATE      0x01 /* Module state */
+#define RAW_RADDR_DAQ_BSMP_START 0x02 /* Desired board sample index */
+#define RAW_RADDR_DAQ_BSMP_CURR  0x03 /* Current board sample index */
+#define RAW_RADDR_DAQ_CHIP_ALIVE 0x04 /* Chip alive bitmask */
+#define RAW_RADDR_DAQ_CHIP_CMD   0x05 /* CMD config */
 
-/* RAW_RTYPE_NET */  /* TODO real ones */
-#define RAW_RADDR_NET_IPV4_DT_FROM 0x00 /* data "from" IPv4 addr. (r/w) */
-#define RAW_RADDR_NET_IPV4_DT_TO   0x01 /* data "to" IPv4 addr. (r/w) */
-#define RAW_RADDR_NET_DT_SRC_MAC   0x02 /* data source MAC addr. (r-o) */
-#define RAW_RADDR_NET_DT_DST_MAC_H 0x03 /* data dest MAC addr., high (r/w) */
-#define RAW_RADDR_NET_DT_DST_MAC_L 0x04 /* data dest MAC addr., low (r/w) */
+/* RAW_RTYPE_UDP */
+#define RAW_RADDR_UDP_ERR          0x00 /* Module error flags */
+#define RAW_RADDR_UDP_STATE        0x01 /* Module state */
+#define RAW_RADDR_UDP_SRC_MAC_H    0x02 /* Source MAC-48 address, high word */
+#define RAW_RADDR_UDP_SRC_MAC_L    0x03 /* Source MAC-48 address, low word  */
+#define RAW_RADDR_UDP_DST_MAC_H    0x04 /* Destination MAC-48, high word */
+#define RAW_RADDR_UDP_DST_MAC_L    0x05 /* Destination MAC-48, low word */
+#define RAW_RADDR_UDP_SRC_IP4      0x06 /* Source IPv4 address */
+#define RAW_RADDR_UDP_DST_IP4      0x07 /* Destination IPv4 address */
+#define RAW_RADDR_UDP_SRC_IP4_PORT 0x08 /* Source IPv4 port */
+#define RAW_RADDR_UDP_DST_IP4_PORT 0x09 /* Destination IPv4 port */
 
-/* RAW_RTYPE_EXP */  /* TODO real ones */
-
-/* RAW_RTYPE_ACQ */  /* TODO real ones */
-#define RAW_RADDR_ACQ_COOKIE_H     0x00 /* experiment cookie, high (r/w) */
-#define RAW_RADDR_ACQ_COOKIE_L     0x01 /* experiment cookie, low (r/w) */
-
-/* RAW_RTYPE_RET */  /* TODO real ones */
-#define RAW_RADDR_RET_BSMP_START   0x00 /* start board sample (r/w) */
-#define RAW_RADDR_RET_BSMP_NSMAMP  0x01 /* number of board samples (r/w) */
-
-/* RAW_RTYPE_ERR */
-#define RAW_RADDR_ERR              0x00 /* global error register (r/w) */
+/* RAW_RTYPE_EXP */
+#define RAW_RTYPE_EXP_ERR        0x00 /* Module error flags */
+/* (No state machine for GPIO) */
+#define RAW_RTYPE_EXP_GPIOS      0x02 /* Available GPIO bitmask */
+#define RAW_RTYPE_EXP_GPIO_STATE 0x03 /* GPIO state */
 
 /*
  * Error packet (RAW_MTYPE_ERR) data
@@ -174,6 +195,7 @@ struct raw_pkt_bsmp {
     uint32_t b_cookie_l;        /* experiment cookie low word */
     uint32_t b_id;              /* board id */
     uint32_t b_sidx;            /* sample index */
+    uint32_t b_chip_live;       /* chip live status */
     raw_samp_t b_samps[_RAW_BSMP_NSAMP]; /* samples */
 };
 
