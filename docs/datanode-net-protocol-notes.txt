@@ -143,8 +143,8 @@ module address used in Requests.
 
 0x00    R/W     Unused (3 B) | Module error flags (1 B)
 0x01    R/W     Unused (3 B) | Top Level Module State (1 B)
-0x02    R/W     Experiment Identifier, top bytes (4 B)
-0x03    R/W     Experiment Identifier, bottom bytes (4 B)
+0x02    R/W     Experiment cookie, top bytes (4 B)
+0x03    R/W     Experiment cookie, bottom bytes (4 B)
 0x10    R/W     Partial sample channel bitmask, Ch 0 to 31 (4 B)
 0x11    R/W     Partial sample channel bitmask, Ch 32 to 63 (4 B)
 [...]
