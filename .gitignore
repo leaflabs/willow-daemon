@@ -1,7 +1,6 @@
 build/
 *~
 *.swp
-.dir-locals.el
 tags
 TAGS
 cscope.*
