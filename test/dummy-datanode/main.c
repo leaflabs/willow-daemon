@@ -5,6 +5,7 @@
  */
 
 #include <assert.h>
+#include <errno.h>
 #include <getopt.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -33,6 +34,106 @@ struct arguments {
 };
 
 static const char* program_name;
+
+/*
+ * Dummy registers
+ */
+
+typedef uint32_t reg_t;
+/* Register map: indexes are RAW_RTYPE_*, values are pointers to that
+ * module's registers */
+typedef reg_t** reg_map_t;
+
+/* Get a pointer to a module's registers.
+ *
+ * r_type: module's request type (RAW_RTYPE_*)
+ *
+ * The returned register map is indexed by the RAW_RADDR_* values for
+ * that r_type. */
+static inline reg_t* reg_map_get(reg_map_t reg_map, size_t r_type)
+{
+    return reg_map[r_type];
+}
+
+/* Allocate a register map. */
+static reg_map_t reg_map_alloc(void)
+{
+    reg_t *err_reg_map = malloc(RAW_RADDR_ERR_NREGS * sizeof(reg_t));
+    if (!err_reg_map) { goto noerr; }
+    reg_t *top_reg_map = malloc(RAW_RADDR_TOP_NREGS * sizeof(reg_t));
+    if (!top_reg_map) { goto notop; }
+    reg_t *sata_reg_map = malloc(RAW_RADDR_SATA_NREGS * sizeof(reg_t));
+    if (!sata_reg_map) { goto nosata; }
+    reg_t *daq_reg_map = malloc(RAW_RADDR_DAQ_NREGS * sizeof(reg_t));
+    if (!daq_reg_map) { goto nodaq; }
+    reg_t *udp_reg_map = malloc(RAW_RADDR_UDP_NREGS * sizeof(reg_t));
+    if (!udp_reg_map) { goto noudp; }
+    reg_t *exp_reg_map = malloc(RAW_RADDR_EXP_NREGS * sizeof(reg_t));
+    if (!exp_reg_map) { goto noexp; }
+
+    reg_map_t ret = malloc(RAW_RTYPE_NTYPES * sizeof(reg_t*));
+    if (!ret) { goto nomap; }
+    ret[RAW_RTYPE_ERR] = err_reg_map;
+    ret[RAW_RTYPE_TOP] = top_reg_map;
+    ret[RAW_RTYPE_SATA] = sata_reg_map;
+    ret[RAW_RTYPE_DAQ] = daq_reg_map;
+    ret[RAW_RTYPE_UDP] = udp_reg_map;
+    ret[RAW_RTYPE_EXP] = exp_reg_map;
+    return ret;
+
+ nomap:
+    free(exp_reg_map);
+ noexp:
+    free(udp_reg_map);
+ noudp:
+    free(daq_reg_map);
+ nodaq:
+    free(sata_reg_map);
+ nosata:
+    free(top_reg_map);
+ notop:
+    free(err_reg_map);
+ noerr:
+    return 0;
+}
+
+/* Free a previously-allocated register map. */
+static void reg_map_free(reg_map_t reg_map)
+{
+    free(reg_map_get(reg_map, RAW_RTYPE_ERR));
+    free(reg_map_get(reg_map, RAW_RTYPE_TOP));
+    free(reg_map_get(reg_map, RAW_RTYPE_SATA));
+    free(reg_map_get(reg_map, RAW_RTYPE_DAQ));
+    free(reg_map_get(reg_map, RAW_RTYPE_UDP));
+    free(reg_map_get(reg_map, RAW_RTYPE_EXP));
+    free(reg_map);
+}
+
+/*
+ * struct daemon_session: encapsulates state needed for dealing with a
+ * connected daemon
+ */
+
+struct daemon_session {
+    int cc_sock;                /* listening command socket */
+    int cc_comm_sock;           /* = accept(cc_sock, ....) */
+    int dt_sock;                /* data socket */
+    struct raw_pkt_cmd *req;
+    struct raw_pkt_cmd *res;
+    reg_map_t regs;
+};
+
+/* Convenience routines for struct daemon_session */
+
+static inline struct raw_cmd_req* daemon_req(struct daemon_session *d_session)
+{
+    return raw_req(d_session->req);
+}
+
+static inline struct raw_cmd_req* daemon_res(struct daemon_session *d_session)
+{
+    return raw_req(d_session->res);
+}
 
 static void parse_args(struct arguments *args, int argc, char *const argv[])
 {
@@ -83,286 +184,263 @@ static void parse_args(struct arguments *args, int argc, char *const argv[])
     }
 }
 
-#if 0                           /* FIXME port to new raw_packets.h */
-static int init_and_reply(int sockfd,
-                          struct raw_packet *req_pkt,
-                          struct raw_packet *res_pkt,
-                          uint8_t flags,
-                          uint32_t value)
+/*
+ * Request/response processing
+ */
+
+static int send_response(int sockfd, struct raw_pkt_cmd *res)
 {
-    raw_packet_init(res_pkt, RAW_PKT_TYPE_RES, flags);
-    memcpy(&res_pkt->p.res, &req_pkt->p.req, sizeof(struct raw_msg_res));
-    res_pkt->p.res.r_val = value;
-    int ret = raw_packet_send(sockfd, res_pkt, 0);
+    assert(raw_mtype(res) == RAW_MTYPE_RES);
+    int ret = raw_cmd_send(sockfd, res, MSG_NOSIGNAL);
     if (ret == -1) {
-        log_ERR("error sending reply: %m");
+        log_WARNING("can't send response: %m");
     }
     return ret;
 }
 
-static inline int reply(int sockfd,
-                        struct raw_packet *req_pkt,
-                        struct raw_packet *res_pkt,
-                        uint32_t value)
+static int serve_unsupported(struct daemon_session *dsess)
 {
-    return init_and_reply(sockfd, req_pkt, res_pkt, 0, value);
+    log_WARNING("unsupported request: "
+                "r_id %u, r_type %u, r_addr %u, r_val %u.",
+                raw_r_id(dsess->req), raw_r_type(dsess->req),
+                raw_r_addr(dsess->req), raw_r_val(dsess->req));
+    raw_packet_init(dsess->res, RAW_MTYPE_RES, RAW_PFLAG_ERR);
+    struct raw_cmd_res *res_cmd = raw_res(dsess->res);
+    struct raw_cmd_req *req_cmd = raw_req(dsess->req);
+    res_cmd->r_id = req_cmd->r_id;
+    res_cmd->r_addr = req_cmd->r_addr;
+    res_cmd->r_val = 0;
+    return send_response(dsess->cc_comm_sock, dsess->res);
 }
 
-static inline int reply_unsupp(int sockfd,
-                               struct raw_packet *req_pkt,
-                               struct raw_packet *res_pkt)
+static int serve_err(struct daemon_session *dsess)
 {
-    return init_and_reply(sockfd, req_pkt, res_pkt, RAW_FLAG_ERR, 0);
+    return serve_unsupported(dsess);
 }
 
-#define NCHIPS 32
-#define NLINES 35
-
-static int serve_sys_query(int sockfd,
-                           struct raw_packet *req_pkt,
-                           struct raw_packet *res_pkt)
+static int serve_top(struct daemon_session *dsess)
 {
-    assert(req_pkt->p_type == RAW_PKT_TYPE_REQ);
-    assert(req_pkt->p.req.r_type == RAW_RTYPE_SYS_QUERY);
-    int ret = 0;
-    switch (req_pkt->p.req.r_addr) {
-    case RAW_RADDR_SYS_NCHIPS:
-        log_INFO("request %u: SYS_NCHIPS, reply: %u",
-                 raw_r_id(req_pkt), NCHIPS);
-        if (reply(sockfd, req_pkt, res_pkt, NCHIPS) == -1) { ret = -1; }
-        break;
-    case RAW_RADDR_SYS_NLINES:
-        log_INFO("request %u: SYS_NLINES, reply: %u",
-                 raw_r_id(req_pkt), NLINES);
-        if (reply(sockfd, req_pkt, res_pkt, NLINES) == -1) { ret = -1; }
-        break;
-    default:
-        log_INFO("unsupported sys query %u", req_pkt->p.req.r_addr);
-        if (reply_unsupp(sockfd, req_pkt, res_pkt) == -1) { ret = -1; }
-        break;
+    return serve_unsupported(dsess);
+}
+
+static int serve_sata(struct daemon_session *dsess)
+{
+    return serve_unsupported(dsess);
+}
+
+static int serve_daq(struct daemon_session *dsess)
+{
+    return serve_unsupported(dsess);
+}
+
+static int serve_udp(struct daemon_session *dsess)
+{
+    return serve_unsupported(dsess);
+}
+
+static int serve_exp(struct daemon_session *dsess)
+{
+    return serve_unsupported(dsess);
+}
+
+typedef int (*serve_fn)(struct daemon_session*);
+
+/* Close dsess->cc_comm_sock if it's not -1, and then set it to -1. */
+static int close_comm_sock(struct daemon_session *dsess)
+{
+    if (dsess->cc_comm_sock != -1 && close(dsess->cc_comm_sock) == -1) {
+        log_ERR("close(dsess->cc_comm_sock): %m");
+        return -1;
     }
-    return ret;
-}
-
-struct acquire_status {
-    int acquiring;
-};
-
-static int serve_acq(int sockfd,
-                     struct raw_packet *req_pkt,
-                     struct raw_packet *res_pkt,
-                     struct acquire_status *status)
-{
-    assert(req_pkt->p_type == RAW_PKT_TYPE_REQ);
-    uint8_t flags = 0;
-    switch (req_pkt->p.req.r_type) {
-    case RAW_RTYPE_ACQ_START:
-        log_INFO("request %u: ACQ_START", raw_r_id(req_pkt));
-        if (status->acquiring) {
-            log_WARNING("already acquiring!");
-        }
-        status->acquiring = 1;
-        break;
-    case RAW_RTYPE_ACQ_STOP:
-        log_INFO("request %u: ACQ_STOP", raw_r_id(req_pkt));
-        if (!status->acquiring) {
-            log_WARNING("not acquiring!");
-        }
-        status->acquiring = 0;
-        break;
-    default:
-        log_WARNING("request %u: unexpected r_type %u",
-                    raw_r_id(req_pkt), raw_r_type(req_pkt));
-        flags |= RAW_FLAG_ERR;
-        break;
-    }
-    return init_and_reply(sockfd, req_pkt, res_pkt, flags, 0);
-}
-
-static int init_fakesamps(struct raw_packet **fakesamps, size_t nsamps)
-{
-    for (size_t i = 0; i < nsamps; i++) {
-        fakesamps[i] = raw_packet_create_bsamp(NCHIPS, NLINES);
-        if (fakesamps[i] == NULL) {
-            return -1;
-        }
-        struct raw_msg_bsamp *bsamp = &fakesamps[i]->p.bsamp;
-        bsamp->bs_idx = i;
-        for (size_t s = 0; s < raw_bsamp_nsamps(bsamp); s++) {
-            bsamp->bs_samples[s] = (uint16_t)s;
-        }
-    }
+    dsess->cc_comm_sock = -1;
     return 0;
 }
 
-/* Serve up some board samples. For now, refuses to do so if
- * acquisition is ongoing. */
-#define NFAKESAMPS 15
-static int serve_samp(int res_sockfd,
-                      int samp_sockfd,
-                      struct raw_packet *req_pkt,
-                      struct raw_packet *res_pkt,
-                      struct acquire_status *status) {
-    static struct raw_packet *fakesamps[NFAKESAMPS] = {NULL};
-    static struct raw_packet *send_bsamp = NULL; /* copy for sending */
-
-    if (fakesamps[0] == NULL) {
-        if (init_fakesamps(fakesamps, NFAKESAMPS) == -1 ||
-            init_fakesamps(&send_bsamp, 1) == -1) {
-            log_ERR("can't initialize fake samples; aborting");
-            exit(EXIT_FAILURE);
-        }
-        fakesamps[NFAKESAMPS - 1]->p_flags |= RAW_FLAG_BSAMP_IS_LAST;
-    }
-
-    assert(req_pkt->p_type == RAW_PKT_TYPE_REQ);
-    assert(raw_r_type(req_pkt) == RAW_RTYPE_SAMP_READ);
-
-    uint8_t nsamps = raw_r_addr(req_pkt);
-    uint32_t start_samp = raw_r_val(req_pkt);
-
-    log_INFO("request %u: SAMP_READ, start sample %u, nsamples %u",
-             raw_r_id(req_pkt), start_samp, nsamps);
-
-    /* Error checking and bounds clamping. */
-    if (status->acquiring || nsamps == 0) {
-        log_INFO("not acquiring or zero samples requested; bailing");
-        init_and_reply(res_sockfd, req_pkt, res_pkt, RAW_FLAG_ERR, 0);
+/* Call close_comm_sock(dsess), then accept() a new one. */
+static int reopen_comm_sock(struct daemon_session *dsess)
+{
+    if (close_comm_sock(dsess) == -1) {
         return -1;
     }
-    if (start_samp > NFAKESAMPS - 1) {
-        log_INFO("start sample %u exceeds total; bailing", start_samp);
-        init_and_reply(res_sockfd, req_pkt, res_pkt, RAW_FLAG_BSAMP_ESIZE, 0);
-        return -1;
-    }
-    if (nsamps + start_samp > NFAKESAMPS) {
-        nsamps = NFAKESAMPS - start_samp;
-        log_INFO("clamped number of samples to %u", nsamps);
-    }
-
-    /* Everything looks legit; let's ship the packets. Errors
-     * simulated as determined by chaos.h API. */
-    init_and_reply(res_sockfd, req_pkt, res_pkt, 0, 0);
-    int ret = 0;
-    for (uint8_t s = 0; s < nsamps; s++) {
-        /* Simulate packet loss. */
-        if (chaos_bs_drop_p()) {
-            log_INFO("chaos: dropping board sample %u/%u", s, nsamps);
-            continue;
-        }
-        /* No simulated packet loss; actually try to ship it. */
-        while (1) {
-            uint32_t samp_idx = start_samp + (uint32_t)s;
-            raw_packet_copy(send_bsamp, fakesamps[samp_idx]);
-            if (raw_packet_send(samp_sockfd, send_bsamp, 0) == -1) {
-                /* That's a real network error. */
-                log_INFO("actually failed to send packet %u/%u", s, nsamps);
-                ret = -1;
-            }
-            /* Simulate packet duplication. */
-            if (chaos_bs_dup_p()) {
-                log_INFO("chaos: sending sample %u/%u again", s, nsamps);
-                continue;
-            } else {
-                break;
-            }
-        }
-    }
-    return ret;
+    dsess->cc_comm_sock = accept(dsess->cc_sock, NULL, NULL);
+    return 0;
 }
 
 /* Create a command/control socket and serve requests from it for as
  * long as possible. Returns an exit status if an unrecoverable error
  * occurs. */
-static int serve_requests(struct arguments *args)
+static int serve_requests(struct daemon_session *dsess)
 {
-    int cc_sock = sockutil_get_tcp_passive(args->cport);
-    if (cc_sock == -1) {
-        log_ERR("can't make cc_sock: %m");
-        return EXIT_FAILURE;
-    }
-    int sockfd = accept(cc_sock, NULL, 0);
-    if (sockfd == -1) {
-        log_ERR("can't accept() on cc_sock: %m");
+    log_INFO("waiting for daemon");
+    if (reopen_comm_sock(dsess) == -1) {
+        log_ERR("can't accept() daemon connection: %m");
         goto bail;
     }
-    int bsamp_sockfd = sockutil_get_udp_connected_p(args->host, args->dport);
-
-    struct raw_packet req_pkt = RAW_REQ_INIT;
-    struct raw_packet res_pkt = RAW_RES_INIT;
-
-    struct acquire_status acq_status = {
-        .acquiring = 0,
-    };
-
+    log_INFO("serving requests");
     while (1) {
         /* Get the request. */
-        raw_packet_init(&req_pkt, RAW_PKT_TYPE_REQ, 0);
-        int recv_val = raw_packet_recv(sockfd, &req_pkt, 0);
-        if (recv_val == -1) {
-            log_ERR("can't receive request: %m");
+        raw_packet_init(dsess->req, RAW_MTYPE_REQ, 0);
+        int rstatus = raw_cmd_recv(dsess->cc_comm_sock, dsess->req,
+                                   MSG_NOSIGNAL);
+        if (rstatus == 0 || (rstatus == -1 && errno == EPIPE)) {
+            /* TODO use this as a reset or sync-type signal, and be smarter. */
+            log_INFO("lost daemon connection; waiting for re-connect");
+            if (reopen_comm_sock(dsess) == -1) {
+                log_ERR("can't accept() daemon connection: %m");
+                goto bail;
+            }
+            continue;
+        }
+        if (rstatus == -1) {
+            log_INFO("raw_cmd_recv(): %m; bailing");
             goto bail;
         }
-        if (recv_val == 0) {
-            log_INFO("remote shutdown detected");
-            assert(close(sockfd) == 0);
-            sockfd = accept(cc_sock, NULL, 0);
-            if (sockfd == -1) {
-                log_ERR("can't accept(): %m");
-                goto bail;
-            }
-            continue;
-        }
-        if (req_pkt.p_flags & RAW_FLAG_ERR) {
-            log_INFO("received request with error flag set; ignoring it");
-            continue;
-        }
-        /* Respond to it if we can. */
-        switch (req_pkt.p.req.r_type) {
-        case RAW_RTYPE_SYS_QUERY:
-            if (serve_sys_query(sockfd, &req_pkt, &res_pkt) == -1) {
-                goto bail;
-            }
+        /* TODO protocol version checking */
+        /* Well-behaved daemons don't send us error packets. */
+        assert(!raw_pkt_is_err(dsess->req));
+        /* Respond to the request. */
+        serve_fn serve = 0;
+        switch (raw_r_type(dsess->req)) {
+        case RAW_RTYPE_ERR:
+            serve = serve_err;
             break;
-        case RAW_RTYPE_ACQ_START: /* fall through */
-        case RAW_RTYPE_ACQ_STOP:
-            if (serve_acq(sockfd, &req_pkt, &res_pkt, &acq_status) == -1) {
-                goto bail;
-            }
+        case RAW_RTYPE_TOP:
+            serve = serve_top;
             break;
-        case RAW_RTYPE_SAMP_READ:
-            if (serve_samp(sockfd, bsamp_sockfd, &req_pkt, &res_pkt,
-                           &acq_status) == -1) {
-                log_INFO("failed to serve samples");
-            }
+        case RAW_RTYPE_SATA:
+            serve = serve_sata;
             break;
-        case RAW_RTYPE_SYS_CFG:    /* fall through (TODO) */
-        case RAW_RTYPE_CHIP_CFG:   /* fall through (TODO) */
-        case RAW_RTYPE_CHIP_QUERY: /* fall through (TODO) */
+        case RAW_RTYPE_DAQ:
+            serve = serve_daq;
+            break;
+        case RAW_RTYPE_UDP:
+            serve = serve_udp;
+            break;
+        case RAW_RTYPE_EXP:
+            serve = serve_exp;
+            break;
         default:
-            if (reply_unsupp(sockfd, &req_pkt, &res_pkt) == -1) {
-                goto bail;
-            }
-            break;
+            log_WARNING("ignoring unexpected r_type %u",
+                        raw_r_type(dsess->req));
+            continue;
+        }
+        int serve_status = serve(dsess);
+        if (serve_status == -1) {
+            log_ERR("bailing"); /* TODO be smarter */
+            goto bail;
         }
     }
 
  bail:
-    if (sockfd != -1 && close(sockfd) == -1) {
+    if (dsess->cc_comm_sock != -1 && close(dsess->cc_comm_sock) == -1) {
         log_ERR("can't close socket connected to remote: %m");
-    }
-    if (close(cc_sock) == -1) {
-        log_ERR("can't close cc_sock: %m");
     }
     return EXIT_FAILURE;
 }
-#endif
 
-/* FIXME remove when above is ported to new raw_packets.h */
-static int serve_requests(__unused struct arguments *args)
+/* For debugging, use an obvious default register value; real value is
+ * "undefined" */
+#define REG_DEFAULT 0xdeadbeef
+static void init_default_reg_vals(reg_map_t reg_map)
 {
-    log_ERR("need to port to new raw_packets.h");
-    return EXIT_FAILURE;
+    for (size_t rtype = 0; rtype < RAW_RTYPE_NTYPES; rtype++) {
+        ssize_t nregs;
+        switch (rtype) {
+        case RAW_RTYPE_ERR:
+            nregs = RAW_RADDR_ERR_NREGS;
+            break;
+        case RAW_RTYPE_TOP:
+            nregs = RAW_RADDR_TOP_NREGS;
+            break;
+        case RAW_RTYPE_SATA:
+            nregs = RAW_RADDR_SATA_NREGS;
+            break;
+        case RAW_RTYPE_DAQ:
+            nregs = RAW_RADDR_DAQ_NREGS;
+            break;
+        case RAW_RTYPE_UDP:
+            nregs = RAW_RADDR_UDP_NREGS;
+            break;
+        case RAW_RTYPE_EXP:
+            nregs = RAW_RADDR_EXP_NREGS;
+            break;
+        default:
+            log_WARNING("unknown request type %zu added; you should add "
+                        "dummy-datanode support for it", rtype);
+            nregs = -1;
+            break;
+        }
+        if (nregs < 0) {
+            continue;
+        }
+        reg_t *mod_regs = reg_map_get(reg_map, rtype);
+        for (size_t reg = 0; reg < (size_t)nregs; reg++) {
+            mod_regs[reg] = REG_DEFAULT;
+        }
+    }
+}
+
+static int dummy_datanode_start(struct arguments *args)
+{
+    int ret = EXIT_FAILURE;
+
+    /*
+     * Initialize daemon session
+     */
+
+    /* Sockets */
+    int cc_sock = sockutil_get_tcp_passive(args->cport);
+    if (cc_sock == -1) {
+        log_ERR("can't make cc_sockfd: %m");
+        goto nocc;
+    }
+    int dt_sock = sockutil_get_udp_connected_p(args->host, args->dport);
+    if (dt_sock == -1) {
+        log_ERR("can't make dt_sockfd: %m");
+        goto nodt;
+    }
+    /* Registers */
+    reg_map_t reg_map = reg_map_alloc();
+    if (!reg_map) {
+        goto noregs;
+    }
+    init_default_reg_vals(reg_map);
+    /* Packets */
+    struct raw_pkt_cmd req_pkt;
+    raw_packet_init(&req_pkt, RAW_MTYPE_REQ, 0);
+    struct raw_pkt_cmd res_pkt;
+    raw_packet_init(&res_pkt, RAW_MTYPE_RES, 0);
+
+    struct daemon_session dsess = {
+        .cc_sock = cc_sock,
+        .cc_comm_sock = -1,     /* will be dealt with later */
+        .dt_sock = dt_sock,
+        .req = &req_pkt,
+        .res = &res_pkt,
+        .regs = reg_map,
+    };
+
+    /*
+     * Serve requests forever, or until a Terrible Event.
+     */
+    ret = serve_requests(&dsess);
+
+    /*
+     * Bail.
+     */
+    reg_map_free(reg_map);
+ noregs:
+    if (close(dt_sock) == -1) {
+        log_ERR("close(dt_sock): %m");
+        ret = EXIT_FAILURE;
+    }
+ nodt:
+    if (close(cc_sock) == -1) {
+        log_ERR("close(cc_sock): %m");
+        ret = EXIT_FAILURE;
+    }
+ nocc:
+    return ret;
 }
 
 int main(int argc, char *argv[])
@@ -387,7 +465,7 @@ int main(int argc, char *argv[])
              args.host, args.cport, args.dport,
              args.chaos ? "enabled" : "disabled");
     chaos_init(args.chaos);
-    int ret = serve_requests(&args);
+    int ret = dummy_datanode_start(&args);
     logging_fini();
     exit(ret);
 }
