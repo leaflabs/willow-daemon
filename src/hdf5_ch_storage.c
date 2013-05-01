@@ -12,6 +12,7 @@
 
 #include "logging.h"
 #include "type_attrs.h"
+#include "ch_storage.h"
 
 #define IS_LITTLE_ENDIAN (1 == *(unsigned char *)&(const int){1})
 #define HOST_H5_ORDER (IS_LITTLE_ENDIAN ? H5T_ORDER_LE : H5T_ORDER_BE)

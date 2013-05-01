@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include "type_attrs.h"
+#include "ch_storage.h"
 
 struct raw_cs_data {
     int fd;

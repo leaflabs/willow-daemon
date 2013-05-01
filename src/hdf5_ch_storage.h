@@ -9,9 +9,7 @@
 #ifndef _SRC_HDF5_CHANNEL_STORAGE_H_
 #define _SRC_HDF5_CHANNEL_STORAGE_H_
 
-#include <stddef.h>
-
-#include "ch_storage.h"
+struct ch_storage;
 
 /* Create new channel storage object; returns NULL on error. */
 struct ch_storage *hdf5_ch_storage_alloc(const char *out_file_path,

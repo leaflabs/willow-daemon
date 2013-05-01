@@ -21,6 +21,8 @@
 #include "sockutil.h"
 #include "type_attrs.h"
 #include "raw_packets.h"
+
+#include "ch_storage.h"
 #include "hdf5_ch_storage.h"
 #include "raw_ch_storage.h"
 
