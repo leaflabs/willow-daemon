@@ -89,14 +89,16 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_PFLAG_RIOD_R (1U << 0)
 
 /*
- * Per-r_type Registers
+ * Per-r_type registers and values
  */
 
 /* RAW_RTYPE_ERR */
+
 #define RAW_RADDR_ERR_ERR0 0x00 /* global error register 0 (r/w) */
 #define RAW_RADDR_ERR_NREGS (RAW_RADDR_ERR_ERR0 + 1)
 
 /* RAW_RTYPE_TOP */
+
 #define RAW_RADDR_TOP_ERR         0x00 /* Module error flags */
 #define RAW_RADDR_TOP_STATE       0x01 /* Module state */
 #define RAW_RADDR_TOP_EXP_ID_H    0x02 /* Experiment ID, high word */
@@ -106,6 +108,7 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_TOP_NREGS (RAW_RADDR_TOP_BSUB_CH_MAX + 1)
 
 /* RAW_RTYPE_SATA */
+
 #define RAW_RADDR_SATA_ERR      0x00 /* Module error flags */
 #define RAW_RADDR_SATA_STATE    0x01 /* Module state */
 #define RAW_RADDR_SATA_DISK_ID  0x02 /* Disk identifier (TBD) */
@@ -116,6 +119,7 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_SATA_NREGS (RAW_RADDR_SATA_W_IDX + 1)
 
 /* RAW_RTYPE_DAQ */
+
 #define RAW_RADDR_DAQ_ERR        0x00 /* Module error flags */
 #define RAW_RADDR_DAQ_STATE      0x01 /* Module state */
 #define RAW_RADDR_DAQ_BSMP_START 0x02 /* Desired board sample index */
@@ -125,6 +129,7 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_DAQ_NREGS (RAW_RADDR_DAQ_CHIP_CMD + 1)
 
 /* RAW_RTYPE_UDP */
+
 #define RAW_RADDR_UDP_ERR          0x00 /* Module error flags */
 #define RAW_RADDR_UDP_STATE        0x01 /* Module state */
 #define RAW_RADDR_UDP_SRC_MAC_H    0x02 /* Source MAC-48 address, high word */
@@ -138,6 +143,7 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_UDP_NREGS (RAW_RADDR_UDP_DST_IP4_PORT + 1)
 
 /* RAW_RTYPE_EXP */
+
 #define RAW_RADDR_EXP_ERR        0x00 /* Module error flags */
 /* (No state machine for GPIO) */
 #define RAW_RADDR_EXP_GPIOS      0x02 /* Available GPIO bitmask */
