@@ -233,11 +233,11 @@ void raw_pkt_copy(void *dst, const void *src);
  * the unit tests */
 #define raw_proto_vers(pktp) (((struct raw_pkt_header*)(pktp))->p_proto_vers)
 #define raw_mtype(pktp)      (((struct raw_pkt_header*)(pktp))->p_mtype)
-#define raw_flags(pktp)      (((struct raw_pkt_header*)(pktp))->p_flags)
+#define raw_pflags(pktp)     (((struct raw_pkt_header*)(pktp))->p_flags)
 /* Is this an error packet? */
-#define raw_pkt_is_err(pktp) ({                                           \
+#define raw_pkt_is_err(pktp) ({                                     \
     struct raw_pkt_header *__pkt_ph = (struct raw_pkt_header*)pktp; \
-    (raw_flags(__pkt_ph) & RAW_PFLAG_ERR ||                               \
+    (raw_pflags(__pkt_ph) & RAW_PFLAG_ERR ||                        \
      raw_mtype(__pkt_ph) == RAW_MTYPE_ERR); })
 
 static inline struct raw_cmd_req* raw_req(struct raw_pkt_cmd *pkt)
