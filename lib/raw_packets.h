@@ -132,10 +132,10 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_UDP_DST_IP4_PORT 0x09 /* Destination IPv4 port */
 
 /* RAW_RTYPE_EXP */
-#define RAW_RTYPE_EXP_ERR        0x00 /* Module error flags */
+#define RAW_RADDR_EXP_ERR        0x00 /* Module error flags */
 /* (No state machine for GPIO) */
-#define RAW_RTYPE_EXP_GPIOS      0x02 /* Available GPIO bitmask */
-#define RAW_RTYPE_EXP_GPIO_STATE 0x03 /* GPIO state */
+#define RAW_RADDR_EXP_GPIOS      0x02 /* Available GPIO bitmask */
+#define RAW_RADDR_EXP_GPIO_STATE 0x03 /* GPIO state */
 
 /*
  * Error packet (RAW_MTYPE_ERR) data
