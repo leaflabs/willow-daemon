@@ -11,8 +11,8 @@ To begin acqusition (no live stream):
 2. Write STOP to UDP module state register (redundant?)
 3. Read DAQ chip ready register and confirm that the desired chips are "alive"
 4. Write READY_WRITE to SATA module state register
-5. Configure top word of experiment identifier
-6. Configure bottom word of experiment identifier
+5. Configure top word of experiment cookie
+6. Configure bottom word of experiment cookie
 7. Write desired starting board sample index to DAQ board sample index register
 8. Write BEGIN_ACQ to top level state register
 
