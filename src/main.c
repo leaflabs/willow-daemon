@@ -33,7 +33,7 @@ static const char* program_name;
  * data port. */
 #define DNODE_HOST "127.0.0.1"
 #define DNODE_CC_PORT 8880
-#define PACKET_DATA_PORT 8881
+#define DNODE_DT_PORT 8881
 
 /* Whether to store data into HDF5 (==1) or just do raw write() (==0;
  * for benchmarking). */
@@ -41,43 +41,23 @@ static const char* program_name;
 
 /* Local file to start storing in. This gets truncated each time you
  * run the daemon. */
+#define DNODE_DATA_DIR "/tmp"
 #if DO_HDF5_STORAGE
-#define PACKET_DATA_FILE "/media/sngtest-xfs/packet_data.h5"
+#define DNODE_DATA_FILE DNODE_DATA_DIR "/dnode_data.h5"
 #else
-#define PACKET_DATA_FILE "/media/sngtest-xfs/packet_data.raw"
+#define DNODE_DATA_FILE DNODE_DATA_DIR "/dnode_data.raw"
 #endif
-#define PACKET_DATASET_NAME "ANONYMOUS_DATASET"
-
-#if 0                           /* FIXME port to new raw_packets.h */
-/* Data node configuration */
-struct dnode_config {
-  uint32_t n_chip;
-  uint32_t n_chan_p_chip;
-};
+#define DNODE_DATASET_NAME "ANONYMOUS_DATASET"
 
 /* Encapsulates state needed for dealing with a connected data node */
 struct dnode_session {
-    struct dnode_config dcfg;
     int cc_sock;
     int dt_sock;
-    struct raw_packet *req_pkt;
-    struct raw_packet *res_pkt;
+    struct raw_pkt_cmd *req;
+    struct raw_pkt_cmd *res;
     struct ch_storage *chns;
     const struct timespec *pkt_recv_timeout;
 };
-
-/* Convenience routines for struct dnode_session */
-
-static inline struct raw_msg_req* dnsess_req(struct dnode_session *dnsession)
-{
-    return &dnsession->req_pkt->p.req;
-}
-
-static inline struct raw_msg_res* dnsess_res(struct dnode_session *dnsession)
-{
-    return &dnsession->res_pkt->p.res;
-}
-#endif
 
 static void usage(int exit_status)
 {
@@ -142,14 +122,13 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
     }
 }
 
-#if 0                           /* FIXME port to new raw_packets.h */
 static struct ch_storage* alloc_ch_storage(void)
 {
     struct ch_storage *chns;
     if (DO_HDF5_STORAGE) {
-        chns = hdf5_ch_storage_alloc(PACKET_DATA_FILE, PACKET_DATASET_NAME);
+        chns = hdf5_ch_storage_alloc(DNODE_DATA_FILE, DNODE_DATASET_NAME);
     } else {
-        chns = raw_ch_storage_alloc(PACKET_DATA_FILE,
+        chns = raw_ch_storage_alloc(DNODE_DATA_FILE,
                                     O_CREAT | O_RDWR | O_TRUNC, 0644);
     }
     return chns;
@@ -168,10 +147,11 @@ static int open_dnode_sockets(struct dnode_session *dnsession)
 {
     dnsession->cc_sock = sockutil_get_tcp_connected_p(DNODE_HOST,
                                                       DNODE_CC_PORT);
-    dnsession->dt_sock = sockutil_get_udp_socket(PACKET_DATA_PORT);
+    dnsession->dt_sock = sockutil_get_udp_socket(DNODE_DT_PORT);
     return (dnsession->cc_sock == -1 || dnsession->dt_sock == -1) ? -1 : 0;
 }
 
+#if 0                           /* FIXME port to new raw_packets.h */
 /* Do a request, wait for response, write response .r_val to valptr if
  * it's not NULL.  Assumes dnsess_req(dnsession) is valid already.
  *
@@ -211,50 +191,6 @@ static int do_req_res(int sockfd,
  out:
     dnsess_req(dnsession)->r_id = req_id + 1;
     return ret;
-}
-
-static int read_dnode_config(struct dnode_session *dnsession)
-{
-    struct raw_msg_req *req = dnsess_req(dnsession);
-    int ccfd = dnsession->cc_sock;
-
-    log_INFO("reading number of FPGA chips");
-    req->r_type = RAW_RTYPE_SYS_QUERY;
-    req->r_addr = RAW_RADDR_SYS_NCHIPS;
-    if (do_req_res(ccfd, dnsession, &dnsession->dcfg.n_chip) == -1) {
-      return -1;
-    }
-
-    log_INFO("reading number of channels per chip");
-    req->r_type = RAW_RTYPE_SYS_QUERY;
-    req->r_addr = RAW_RADDR_SYS_NLINES;
-    if (do_req_res(ccfd, dnsession, &dnsession->dcfg.n_chan_p_chip) == -1) {
-      return -1;
-    }
-
-    log_INFO("client reports data dimensions %ux%u",
-             dnsession->dcfg.n_chip, dnsession->dcfg.n_chan_p_chip);
-    return 0;
-}
-
-/* Dummy version of a session recording routine. Just starts/stops;
- * for now, we're assuming that the remote is the dummy datanode. */
-static int do_recording_session(struct dnode_session *dnsession)
-{
-    struct raw_msg_req *req = dnsess_req(dnsession);
-
-    log_INFO("starting acquisition");
-    req->r_type = RAW_RTYPE_ACQ_START;
-    if (do_req_res(dnsession->cc_sock, dnsession, NULL) == -1) {
-        return -1;
-    }
-
-    log_INFO("stopping acquisition");
-    req->r_type = RAW_RTYPE_ACQ_STOP;
-    if (do_req_res(dnsession->cc_sock, dnsession, NULL) == -1) {
-        return -1;
-    }
-    return 0;
 }
 
 static int read_packet_timeout(struct dnode_session *dnsession,
@@ -364,76 +300,6 @@ static int copy_all_packets(struct dnode_session *dnsession)
     return ret;
 }
 
-static int daemon_main(void)
-{
-    int ret = EXIT_FAILURE;
-    struct raw_packet request_packet = RAW_REQ_INIT;
-    struct raw_packet response_packet = RAW_RES_INIT;
-    const struct timespec timeout = {
-        .tv_sec = 0,
-        .tv_nsec = 100 * 1000 * 1000, /* 100 msec */
-    };
-    struct dnode_session dn_session = {
-        .dcfg = { .n_chip = 0,
-                  .n_chan_p_chip = 0 },
-        .cc_sock = -1,
-        .dt_sock = -1,
-        .req_pkt = &request_packet,
-        .res_pkt = &response_packet,
-        .chns = NULL,
-        .pkt_recv_timeout = &timeout,
-    };
-    int cs_is_open = 0;
-
-    /* Set up channel storage */
-    dn_session.chns = alloc_ch_storage();
-    if (!dn_session.chns) {
-        log_ERR("can't allocate channel storage object");
-        goto bail;
-    }
-    cs_is_open = ch_storage_open(dn_session.chns) != -1;
-    if (!cs_is_open) {
-        log_ERR("can't open channel storage: %m");
-        goto bail;
-    }
-    /* Open connection to data node and read data node configuration. */
-    if (open_dnode_sockets(&dn_session) == -1) {
-        log_ERR("can't connect to data node at %s port %d: %m",
-                DNODE_HOST, DNODE_CC_PORT);
-        goto bail;
-    }
-    if (read_dnode_config(&dn_session) == -1) {
-        log_ERR("can't read data node configuration");
-        goto bail;
-    }
-
-    /* Do recording session. */
-    if (do_recording_session(&dn_session) == -1) {
-        goto bail;
-    }
-
-    /* Copy remote's packets to file */
-    ret = copy_all_packets(&dn_session);
-
- bail:
-    if (ret == EXIT_FAILURE) {
-        log_ERR("exiting due to error");
-    }
-    if (dn_session.dt_sock != -1 && close(dn_session.dt_sock) != 0) {
-        log_ERR("unable to close data socket: %m");
-    }
-    if (dn_session.cc_sock != -1 && close(dn_session.cc_sock) != 0) {
-        log_ERR("unable to close command/control socket: %m");
-    }
-    if (dn_session.chns) {
-        if (cs_is_open && ch_storage_close(dn_session.chns) == -1) {
-            log_ERR("unable to close channel storage: %m");
-        }
-        free_ch_storage(dn_session.chns);
-    }
-    return ret;
-}
-
 static void log_results(size_t len, size_t nbytes,
                         struct timeval *t_start,
                         struct timeval *t_finish)
@@ -478,11 +344,86 @@ static int benchmark_write(struct ch_storage *chns, uint16_t *ch_data,
 }
 #endif
 
-/* FIXME remove once above is ported to new raw_packets.h */
-static int daemon_main()
+/* FIXME put back on top
+ * Dummy version of a session recording routine. Just starts/stops;
+ * for now, we're assuming that the remote is the dummy datanode. */
+static int do_recording_session(__unused struct dnode_session *dnsession)
 {
-    log_ERR("need to port to the new raw_packets.h");
-    return EXIT_FAILURE;
+    log_WARNING("you need to write %s", __func__);
+    return 0;
+}
+
+static int copy_all_packets(__unused struct dnode_session *dnsession)
+{
+    log_WARNING("you need to write %s", __func__);
+    return 0;
+}
+
+static int daemon_main(void)
+{
+    int ret = EXIT_FAILURE;
+    struct raw_pkt_cmd request_packet;
+    raw_packet_init(&request_packet, RAW_MTYPE_REQ, 0);
+    raw_req(&request_packet)->r_id = 0;
+    struct raw_pkt_cmd response_packet;
+    raw_packet_init(&response_packet, RAW_MTYPE_RES, 0);
+    const struct timespec timeout = {
+        .tv_sec = 0,
+        .tv_nsec = 100 * 1000 * 1000, /* 100 msec */
+    };
+    struct dnode_session dn_session = {
+        .cc_sock = -1,
+        .dt_sock = -1,
+        .req = &request_packet,
+        .res = &response_packet,
+        .chns = NULL,
+        .pkt_recv_timeout = &timeout,
+    };
+    int cs_is_open = 0;
+
+    /* Set up channel storage */
+    dn_session.chns = alloc_ch_storage();
+    if (!dn_session.chns) {
+        log_ERR("can't allocate channel storage object");
+        goto bail;
+    }
+    cs_is_open = ch_storage_open(dn_session.chns) != -1;
+    if (!cs_is_open) {
+        log_ERR("can't open channel storage: %m");
+        goto bail;
+    }
+    /* Open connection to data node. */
+    if (open_dnode_sockets(&dn_session) == -1) {
+        log_ERR("can't connect to data node at %s port %d: %m",
+                DNODE_HOST, DNODE_CC_PORT);
+        goto bail;
+    }
+
+    /* Do recording session. */
+    if (do_recording_session(&dn_session) == -1) {
+        goto bail;
+    }
+
+    /* Copy remote's packets to file */
+    ret = copy_all_packets(&dn_session);
+
+ bail:
+    if (ret == EXIT_FAILURE) {
+        log_ERR("exiting due to error");
+    }
+    if (dn_session.dt_sock != -1 && close(dn_session.dt_sock) != 0) {
+        log_ERR("unable to close data socket: %m");
+    }
+    if (dn_session.cc_sock != -1 && close(dn_session.cc_sock) != 0) {
+        log_ERR("unable to close command/control socket: %m");
+    }
+    if (dn_session.chns) {
+        if (cs_is_open && ch_storage_close(dn_session.chns) == -1) {
+            log_ERR("unable to close channel storage: %m");
+        }
+        free_ch_storage(dn_session.chns);
+    }
+    return ret;
 }
 
 int main(int argc, char *argv[])
