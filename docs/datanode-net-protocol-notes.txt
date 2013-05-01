@@ -130,6 +130,20 @@ using multiple Requests.
 
 TODO: specify the valid addresses for these Request Types:
 
+NB: the "state" registers are integers, one per state. bnewbold says:
+
+    They will be integers, filling the entire register. I'll be doing something
+    roughly equivalent to:
+
+    enum states {
+       STATE_POWERON,
+       STATE_INIT0,
+       STATE_BEGIN_READ,
+       STATE_STOP,
+       STATE_WAIT,
+       STATE_WHATEVER
+    }
+
 ### Error (0x00)
 
 0x00    R/W     Unused (3 B) | Module error flags (1 B)
