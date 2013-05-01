@@ -9,6 +9,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
+#include "logging.h"
+
 #define PACKET_HEADER_MAGIC      0x5A
 #define PACKET_HEADER_PROTO_VERS 0x00
 
@@ -200,14 +202,35 @@ ssize_t raw_cmd_send(int sockfd, struct raw_pkt_cmd *pkt, int flags)
         errno = EINVAL;
         return -1;
     }
-    return send(sockfd, pkt, sizeof(struct raw_pkt_cmd), flags);
+    size_t len = sizeof(struct raw_pkt_cmd);
+    ssize_t ret = send(sockfd, pkt, len, flags);
+    if (ret == -1) {
+        return ret;
+    } else if ((size_t)ret < len) {
+        /* We want raw_cmd_send() to work atomically on raw_pkt_cmds,
+         * but we didn't send enough data. Eventually, we'll do
+         * something smarter, but just fail for now. */
+        /* TODO be smarter */
+        log_WARNING("not enough data sent (%zd/%zu B)", ret, len);
+        errno = EIO;
+        return -1;
+    }
+    return ret;
 }
 
 ssize_t raw_cmd_recv(int sockfd, struct raw_pkt_cmd *pkt, int flags)
 {
     uint8_t expected_mtype = raw_mtype(pkt);
-    int ret = recv(sockfd, pkt, sizeof(struct raw_pkt_cmd), flags);
-    if (ret == -1) {
+    size_t len = sizeof(struct raw_pkt_cmd);
+    ssize_t ret = recv(sockfd, pkt, len, flags);
+    if (ret <= 0) {
+        return ret;
+    } else if ((size_t)ret < len) {
+        /* See comment in raw_cmd_send(). */
+        /* TODO be smarter */
+        log_WARNING("%s: not enough data received (%zd/%zu B)",
+                    __func__, ret, len);
+        errno = EIO;
         return -1;
     }
     raw_cmd_ntoh(pkt);
