@@ -107,6 +107,12 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_TOP_BSUB_CH_MAX 0x2F /*               ..., ch. 992-1023 */
 #define RAW_RADDR_TOP_NREGS (RAW_RADDR_TOP_BSUB_CH_MAX + 1)
 
+enum raw_top_state {            /* FIXME use real values */
+    RAW_TOP_STOP,
+    RAW_TOP_BEGIN_ACQ,
+    RAW_TOP_BEGIN_READ,
+};
+
 /* RAW_RTYPE_SATA */
 
 #define RAW_RADDR_SATA_ERR      0x00 /* Module error flags */
@@ -117,6 +123,11 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_SATA_R_LEN    0x05 /* Read length */
 #define RAW_RADDR_SATA_W_IDX    0x06 /* Last write index */
 #define RAW_RADDR_SATA_NREGS (RAW_RADDR_SATA_W_IDX + 1)
+
+enum raw_sata_state {           /* FIXME use real values */
+    RAW_SATA_STOP,
+    RAW_SATA_READY_WRITE,
+};
 
 /* RAW_RTYPE_DAQ */
 
@@ -141,6 +152,11 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_UDP_SRC_IP4_PORT 0x08 /* Source IPv4 port */
 #define RAW_RADDR_UDP_DST_IP4_PORT 0x09 /* Destination IPv4 port */
 #define RAW_RADDR_UDP_NREGS (RAW_RADDR_UDP_DST_IP4_PORT + 1)
+
+enum raw_udp_state {            /* FIXME use real values */
+    RAW_UDP_STOP,
+    RAW_UDP_READY_PARTIAL,
+};
 
 /* RAW_RTYPE_EXP */
 
