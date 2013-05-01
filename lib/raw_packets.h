@@ -81,6 +81,7 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RTYPE_DAQ  0x03     /* DAQ: e.g. front-end config, impedance */
 #define RAW_RTYPE_UDP  0x04     /* UDP module config */
 #define RAW_RTYPE_EXP  0x05     /* GPIO config for expansion pins */
+#define RAW_RTYPE_NTYPES (RAW_RTYPE_EXP + 1)
 
 /* I/O direction flag */
 #define RAW_PFLAG_RIOD   (0x1)
@@ -93,6 +94,7 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 
 /* RAW_RTYPE_ERR */
 #define RAW_RADDR_ERR_ERR0 0x00 /* global error register 0 (r/w) */
+#define RAW_RADDR_ERR_NREGS (RAW_RADDR_ERR_ERR0 + 1)
 
 /* RAW_RTYPE_TOP */
 #define RAW_RADDR_TOP_ERR         0x00 /* Module error flags */
@@ -101,6 +103,7 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_TOP_EXP_ID_L    0x03 /* Experiment ID, low word */
 #define RAW_RADDR_TOP_BSUB_CH_MIN 0x10 /* Subsample bitmask, ch.   0-  31 */
 #define RAW_RADDR_TOP_BSUB_CH_MAX 0x2F /*               ..., ch. 992-1023 */
+#define RAW_RADDR_TOP_NREGS (RAW_RADDR_TOP_BSUB_CH_MAX + 1)
 
 /* RAW_RTYPE_SATA */
 #define RAW_RADDR_SATA_ERR      0x00 /* Module error flags */
@@ -110,6 +113,7 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_SATA_R_IDX    0x04 /* Next read index */
 #define RAW_RADDR_SATA_R_LEN    0x05 /* Read length */
 #define RAW_RADDR_SATA_W_IDX    0x06 /* Last write index */
+#define RAW_RADDR_SATA_NREGS (RAW_RADDR_SATA_W_IDX + 1)
 
 /* RAW_RTYPE_DAQ */
 #define RAW_RADDR_DAQ_ERR        0x00 /* Module error flags */
@@ -118,6 +122,7 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_DAQ_BSMP_CURR  0x03 /* Current board sample index */
 #define RAW_RADDR_DAQ_CHIP_ALIVE 0x04 /* Chip alive bitmask */
 #define RAW_RADDR_DAQ_CHIP_CMD   0x05 /* CMD config */
+#define RAW_RADDR_DAQ_NREGS (RAW_RADDR_DAQ_CHIP_CMD + 1)
 
 /* RAW_RTYPE_UDP */
 #define RAW_RADDR_UDP_ERR          0x00 /* Module error flags */
@@ -130,12 +135,14 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_UDP_DST_IP4      0x07 /* Destination IPv4 address */
 #define RAW_RADDR_UDP_SRC_IP4_PORT 0x08 /* Source IPv4 port */
 #define RAW_RADDR_UDP_DST_IP4_PORT 0x09 /* Destination IPv4 port */
+#define RAW_RADDR_UDP_NREGS (RAW_RADDR_UDP_DST_IP4_PORT + 1)
 
 /* RAW_RTYPE_EXP */
 #define RAW_RADDR_EXP_ERR        0x00 /* Module error flags */
 /* (No state machine for GPIO) */
 #define RAW_RADDR_EXP_GPIOS      0x02 /* Available GPIO bitmask */
 #define RAW_RADDR_EXP_GPIO_STATE 0x03 /* GPIO state */
+#define RAW_RADDR_EXP_NREGS (RAW_RADDR_EXP_GPIO_STATE + 1)
 
 /*
  * Error packet (RAW_MTYPE_ERR) data
