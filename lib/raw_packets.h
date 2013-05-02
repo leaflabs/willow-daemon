@@ -101,8 +101,8 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 
 #define RAW_RADDR_TOP_ERR         0x00 /* Module error flags */
 #define RAW_RADDR_TOP_STATE       0x01 /* Module state */
-#define RAW_RADDR_TOP_EXP_ID_H    0x02 /* Experiment ID, high word */
-#define RAW_RADDR_TOP_EXP_ID_L    0x03 /* Experiment ID, low word */
+#define RAW_RADDR_TOP_EXP_CK_H    0x02 /* Experiment cookie, high word */
+#define RAW_RADDR_TOP_EXP_CK_L    0x03 /* Experiment cookie, low word */
 #define RAW_RADDR_TOP_BSUB_CH_MIN 0x10 /* Subsample bitmask, ch.   0-  31 */
 #define RAW_RADDR_TOP_BSUB_CH_MAX 0x2F /*               ..., ch. 992-1023 */
 #define RAW_RADDR_TOP_NREGS (RAW_RADDR_TOP_BSUB_CH_MAX + 1)
