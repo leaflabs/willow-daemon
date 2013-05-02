@@ -192,20 +192,18 @@ static void parse_args(struct arguments *args, int argc, char *const argv[])
  * TODO add read permissions checks as necessary
  */
 
-#define STRLEN_RAW_RTYPE_ 10
-#define STRLEN_RAW_RADDR_ 10
+#define STRLEN_RAW_RADDR_ 10    /* strlen("RAW_ADDR_") */
 #define DEBUG_LOG_RCMD_IOD(mtype, ph)                           \
     (mtype == RAW_MTYPE_REQ ?                                   \
         (((ph)->p_flags & RAW_PFLAG_RIOD) == RAW_PFLAG_RIOD_R ? \
          "(r)" : "(w)") :                                       \
      "   ")
 #define DEBUG_LOG_RCMD(mtype, rcmd, ph)                                 \
-    log_DEBUG("%s %u: pflags 0x%x %s, mod=%s, reg=%s, val=%u (0x%x)",   \
+    log_DEBUG("%s %u: pflags 0x%x %s, reg=%s, val=%u (0x%x)",           \
               mtype == RAW_MTYPE_REQ ? "req" : "res",                   \
               (rcmd)->r_id,                                             \
               (ph)->p_flags,                                            \
               DEBUG_LOG_RCMD_IOD(mtype, ph),                            \
-              raw_r_type_str((rcmd)->r_type) + STRLEN_RAW_RTYPE_,       \
               raw_r_addr_str((rcmd)->r_type,                            \
                              (rcmd)->r_addr) + STRLEN_RAW_RADDR_,       \
               (rcmd)->r_val,                                            \
