@@ -26,6 +26,8 @@
       .dport = 8881,                            \
       .host = "127.0.0.1" }
 
+#define REG_DEFAULT 0xdeadbeef  /* poison value for dummy register init */
+
 struct arguments {
     const char *host;  /* Remote hostname to talk to */
     uint16_t cport;    /* Remote TCP port for command/control */
@@ -186,6 +188,8 @@ static void parse_args(struct arguments *args, int argc, char *const argv[])
 
 /*
  * Request/response processing
+ *
+ * TODO add read permissions checks as necessary
  */
 
 static int send_response(int sockfd, struct raw_pkt_cmd *res)
@@ -198,53 +202,121 @@ static int send_response(int sockfd, struct raw_pkt_cmd *res)
     return ret;
 }
 
-static int serve_unsupported(struct daemon_session *dsess)
+static int serve_request_error(struct daemon_session *dsess)
 {
-    log_DEBUG("unsupported request: "
-              "r_id %u, r_type %u, r_addr %u, r_val %u.",
-              raw_r_id(dsess->req), raw_r_type(dsess->req),
-              raw_r_addr(dsess->req), raw_r_val(dsess->req));
-    raw_packet_init(dsess->res, RAW_MTYPE_RES, RAW_PFLAG_ERR);
-    struct raw_cmd_res *res_cmd = raw_res(dsess->res);
-    struct raw_cmd_req *req_cmd = raw_req(dsess->req);
+    struct raw_pkt_cmd *req = dsess->req;
+    struct raw_pkt_cmd *res = dsess->res;
+    log_WARNING("unsupported or erroneous request: "
+                "r_id %u, r_type %u, r_addr %u, r_val %u.",
+                raw_r_id(req), raw_r_type(req),
+                raw_r_addr(req), raw_r_val(req));
+    raw_packet_init(res, RAW_MTYPE_RES, RAW_PFLAG_ERR);
+    struct raw_cmd_res *res_cmd = raw_res(res);
+    struct raw_cmd_req *req_cmd = raw_req(req);
     res_cmd->r_id = req_cmd->r_id;
     res_cmd->r_addr = req_cmd->r_addr;
-    res_cmd->r_val = 0;
+    res_cmd->r_val = REG_DEFAULT;
     return send_response(dsess->cc_comm_sock, dsess->res);
 }
 
-static int serve_err(struct daemon_session *dsess)
+static int serve_reg_read(struct daemon_session *dsess)
 {
-    log_ERR("received unexpected error packet; replying with error");
-    return serve_unsupported(dsess);
+    struct raw_cmd_req *req_cmd = raw_req(dsess->req);
+    struct raw_cmd_res *res_cmd = raw_res(dsess->res);
+    reg_t *regs = reg_map_get(dsess->regs, req_cmd->r_type);
+    uint32_t reg_val = regs[req_cmd->r_addr];
+    res_cmd->r_id = req_cmd->r_id;
+    res_cmd->r_type = req_cmd->r_type;
+    res_cmd->r_addr = req_cmd->r_addr;
+    res_cmd->r_val = reg_val;
+    return send_response(dsess->cc_comm_sock, dsess->res);
 }
 
-static int serve_top(struct daemon_session *dsess)
+static int serve_reg_write(struct daemon_session *dsess)
 {
-    return serve_unsupported(dsess);
+    struct raw_cmd_req *req_cmd = raw_req(dsess->req);
+    struct raw_cmd_res *res_cmd = raw_res(dsess->res);
+    reg_t *regs = reg_map_get(dsess->regs, req_cmd->r_type);
+    uint32_t new_val = req_cmd->r_val;
+    regs[req_cmd->r_addr] = new_val;
+    res_cmd->r_id = req_cmd->r_id;
+    res_cmd->r_type = req_cmd->r_type;
+    res_cmd->r_addr = req_cmd->r_addr;
+    res_cmd->r_val = new_val;
+    return send_response(dsess->cc_comm_sock, dsess->res);
 }
 
-static int serve_sata(struct daemon_session *dsess)
+static int serve_top_write(struct daemon_session *dsess) /* TODO */
 {
-    return serve_unsupported(dsess);
+    return serve_reg_write(dsess);
 }
 
-static int serve_daq(struct daemon_session *dsess)
+static int serve_sata_write(struct daemon_session *dsess) /* TODO */
 {
-    return serve_unsupported(dsess);
+    return serve_reg_write(dsess);
 }
 
-static int serve_udp(struct daemon_session *dsess)
+static int serve_daq_write(struct daemon_session *dsess) /* TODO */
 {
-    return serve_unsupported(dsess);
+    return serve_reg_write(dsess);
 }
 
-static int serve_exp(struct daemon_session *dsess)
+static int serve_udp_write(struct daemon_session *dsess) /* TODO */
 {
-    return serve_unsupported(dsess);
+    return serve_reg_write(dsess);
+}
+
+static int serve_exp_write(struct daemon_session *dsess) /* TODO */
+{
+    return serve_reg_write(dsess);
 }
 
 typedef int (*serve_fn)(struct daemon_session*);
+
+static int serve_request(struct daemon_session *dsess)
+{
+    struct raw_pkt_header *ph = &dsess->req->ph;
+    struct raw_cmd_req *rcmd = raw_req(dsess->req);
+    log_DEBUG("request %u: r_type=%u, r_addr=%u, r_val=%u (ph=%u/%u/%u/%u)",
+              rcmd->r_id, rcmd->r_type, rcmd->r_addr, rcmd->r_val,
+              ph->_p_magic, ph->p_proto_vers, ph->p_mtype, ph->p_flags);
+
+    static const serve_fn write_servers[] = {
+        /* The daemon sending _us_ an error is illegal. */
+        [RAW_RTYPE_ERR] = serve_request_error,
+
+        [RAW_RTYPE_TOP]  = serve_top_write,
+        [RAW_RTYPE_SATA] = serve_sata_write,
+        [RAW_RTYPE_DAQ]  = serve_daq_write,
+        [RAW_RTYPE_UDP]  = serve_udp_write,
+        [RAW_RTYPE_EXP]  = serve_exp_write,
+    };
+    int module_n_regs = raw_num_regs(rcmd->r_type);
+    serve_fn serve = NULL;
+    if (rcmd->r_type >= RAW_RTYPE_NTYPES) {
+        log_WARNING("request with unknown r_type %u", rcmd->r_type);
+        serve = serve_request_error;
+    } else if (rcmd->r_addr >= module_n_regs) {
+        log_WARNING("request r_type %u has r_addr %u, but max is %u",
+                    rcmd->r_type, rcmd->r_addr, module_n_regs);
+        serve = serve_request_error;
+    } else if (raw_pflags(dsess->req) & RAW_PFLAG_RIOD_R) {
+        /* Register read; nothing special required at the moment. */
+        if (rcmd->r_val != 0) {
+            serve = serve_request_error; /* Reads must set r_val=0 */
+        } else {
+            serve = serve_reg_read;
+        }
+    } else {
+        /* Register write. */
+        serve = write_servers[rcmd->r_type];
+    }
+    if (!serve) {
+        log_ERR("WTF? no serve function found");
+        return -1;
+    }
+    return serve(dsess);
+}
 
 /* Close dsess->cc_comm_sock if it's not -1, and then set it to -1. */
 static int close_comm_sock(struct daemon_session *dsess)
@@ -279,10 +351,16 @@ static int serve_requests(struct daemon_session *dsess)
     }
     log_INFO("serving requests");
     while (1) {
-        /* Get the request. */
+        /*
+         * Get the request.
+         */
         raw_packet_init(dsess->req, RAW_MTYPE_REQ, 0);
         int rstatus = raw_cmd_recv(dsess->cc_comm_sock, dsess->req,
                                    MSG_NOSIGNAL);
+
+        /*
+         * Status checks.
+         */
         if (rstatus == 0 || (rstatus == -1 && errno == EPIPE)) {
             /* TODO use this as a reset or sync-type signal, and be smarter. */
             log_INFO("lost daemon connection; waiting for re-connect");
@@ -299,49 +377,25 @@ static int serve_requests(struct daemon_session *dsess)
         /* TODO protocol version checking */
         /* Well-behaved daemons don't send us error packets. */
         assert(!raw_pkt_is_err(dsess->req));
-        /* Respond to the request. */
-        serve_fn serve = 0;
-        switch (raw_r_type(dsess->req)) {
-        case RAW_RTYPE_ERR:
-            serve = serve_err;
-            break;
-        case RAW_RTYPE_TOP:
-            serve = serve_top;
-            break;
-        case RAW_RTYPE_SATA:
-            serve = serve_sata;
-            break;
-        case RAW_RTYPE_DAQ:
-            serve = serve_daq;
-            break;
-        case RAW_RTYPE_UDP:
-            serve = serve_udp;
-            break;
-        case RAW_RTYPE_EXP:
-            serve = serve_exp;
-            break;
-        default:
-            log_WARNING("ignoring unexpected r_type %u",
-                        raw_r_type(dsess->req));
-            continue;
-        }
-        int serve_status = serve(dsess);
-        if (serve_status == -1) {
-            log_ERR("bailing"); /* TODO be smarter */
+
+        /*
+         * Respond to the request.
+         */
+        if (serve_request(dsess) == -1) {
+            log_INFO("can't serve request; bailing"); /* TODO be smarter */
             goto bail;
         }
     }
 
  bail:
     if (dsess->cc_comm_sock != -1 && close(dsess->cc_comm_sock) == -1) {
-        log_ERR("can't close socket connected to remote: %m");
+        log_ERR("can't close() daemon connection: %m");
     }
     return EXIT_FAILURE;
 }
 
 /* For debugging, use an obvious default register value; real value is
  * "undefined" */
-#define REG_DEFAULT 0xdeadbeef
 static void init_default_reg_vals(reg_map_t reg_map)
 {
     for (size_t rtype = 0; rtype < RAW_RTYPE_NTYPES; rtype++) {
