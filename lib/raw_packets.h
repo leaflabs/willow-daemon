@@ -262,11 +262,13 @@ void raw_pkt_copy(void *dst, const void *src);
     (raw_pflags(__pkt_ph) & RAW_PFLAG_ERR ||                        \
      raw_mtype(__pkt_ph) == RAW_MTYPE_ERR); })
 
+/* TODO rename to raw_c_req() */
 static inline struct raw_cmd_req* raw_req(struct raw_pkt_cmd *pkt)
 {
     return &pkt->p.req;
 }
 
+/* TODO rename to raw_c_res() */
 static inline struct raw_cmd_res* raw_res(struct raw_pkt_cmd *pkt)
 {
     return &pkt->p.res;
