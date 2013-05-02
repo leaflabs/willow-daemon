@@ -200,10 +200,10 @@ static int send_response(int sockfd, struct raw_pkt_cmd *res)
 
 static int serve_unsupported(struct daemon_session *dsess)
 {
-    log_WARNING("unsupported request: "
-                "r_id %u, r_type %u, r_addr %u, r_val %u.",
-                raw_r_id(dsess->req), raw_r_type(dsess->req),
-                raw_r_addr(dsess->req), raw_r_val(dsess->req));
+    log_DEBUG("unsupported request: "
+              "r_id %u, r_type %u, r_addr %u, r_val %u.",
+              raw_r_id(dsess->req), raw_r_type(dsess->req),
+              raw_r_addr(dsess->req), raw_r_val(dsess->req));
     raw_packet_init(dsess->res, RAW_MTYPE_RES, RAW_PFLAG_ERR);
     struct raw_cmd_res *res_cmd = raw_res(dsess->res);
     struct raw_cmd_req *req_cmd = raw_req(dsess->req);
@@ -215,6 +215,7 @@ static int serve_unsupported(struct daemon_session *dsess)
 
 static int serve_err(struct daemon_session *dsess)
 {
+    log_ERR("received unexpected error packet; replying with error");
     return serve_unsupported(dsess);
 }
 
