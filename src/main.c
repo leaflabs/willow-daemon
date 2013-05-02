@@ -25,6 +25,7 @@
 #include "ch_storage.h"
 #include "hdf5_ch_storage.h"
 #include "raw_ch_storage.h"
+#include "data_node.h"
 
 /* main() initializes this before doing anything else. */
 static const char* program_name;
@@ -48,16 +49,6 @@ static const char* program_name;
 #define DNODE_DATA_FILE DNODE_DATA_DIR "/dnode_data.raw"
 #endif
 #define DNODE_DATASET_NAME "ANONYMOUS_DATASET"
-
-/* Encapsulates state needed for dealing with a connected data node */
-struct dnode_session {
-    int cc_sock;
-    int dt_sock;
-    struct raw_pkt_cmd *req;
-    struct raw_pkt_cmd *res;
-    struct ch_storage *chns;
-    const struct timespec *pkt_recv_timeout;
-};
 
 static void usage(int exit_status)
 {
@@ -152,47 +143,6 @@ static int open_dnode_sockets(struct dnode_session *dnsession)
 }
 
 #if 0                           /* FIXME port to new raw_packets.h */
-/* Do a request, wait for response, write response .r_val to valptr if
- * it's not NULL.  Assumes dnsess_req(dnsession) is valid already.
- *
- * Auto-increments request ID in dnsession->req regardless of success
- * or failure. */
-static int do_req_res(int sockfd,
-                      struct dnode_session *dnsession,
-                      uint32_t *valptr)
-{
-    struct raw_packet *req_pkt = dnsession->req_pkt;
-    struct raw_packet *res_pkt = dnsession->res_pkt;
-    int ret = -1;
-    raw_packet_init(req_pkt, RAW_PKT_TYPE_REQ, 0);
-    raw_packet_init(res_pkt, RAW_PKT_TYPE_RES, 0);
-    uint16_t req_id = raw_r_id(req_pkt); /* (sending mangles r_id) */
-    if (raw_packet_send(sockfd, req_pkt, 0) == -1) {
-        log_ERR("request %u: can't send request: %m", req_id);
-        goto out;
-    }
-    if (raw_packet_recv(sockfd, res_pkt, 0) == -1) {
-        log_ERR("request %u: can't get response: %m", req_id);
-        goto out;
-    }
-    uint16_t res_id = raw_r_id(res_pkt);
-    if (res_id != req_id) {
-        log_ERR("request %u: unexpected response r_id=%u", req_id, res_id);
-        goto out;
-    }
-    if (raw_packet_err(res_pkt)) {
-        log_ERR("request %u: got error flags 0x%x", req_id, res_pkt->p_flags);
-        goto out;
-    }
-    ret = 0;
-    if (valptr != NULL) {
-        *valptr = raw_r_val(res_pkt);
-    }
- out:
-    dnsess_req(dnsession)->r_id = req_id + 1;
-    return ret;
-}
-
 static int read_packet_timeout(struct dnode_session *dnsession,
                                struct raw_packet *bsamp_pkt)
 {
@@ -344,16 +294,26 @@ static int benchmark_write(struct ch_storage *chns, uint16_t *ch_data,
 }
 #endif
 
-/* FIXME put back on top
- * Dummy version of a session recording routine. Just starts/stops;
- * for now, we're assuming that the remote is the dummy datanode. */
-static int do_recording_session(__unused struct dnode_session *dnsession)
+/* Dummy version of a session recording routine. Just starts/stops;
+ * for now, we're assuming that the remote is the dummy datanode.
+ */
+static int do_dummy_recording_session(struct dnode_session *dnsession,
+                                      uint32_t start_bsmp_idx,
+                                      uint32_t *stop_bsmp_idx)
 {
-    log_WARNING("you need to write %s", __func__);
+    if (dnode_start_acquire(dnsession, start_bsmp_idx) == -1 ||
+        dnode_stop_acquire(dnsession, stop_bsmp_idx) == -1) {
+        if (dnsession->cc_sock == -1) {
+            log_ERR("data node closed the connection");
+        }
+        return -1;
+    }
     return 0;
 }
 
-static int copy_all_packets(__unused struct dnode_session *dnsession)
+static int copy_bsamps_to_ch_storage(__unused struct dnode_session *dnsession,
+                                     __unused uint32_t start_bsmp_idx,
+                                     __unused uint32_t stop_bsmp_idx)
 {
     log_WARNING("you need to write %s", __func__);
     return 0;
@@ -400,12 +360,15 @@ static int daemon_main(void)
     }
 
     /* Do recording session. */
-    if (do_recording_session(&dn_session) == -1) {
+    uint32_t start_idx = 0;
+    uint32_t stop_idx;
+    if (do_dummy_recording_session(&dn_session, start_idx, &stop_idx) == -1) {
+        log_ERR("can't do recording session");
         goto bail;
     }
 
     /* Copy remote's packets to file */
-    ret = copy_all_packets(&dn_session);
+    ret = copy_bsamps_to_ch_storage(&dn_session, start_idx, stop_idx);
 
  bail:
     if (ret == EXIT_FAILURE) {
