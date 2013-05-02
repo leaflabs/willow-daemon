@@ -192,9 +192,29 @@ static void parse_args(struct arguments *args, int argc, char *const argv[])
  * TODO add read permissions checks as necessary
  */
 
+#define STRLEN_RAW_RTYPE_ 10
+#define STRLEN_RAW_RADDR_ 10
+#define DEBUG_LOG_RCMD_IOD(mtype, ph)                           \
+    (mtype == RAW_MTYPE_REQ ?                                   \
+        (((ph)->p_flags & RAW_PFLAG_RIOD) == RAW_PFLAG_RIOD_R ? \
+         "(r)" : "(w)") :                                       \
+     "   ")
+#define DEBUG_LOG_RCMD(mtype, rcmd, ph)                                 \
+    log_DEBUG("%s %u: pflags 0x%x %s, mod=%s, reg=%s, val=%u (0x%x)",   \
+              mtype == RAW_MTYPE_REQ ? "req" : "res",                   \
+              (rcmd)->r_id,                                             \
+              (ph)->p_flags,                                            \
+              DEBUG_LOG_RCMD_IOD(mtype, ph),                            \
+              raw_r_type_str((rcmd)->r_type) + STRLEN_RAW_RTYPE_,       \
+              raw_r_addr_str((rcmd)->r_type,                            \
+                             (rcmd)->r_addr) + STRLEN_RAW_RADDR_,       \
+              (rcmd)->r_val,                                            \
+              (rcmd)->r_val)
+
 static int send_response(int sockfd, struct raw_pkt_cmd *res)
 {
     assert(raw_mtype(res) == RAW_MTYPE_RES);
+    DEBUG_LOG_RCMD(RAW_MTYPE_RES, raw_res(res), &res->ph);
     int ret = raw_cmd_send(sockfd, res, MSG_NOSIGNAL);
     if (ret == -1) {
         log_WARNING("can't send response: %m");
@@ -275,11 +295,9 @@ typedef int (*serve_fn)(struct daemon_session*);
 
 static int serve_request(struct daemon_session *dsess)
 {
-    struct raw_pkt_header *ph = &dsess->req->ph;
     struct raw_cmd_req *rcmd = raw_req(dsess->req);
-    log_DEBUG("request %u: r_type=%u, r_addr=%u, r_val=%u (ph=%u/%u/%u/%u)",
-              rcmd->r_id, rcmd->r_type, rcmd->r_addr, rcmd->r_val,
-              ph->_p_magic, ph->p_proto_vers, ph->p_mtype, ph->p_flags);
+
+    DEBUG_LOG_RCMD(RAW_MTYPE_REQ, rcmd, &dsess->req->ph);
 
     static const serve_fn write_servers[] = {
         /* The daemon sending _us_ an error is illegal. */
