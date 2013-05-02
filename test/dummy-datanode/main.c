@@ -395,7 +395,7 @@ static int serve_requests(struct daemon_session *dsess)
 }
 
 /* For debugging, use an obvious default register value; real value is
- * "undefined" */
+ * "undefined". Note that some default register values are special-cased. */
 static void init_default_reg_vals(reg_map_t reg_map)
 {
     for (size_t rtype = 0; rtype < RAW_RTYPE_NTYPES; rtype++) {
@@ -406,7 +406,12 @@ static void init_default_reg_vals(reg_map_t reg_map)
         }
         reg_t *mod_regs = reg_map_get(reg_map, rtype);
         for (size_t reg = 0; reg < (size_t)nregs; reg++) {
-            mod_regs[reg] = REG_DEFAULT;
+            if (rtype == RAW_RTYPE_DAQ && reg == RAW_RADDR_DAQ_CHIP_ALIVE) {
+                /* TODO add some chaos support here for chips going down */
+                mod_regs[reg] = 0xFFFFFFFF;
+            } else {
+                mod_regs[reg] = REG_DEFAULT;
+            }
         }
     }
 }
