@@ -272,6 +272,10 @@ static inline struct raw_cmd_res* raw_res(struct raw_pkt_cmd *pkt)
     return &pkt->p.res;
 }
 
+/* Number of registers corresponding to an r_type, or -1 on invalid
+ * argument. */
+int raw_num_regs(uint8_t r_type);
+
 static inline uint16_t raw_r_id(const struct raw_pkt_cmd *pkt)
 {
     return raw_req((struct raw_pkt_cmd*)pkt)->r_id;

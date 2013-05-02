@@ -48,6 +48,26 @@ void raw_pkt_copy(void *dst, const void *src)
     memcpy(dst, src, raw_pkt_size(src));
 }
 
+int raw_num_regs(uint8_t r_type)
+{
+    switch (r_type) {
+    case RAW_RTYPE_TOP:
+        return RAW_RADDR_TOP_NREGS;
+    case RAW_RTYPE_SATA:
+        return RAW_RADDR_SATA_NREGS;
+    case RAW_RTYPE_DAQ:
+        return RAW_RADDR_DAQ_NREGS;
+    case RAW_RTYPE_UDP:
+        return RAW_RADDR_UDP_NREGS;
+    case RAW_RTYPE_EXP:
+        return RAW_RADDR_EXP_NREGS;
+    case RAW_RTYPE_ERR:
+        return RAW_RADDR_ERR_NREGS;
+    default:
+        return -1;
+    }
+}
+
 size_t raw_pkt_size(const void *pkt)
 {
     uint8_t mtype = raw_mtype(pkt);
