@@ -399,33 +399,9 @@ static int serve_requests(struct daemon_session *dsess)
 static void init_default_reg_vals(reg_map_t reg_map)
 {
     for (size_t rtype = 0; rtype < RAW_RTYPE_NTYPES; rtype++) {
-        ssize_t nregs;
-        switch (rtype) {
-        case RAW_RTYPE_ERR:
-            nregs = RAW_RADDR_ERR_NREGS;
-            break;
-        case RAW_RTYPE_TOP:
-            nregs = RAW_RADDR_TOP_NREGS;
-            break;
-        case RAW_RTYPE_SATA:
-            nregs = RAW_RADDR_SATA_NREGS;
-            break;
-        case RAW_RTYPE_DAQ:
-            nregs = RAW_RADDR_DAQ_NREGS;
-            break;
-        case RAW_RTYPE_UDP:
-            nregs = RAW_RADDR_UDP_NREGS;
-            break;
-        case RAW_RTYPE_EXP:
-            nregs = RAW_RADDR_EXP_NREGS;
-            break;
-        default:
-            log_WARNING("unknown request type %zu added; you should add "
-                        "dummy-datanode support for it", rtype);
-            nregs = -1;
-            break;
-        }
+        int nregs = raw_num_regs((uint8_t)rtype);
         if (nregs < 0) {
+            log_ERR("WTF? raw_num_regs(%zu) = %d", rtype, nregs);
             continue;
         }
         reg_t *mod_regs = reg_map_get(reg_map, rtype);
