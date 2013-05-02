@@ -390,4 +390,11 @@ ssize_t raw_bsmp_send(int sockfd, struct raw_pkt_bsmp *bsmp, int flags);
 /* Like raw_cmd_recv(), but for RAW_MTYPE_BSMP packets. */
 ssize_t raw_bsmp_recv(int sockfd, struct raw_pkt_bsmp *bsmp, int flags);
 
+/*********************************************************************
+ * Stringification
+ */
+
+const char* raw_r_type_str(uint8_t r_type);
+const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr);
+
 #endif

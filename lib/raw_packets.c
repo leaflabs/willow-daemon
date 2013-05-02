@@ -311,3 +311,86 @@ ssize_t raw_bsmp_send(int sockfd, struct raw_pkt_bsmp *bsmp, int flags)
     raw_bsmp_hton(bsmp);
     return send(sockfd, bsmp, size, flags);
 }
+
+/*********************************************************************
+ * Stringification
+ */
+
+#define CASE_STRINGIFY(c) c: return #c
+
+const char* raw_r_type_str(uint8_t r_type)
+{
+    switch (r_type) {
+    case CASE_STRINGIFY(RAW_RTYPE_ERR);
+    case CASE_STRINGIFY(RAW_RTYPE_TOP);
+    case CASE_STRINGIFY(RAW_RTYPE_SATA);
+    case CASE_STRINGIFY(RAW_RTYPE_DAQ);
+    case CASE_STRINGIFY(RAW_RTYPE_UDP);
+    case CASE_STRINGIFY(RAW_RTYPE_EXP);
+    default: return "<UNKNOWN_R_TYPE>";
+    }
+}
+
+const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr)
+{
+    switch (r_type) {
+    case RAW_RTYPE_ERR:
+        switch (r_addr) {
+        case CASE_STRINGIFY(RAW_RADDR_ERR_ERR0);
+        default: return "<UNKNOWN_R_ADDR>";
+        }
+    case RAW_RTYPE_TOP:
+        switch (r_addr) {
+        case CASE_STRINGIFY(RAW_RADDR_TOP_ERR);
+        case CASE_STRINGIFY(RAW_RADDR_TOP_STATE);
+        case CASE_STRINGIFY(RAW_RADDR_TOP_EXP_CK_H);
+        case CASE_STRINGIFY(RAW_RADDR_TOP_EXP_CK_L);
+        case RAW_RADDR_TOP_BSUB_CH_MIN...RAW_RADDR_TOP_BSUB_CH_MAX:
+            return "RAW_RADDR_TOP_BSUB_CH_<x>"; /* TODO be smarter */
+        default: return "<UNKNOWN_R_ADDR>";
+        }
+    case RAW_RTYPE_SATA:
+        switch (r_addr) {
+        case CASE_STRINGIFY(RAW_RADDR_SATA_ERR);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_STATE);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_DISK_ID);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_IO_PARAM);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_R_IDX);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_R_LEN);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_W_IDX);
+        default: return "<UNKNOWN_R_ADDR>";
+        }
+    case RAW_RTYPE_DAQ:
+        switch (r_addr) {
+        case CASE_STRINGIFY(RAW_RADDR_DAQ_ERR);
+        case CASE_STRINGIFY(RAW_RADDR_DAQ_STATE);
+        case CASE_STRINGIFY(RAW_RADDR_DAQ_BSMP_START);
+        case CASE_STRINGIFY(RAW_RADDR_DAQ_BSMP_CURR);
+        case CASE_STRINGIFY(RAW_RADDR_DAQ_CHIP_ALIVE);
+        case CASE_STRINGIFY(RAW_RADDR_DAQ_CHIP_CMD);
+        default: return "<UNKNOWN_R_ADDR>";
+        }
+    case RAW_RTYPE_UDP:
+        switch (r_addr) {
+        case CASE_STRINGIFY(RAW_RADDR_UDP_ERR);
+        case CASE_STRINGIFY(RAW_RADDR_UDP_STATE);
+        case CASE_STRINGIFY(RAW_RADDR_UDP_SRC_MAC_H);
+        case CASE_STRINGIFY(RAW_RADDR_UDP_SRC_MAC_L);
+        case CASE_STRINGIFY(RAW_RADDR_UDP_DST_MAC_H);
+        case CASE_STRINGIFY(RAW_RADDR_UDP_DST_MAC_L);
+        case CASE_STRINGIFY(RAW_RADDR_UDP_SRC_IP4);
+        case CASE_STRINGIFY(RAW_RADDR_UDP_DST_IP4);
+        case CASE_STRINGIFY(RAW_RADDR_UDP_SRC_IP4_PORT);
+        case CASE_STRINGIFY(RAW_RADDR_UDP_DST_IP4_PORT);
+        default: return "<UNKNOWN_R_ADDR>";
+        }
+    case RAW_RTYPE_EXP:
+        switch (r_addr) {
+        case CASE_STRINGIFY(RAW_RADDR_EXP_ERR);
+        case CASE_STRINGIFY(RAW_RADDR_EXP_GPIOS);
+        case CASE_STRINGIFY(RAW_RADDR_EXP_GPIO_STATE);
+        default: return "<UNKNOWN_R_ADDR>";
+        }
+    default: return "<UNKNOWN_R_ADDR>";
+    }
+}
