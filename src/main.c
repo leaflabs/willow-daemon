@@ -29,6 +29,9 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 
+#include <event2/event.h>
+#include <event2/thread.h>
+
 #include "daemon.h"
 #include "logging.h"
 #include "sockutil.h"
@@ -39,6 +42,23 @@
 #include "hdf5_ch_storage.h"
 #include "raw_ch_storage.h"
 #include "data_node.h"
+
+/* libevent log levels with leading underscores are deprecated as of
+ * libevent 2.0.19. That's not available yet in some popular Linux
+ * distros at time of writing, so here are backwards-compatibility
+ * defines. Remove them when they're ancient. */
+#ifndef EVENT_LOG_DEBUG
+#define EVENT_LOG_DEBUG _EVENT_LOG_DEBUG
+#endif
+#ifndef EVENT_LOG_MSG
+#define EVENT_LOG_MSG _EVENT_LOG_MSG
+#endif
+#ifndef EVENT_LOG_WARN
+#define EVENT_LOG_WARN _EVENT_LOG_WARN
+#endif
+#ifndef EVENT_LOG_ERR
+#define EVENT_LOG_ERR _EVENT_LOG_ERR
+#endif
 
 /* main() initializes this before doing anything else. */
 static const char* program_name;
@@ -155,34 +175,20 @@ static int open_dnode_sockets(struct dnode_session *dnsession)
     return (dnsession->cc_sock == -1 || dnsession->dt_sock == -1) ? -1 : 0;
 }
 
-/* Dummy version of a session recording routine. Just starts/stops;
- * for now, we're assuming that the remote is the dummy datanode.
- */
-static int do_dummy_recording_session(struct dnode_session *dnsession,
-                                      uint32_t start_bsmp_idx,
-                                      uint32_t *stop_bsmp_idx)
+static int run_event_loop(__unused struct dnode_session *dnsession)
 {
-    if (dnode_start_acquire(dnsession, start_bsmp_idx) == -1 ||
-        dnode_stop_acquire(dnsession, stop_bsmp_idx) == -1) {
-        if (dnsession->cc_sock == -1) {
-            log_ERR("data node closed the connection");
-        }
-        return -1;
-    }
-    return 0;
+    log_WARNING("%s: unimplemented", __func__);
+    return EXIT_FAILURE;
 }
 
-static int copy_bsamps_to_ch_storage(__unused struct dnode_session *dnsession,
-                                     __unused uint32_t start_bsmp_idx,
-                                     __unused uint32_t stop_bsmp_idx)
-{
-    log_WARNING("you need to write %s", __func__);
-    return 0;
-}
-
-static int daemon_main(void)
+static int daemon_main()
 {
     int ret = EXIT_FAILURE;
+    int cs_is_open = 0;
+
+    /*
+     * Datanode and client session state.
+     */
     struct raw_pkt_cmd request_packet;
     raw_packet_init(&request_packet, RAW_MTYPE_REQ, 0);
     raw_req(&request_packet)->r_id = 0;
@@ -200,8 +206,6 @@ static int daemon_main(void)
         .chns = NULL,
         .pkt_recv_timeout = &timeout,
     };
-    int cs_is_open = 0;
-
     /* Set up channel storage */
     dn_session.chns = alloc_ch_storage();
     if (!dn_session.chns) {
@@ -220,16 +224,10 @@ static int daemon_main(void)
         goto bail;
     }
 
-    /* Do recording session. */
-    uint32_t start_idx = 0;
-    uint32_t stop_idx;
-    if (do_dummy_recording_session(&dn_session, start_idx, &stop_idx) == -1) {
-        log_ERR("can't do recording session");
-        goto bail;
-    }
-
-    /* Copy remote's packets to file */
-    ret = copy_bsamps_to_ch_storage(&dn_session, start_idx, stop_idx);
+    /*
+     * Everything happens in the event loop.
+     */
+    ret = run_event_loop(&dn_session);
 
  bail:
     if (ret == EXIT_FAILURE) {
@@ -250,32 +248,71 @@ static int daemon_main(void)
     return ret;
 }
 
+static void libevent_log_cb(int severity, const char *msg)
+{
+#define LE_LOG_FMT "libevent: %s"
+    switch (severity) {
+    case EVENT_LOG_DEBUG: log_DEBUG(LE_LOG_FMT, msg);   break;
+    case EVENT_LOG_MSG:   log_INFO(LE_LOG_FMT, msg);    break;
+    case EVENT_LOG_WARN:  log_WARNING(LE_LOG_FMT, msg); break;
+    case EVENT_LOG_ERR:   log_ERR(LE_LOG_FMT, msg);     break;
+    default:
+        log_ERR("[unknown libevent severity %d]: %s", severity, msg);
+        break;
+    }
+#undef LE_LOG_FMT
+}
+
+static void libevent_fatal_error_cb(int err)
+{
+    log_EMERG("fatal libevent error %d", err);
+    exit(1);
+}
+
+static int setup_libevent(void) /* Before daemonizing */
+{
+    event_set_log_callback(libevent_log_cb);
+    event_set_fatal_callback(libevent_fatal_error_cb);
+    if (evthread_use_pthreads() == -1) {
+        log_ERR("evthread_use_pthreads() failed");
+        return -1;
+    }
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
     struct arguments args = DEFAULT_ARGUMENTS;
+    int ret = EXIT_FAILURE;
 
-    /* Stash the program name, parse arguments, and set up logging
-     * before doing anything else. DO NOT USE printf() etc. AFTER THIS
-     * POINT; use the logging.h API instead. */
+    /* Stash the program name, parse arguments, and set up logging and
+     * libevent before doing anything else.
+     *
+     * AFTER THIS POINT, DO NOT USE printf() etc.; use the logging.h
+     * API instead. */
     program_name = strdup(argv[0]);
     if (!program_name) {
         fprintf(stderr, "Out of memory at startup\n");
-        exit(EXIT_FAILURE);
+        goto bail;
     }
     parse_args(&args, argc, argv);
     int log_to_stderr = args.dont_daemonize;
     logging_init(program_name, LOG_DEBUG, log_to_stderr);
+    if (setup_libevent()) {
+        goto bail;
+    }
 
     /* Become a daemon. */
     fd_set leave_open;
     FD_ZERO(&leave_open);
     if (!args.dont_daemonize && (daemonize(&leave_open, 0) == -1)) {
         log_EMERG("can't daemonize: %m");
-        exit(EXIT_FAILURE);
+        goto bail;
     }
 
     /* Go! */
-    int ret = daemon_main();
+    ret = daemon_main();
+ bail:
     logging_fini();
-    return ret;
+    exit(ret);
 }

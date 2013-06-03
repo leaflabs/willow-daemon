@@ -24,8 +24,11 @@ build_dir = '#build/' # Scons requires this to live in the source tree :(.
 build_src_dir = toplevel_join(build_dir, src_dir)
 build_lib_dir = toplevel_join(build_dir, lib_dir)
 build_test_dir = toplevel_join(build_dir, test_dir)
-lib_deps = ['hdf5', 'protobuf', 'protobuf-c', # External dependencies
-            'm', 'rt'] # Extra system dependencies
+lib_deps = [
+     # External dependencies:
+     'event', 'event_pthreads', 'hdf5', 'protobuf', 'protobuf-c',
+     # Extra system dependencies:
+    'm', 'rt']
 test_lib_deps = ['check'] # External dependencies for tests
 verbosity_level = int(ARGUMENTS.get('V', 0))
 skip_test_build = str_to_bool(ARGUMENTS.get('SKIP_TESTS', 'n'))
@@ -38,7 +41,8 @@ VariantDir(build_src_dir, src_dir, duplicate=0)
 VariantDir(build_test_dir, test_dir, duplicate=0)
 
 # Build environment. Note we don't copy os.environ here.
-env = Environment(CCFLAGS='-g -std=c99 -Wall -Wextra -Wpointer-arith -Werror',
+env = Environment(CCFLAGS=('-pthread -std=c99 '
+                           '-g -Wall -Wextra -Wpointer-arith -Werror'),
                   CPPDEFINES={'_GNU_SOURCE': 1}, # we need Linux extensions
                   LIBS=lib_deps,
                   tools=['default', 'protocc'],

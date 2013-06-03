@@ -27,11 +27,13 @@ Build dependencies
 
     $ scons SKIP_TESTS=y
 
+- libevent
+
 On Ubuntu 12.04:
 
    $ sudo apt-get install libprotobuf-dev libprotobuf-c0-dev \
         libhdf5-serial-dev protobuf-c-compiler scons python check \
-        protobuf-c-compiler protobuf-compiler
+        protobuf-c-compiler protobuf-compiler libevent-dev
 
 Repository contents
 -------------------
