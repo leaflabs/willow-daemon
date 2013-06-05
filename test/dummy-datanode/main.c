@@ -441,7 +441,7 @@ static int dummy_datanode_start(struct arguments *args)
      */
 
     /* Sockets */
-    int cc_sock = sockutil_get_tcp_passive(args->cport);
+    int cc_sock = sockutil_get_tcp_passive(args->cport, 1);
     if (cc_sock == -1) {
         log_ERR("can't make cc_sockfd: %m");
         goto nocc;

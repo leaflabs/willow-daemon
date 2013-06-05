@@ -109,21 +109,18 @@ int sockutil_get_udp_connected_p(const char *host, uint16_t port)
     return sockutil_get_socket(SOCK_DGRAM, 0, host, port, sockutil_cfg_conn);
 }
 
-static int sockutil_cfg_tcp_passive(int sock, struct addrinfo *arp)
+int sockutil_get_tcp_passive(uint16_t port, int backlog)
 {
-    if (sockutil_cfg_bind_sock(sock, arp) == -1) {
+    int sock = sockutil_get_socket(SOCK_STREAM, 1, NULL, port,
+                                   sockutil_cfg_bind_sock);
+    if (sock == -1) {
         return -1;
     }
-    if (listen(sock, 5) == -1) {
+    if (listen(sock, backlog) == -1) {
+        close(sock);
         return -1;
     }
-    return 0;
-}
-
-int sockutil_get_tcp_passive(uint16_t port)
-{
-    return sockutil_get_socket(SOCK_STREAM, 1, NULL, port,
-                               sockutil_cfg_tcp_passive);
+    return sock;
 }
 
 int sockutil_get_tcp_connected_p(const char *host, uint16_t port)

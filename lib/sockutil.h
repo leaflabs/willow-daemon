@@ -49,9 +49,10 @@ int sockutil_get_udp_connected_p(const char *host, uint16_t port);
  * @brief Convenience for creating passive TCP sockets.
  *
  * @param port Port to create the socket on.
+ * @param backlog Number of pending connections to allow; passed to listen().
  * @return Socket file descriptor on success, -1 on failure.
  */
-int sockutil_get_tcp_passive(uint16_t port);
+int sockutil_get_tcp_passive(uint16_t port, int backlog);
 
 /**
  * @brief Convenience for creating connected TCP sockets.
