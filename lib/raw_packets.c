@@ -24,9 +24,6 @@
 
 #include "logging.h"
 
-#define PACKET_HEADER_MAGIC      0x5A
-#define PACKET_HEADER_PROTO_VERS 0x00
-
 /*********************************************************************
  * Initialization and convenience
  */
@@ -34,8 +31,8 @@
 void raw_packet_init(void *packet, uint8_t mtype, uint8_t flags)
 {
     struct raw_pkt_header *ph = packet;
-    ph->_p_magic = PACKET_HEADER_MAGIC;
-    ph->p_proto_vers = PACKET_HEADER_PROTO_VERS;
+    ph->_p_magic = RAW_PKT_HEADER_MAGIC;
+    ph->p_proto_vers = RAW_PKT_HEADER_PROTO_VERS;
     ph->p_mtype = mtype;
     ph->p_flags = flags;
 
@@ -267,7 +264,7 @@ ssize_t raw_cmd_recv(int sockfd, struct raw_pkt_cmd *pkt, int flags)
         return -1;
     }
     raw_cmd_ntoh(pkt);
-    if (pkt->ph._p_magic != PACKET_HEADER_MAGIC) {
+    if (pkt->ph._p_magic != RAW_PKT_HEADER_MAGIC) {
         errno = EPROTO;
         return -1;
     } else if (expected_mtype != 0 && expected_mtype != raw_mtype(pkt)) {

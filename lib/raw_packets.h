@@ -52,6 +52,9 @@
 /* Error flag for raw_packet.p_flags. */
 #define RAW_PFLAG_ERR   0x80
 
+#define RAW_PKT_HEADER_MAGIC      0x5A
+#define RAW_PKT_HEADER_PROTO_VERS 0x00
+
 /* Packet header. */
 struct raw_pkt_header {
     /* These are set by raw_packet_init(). */
@@ -61,6 +64,14 @@ struct raw_pkt_header {
     uint8_t p_mtype;            /* Message Type */
     uint8_t p_flags;            /* Status Flags */
 };
+
+/* Don't touch. */
+#define _RAW_PKT_HEADER_INITIALIZER(mtype)              \
+    { ._p_magic = RAW_PKT_HEADER_MAGIC,                 \
+      .p_proto_vers = RAW_PKT_HEADER_PROTO_VERS,        \
+      .p_mtype = (mtype),                               \
+      .p_flags = 0,                                     \
+    }
 
 /*********************************************************************
  * Command packets
@@ -86,6 +97,13 @@ struct raw_pkt_header {
 struct raw_cmd_req { _RAW_C_REQ_RES };
 struct raw_cmd_res { _RAW_C_REQ_RES };
 #undef _RAW_C_REQ_RES
+
+/* Don't touch; use RAW_PKT_REQ_INITIALIZER, below. */
+#define _RAW_REQ_INITIALIZER \
+    { .r_id = 0, .r_type = 0xFF, .r_addr = 0xFF, .r_val = 0xdeadbeef }
+/* Don't touch; use RAW_PKT_RES_INITIALIZER, below. */
+#define _RAW_RES_INITIALIZER \
+    { .r_id = 0, .r_type = 0xFF, .r_addr = 0xFF, .r_val = 0xdeadbeef }
 
 /* Request types */
 #define RAW_RTYPE_ERR  0x00     /* Error */
@@ -188,6 +206,9 @@ struct raw_cmd_err {
     uint8_t pad_must_be_zero[_RAW_CSIZE];
 };
 
+/* Don't touch; use RAW_PKT_ERR_INITIALIZER, below.. */
+#define _RAW_ERR_INITIALIZER { .pad_must_be_zero = { [_RAW_CSIZE - 1] = 0 } }
+
 /*
  * Command packet structure
  */
@@ -200,6 +221,24 @@ struct raw_pkt_cmd {
         struct raw_cmd_err err;
     } p;
 };
+
+/* Static initializers for command socket packets.
+ *
+ * If you use one of these on a request or response, you still need to
+ * initialize .r_type, .r_addr, and .r_val yourself later.
+ */
+#define RAW_PKT_REQ_INITIALIZER                         \
+    { .ph = _RAW_PKT_HEADER_INITIALIZER(RAW_MTYPE_REQ), \
+      .p = { .req = _RAW_REQ_INITIALIZER },             \
+    }
+#define RAW_PKT_RES_INITIALIZER                         \
+    { .ph = _RAW_PKT_HEADER_INITIALIZER(RAW_MTYPE_RES), \
+      .p = { .res = _RAW_REQ_INITIALIZER },             \
+    }
+#define RAW_PKT_ERR_INITIALIZER                         \
+    { .ph = _RAW_PKT_HEADER_INITIALIZER(RAW_MTYPE_ERR), \
+      .p = { .err = _RAW_ERR_INITIALIZER },             \
+    }
 
 /*********************************************************************
  * Data packets
