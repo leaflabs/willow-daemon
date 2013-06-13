@@ -19,6 +19,8 @@ Build dependencies
 
 - C bindings to protobuf (protobuf-c), and compiler
 
+- Python bindings for protobuf (protobuf), and compiler
+
 - python
 
 - check: unit test framework for C, http://check.sourceforge.net/.
@@ -29,11 +31,17 @@ Build dependencies
 
 - libevent
 
-On Ubuntu 12.04:
+On Ubuntu 12.04, the mandatory build dependencies are:
 
    $ sudo apt-get install libprotobuf-dev libprotobuf-c0-dev \
-        libhdf5-serial-dev protobuf-c-compiler scons python check \
+        libhdf5-serial-dev protobuf-c-compiler scons python \
         protobuf-c-compiler protobuf-compiler libevent-dev
+
+The optional build dependencies (you can still build the daemon
+without these, but you won't be able to build tests or run Python
+scripts that speak protobuf):
+
+   $ sudo apt-get install check python-protobuf
 
 Repository contents
 -------------------

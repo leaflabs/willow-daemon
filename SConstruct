@@ -24,6 +24,7 @@ build_dir = '#build/' # Scons requires this to live in the source tree :(.
 build_src_dir = toplevel_join(build_dir, src_dir)
 build_lib_dir = toplevel_join(build_dir, lib_dir)
 build_test_dir = toplevel_join(build_dir, test_dir)
+build_pyproto_dir = toplevel_join(build_dir, 'pyproto')
 lib_deps = [
      # External dependencies:
      'event', 'event_pthreads', 'hdf5', 'protobuf', 'protobuf-c',
@@ -51,18 +52,22 @@ env = Environment(CCFLAGS=('-pthread -std=c99 '
 if verbosity_level == 0:
     env['ARCOMSTR'] = '\t[AR] $TARGET'
     env['CCCOMSTR'] = '\t[CC] $SOURCE'
-    env['PROTOCCCOMSTR'] = '\t[PROTOCC] $SOURCE'
+    env['PROTOCCCOMSTR'] = '\t[PROTOC-C] $SOURCE'
+    env['PROTOCCOMSTR'] = '\t[PROTOC] $SOURCE'
     env['RANLIBCOMSTR'] = '\t[RANLIB] $TARGET'
     env['LINKCOMSTR'] = '\t[LD] $TARGET' # note the asymmetry
 
-# Protobuf code generation.
-# See site_scons/site_tools/protocc.py for details on ProtocC.
+# Protobuf code generation; see site_scons/site_tools/protocc.py.
 proto_c_sources = []
-protos = [env.ProtocC([], proto, PROTOCCOUTDIR=env.GetBuildPath(build_lib_dir))
-          for proto in Glob(proto_dir + '*.proto')]
+protoccs = [env.ProtocC([], proto,
+                        PROTOCCOUTDIR=env.GetBuildPath(build_lib_dir))
+            for proto in Glob(proto_dir + '*.proto')]
+protopys = [env.Protoc([], proto,
+                       PROTOCOUTDIR=env.GetBuildPath(build_pyproto_dir))
+            for proto in Glob(proto_dir + '*.proto')]
 def c_nodes(nodes):
     return [n for n in nodes if str(n).endswith('c')]
-for nodes in protos:
+for nodes in protoccs:
     proto_c_sources.extend(c_nodes(nodes))
 
 # Mash together all the sources. These Glob() calls work automagically
