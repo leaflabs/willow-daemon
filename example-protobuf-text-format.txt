@@ -1,0 +1,5 @@
+type: REG_IO
+reg_io {
+  type: CENTRAL
+  central: CENTRAL_STATE
+}
