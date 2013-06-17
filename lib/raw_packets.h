@@ -121,6 +121,8 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 
 /*
  * Per-r_type registers and values
+ *
+ * FIXME update or delete these
  */
 
 /* RAW_RTYPE_ERR */
