@@ -316,6 +316,16 @@ void raw_pkt_copy(void *dst, const void *src);
     (raw_pflags(__pkt_ph) & RAW_PFLAG_ERR ||                        \
      raw_mtype(__pkt_ph) == RAW_MTYPE_ERR); })
 
+static inline void raw_clear_flags(struct raw_pkt_cmd *pkt, uint8_t flags)
+{
+    pkt->ph.p_flags &= ~flags;
+}
+
+static inline void raw_set_flags(struct raw_pkt_cmd *pkt, uint8_t flags)
+{
+    pkt->ph.p_flags |= flags;
+}
+
 /* TODO rename to raw_c_req() */
 static inline struct raw_cmd_req* raw_req(struct raw_pkt_cmd *pkt)
 {
