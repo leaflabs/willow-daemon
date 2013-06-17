@@ -23,15 +23,15 @@
 #define DEFAULT_ARGUMENTS                       \
     { .chaos = 1,                               \
       .cport = 8880,                            \
-      .dport = 8881,                            \
+      .dport = 6660,                            \
       .host = "127.0.0.1" }
 
 #define REG_DEFAULT 0xdeadbeef  /* poison value for dummy register init */
 
 struct arguments {
     const char *host;  /* Remote hostname to talk to */
-    uint16_t cport;    /* Remote TCP port for command/control */
-    uint16_t dport;    /* Remote UDP port listening for data packets */
+    uint16_t cport;    /* Daemon control socket TCP port to connect to */
+    uint16_t dport;    /* Local UDP port to send data packets from */
     int chaos;         /* Chaos mode: randomly fail according to chaos.h */
 };
 
@@ -117,8 +117,9 @@ static void reg_map_free(reg_map_t reg_map)
  */
 
 struct daemon_session {
-    int cc_sock;                /* listening command socket */
-    int cc_comm_sock;           /* = accept(cc_sock, ....) */
+    int cc_sock;                /* connected command socket */
+    const char *cc_addr;        /* daemon address, presentation format */
+    uint16_t cc_port;           /* daemon control port */
     int dt_sock;                /* data socket */
     struct raw_pkt_cmd *req;
     struct raw_pkt_cmd *res;
@@ -234,7 +235,7 @@ static int serve_request_error(struct daemon_session *dsess)
     res_cmd->r_id = req_cmd->r_id;
     res_cmd->r_addr = req_cmd->r_addr;
     res_cmd->r_val = REG_DEFAULT;
-    return send_response(dsess->cc_comm_sock, dsess->res);
+    return send_response(dsess->cc_sock, dsess->res);
 }
 
 static int serve_reg_read(struct daemon_session *dsess)
@@ -247,7 +248,7 @@ static int serve_reg_read(struct daemon_session *dsess)
     res_cmd->r_type = req_cmd->r_type;
     res_cmd->r_addr = req_cmd->r_addr;
     res_cmd->r_val = reg_val;
-    return send_response(dsess->cc_comm_sock, dsess->res);
+    return send_response(dsess->cc_sock, dsess->res);
 }
 
 static int serve_reg_write(struct daemon_session *dsess)
@@ -261,7 +262,7 @@ static int serve_reg_write(struct daemon_session *dsess)
     res_cmd->r_type = req_cmd->r_type;
     res_cmd->r_addr = req_cmd->r_addr;
     res_cmd->r_val = new_val;
-    return send_response(dsess->cc_comm_sock, dsess->res);
+    return send_response(dsess->cc_sock, dsess->res);
 }
 
 static int serve_top_write(struct daemon_session *dsess) /* TODO */
@@ -334,25 +335,17 @@ static int serve_request(struct daemon_session *dsess)
     return serve(dsess);
 }
 
-/* Close dsess->cc_comm_sock if it's not -1, and then set it to -1. */
-static int close_comm_sock(struct daemon_session *dsess)
-{
-    if (dsess->cc_comm_sock != -1 && close(dsess->cc_comm_sock) == -1) {
-        log_ERR("close(dsess->cc_comm_sock): %m");
-        return -1;
-    }
-    dsess->cc_comm_sock = -1;
-    return 0;
-}
-
 /* Call close_comm_sock(dsess), then accept() a new one. */
-static int reopen_comm_sock(struct daemon_session *dsess)
+static int reopen_control_sock(struct daemon_session *dsess)
 {
-    if (close_comm_sock(dsess) == -1) {
-        return -1;
+    if (dsess->cc_sock != -1) {
+        if (close(dsess->cc_sock) == -1) {
+            return -1;
+        }
     }
-    dsess->cc_comm_sock = accept(dsess->cc_sock, NULL, NULL);
-    return 0;
+    dsess->cc_sock = sockutil_get_tcp_connected_p(dsess->cc_addr,
+                                                  dsess->cc_port);
+    return dsess->cc_sock;
 }
 
 /* Create a command/control socket and serve requests from it for as
@@ -360,30 +353,33 @@ static int reopen_comm_sock(struct daemon_session *dsess)
  * occurs. */
 static int serve_requests(struct daemon_session *dsess)
 {
-    log_INFO("waiting for daemon");
-    if (reopen_comm_sock(dsess) == -1) {
-        log_ERR("can't accept() daemon connection: %m");
-        goto bail;
-    }
     log_INFO("serving requests");
     while (1) {
         /*
          * Get the request.
          */
-        raw_packet_init(dsess->req, RAW_MTYPE_REQ, 0);
-        int rstatus = raw_cmd_recv(dsess->cc_comm_sock, dsess->req,
-                                   MSG_NOSIGNAL);
+        int rstatus = 0;
+        if (dsess->cc_sock != -1) {
+            raw_packet_init(dsess->req, RAW_MTYPE_REQ, 0);
+            rstatus = raw_cmd_recv(dsess->cc_sock, dsess->req, MSG_NOSIGNAL);
+        }
 
         /*
          * Status checks.
          */
         if (rstatus == 0 || (rstatus == -1 && errno == EPIPE)) {
             /* TODO use this as a reset or sync-type signal, and be smarter. */
-            log_INFO("lost daemon connection; waiting for re-connect");
-            if (reopen_comm_sock(dsess) == -1) {
-                log_ERR("can't accept() daemon connection: %m");
-                goto bail;
+            log_INFO("connecting to daemon");
+            int first = 1;
+            while (reopen_control_sock(dsess) == -1) {
+                if (first) {
+                    log_INFO("can't connect to daemon: %m; "
+                             "will retry periodically");
+                    first = 0;
+                }
+                sleep(3);
             }
+            log_INFO("connected to daemon");
             continue;
         }
         if (rstatus == -1) {
@@ -404,7 +400,7 @@ static int serve_requests(struct daemon_session *dsess)
     }
 
  bail:
-    if (dsess->cc_comm_sock != -1 && close(dsess->cc_comm_sock) == -1) {
+    if (dsess->cc_sock != -1 && close(dsess->cc_sock) == -1) {
         log_ERR("can't close() daemon connection: %m");
     }
     return EXIT_FAILURE;
@@ -440,13 +436,13 @@ static int dummy_datanode_start(struct arguments *args)
      * Initialize daemon session
      */
 
+#define DAEMON_ADDR "127.0.0.1"
     /* Sockets */
-    int cc_sock = sockutil_get_tcp_passive(args->cport, 1);
+    int cc_sock = sockutil_get_tcp_connected_p(DAEMON_ADDR, args->cport);
     if (cc_sock == -1) {
-        log_ERR("can't make cc_sockfd: %m");
-        goto nocc;
+        log_WARNING("can't make cc_sockfd: %m");
     }
-    int dt_sock = sockutil_get_udp_connected_p(args->host, args->dport);
+    int dt_sock = sockutil_get_udp_socket(args->dport);
     if (dt_sock == -1) {
         log_ERR("can't make dt_sockfd: %m");
         goto nodt;
@@ -465,7 +461,8 @@ static int dummy_datanode_start(struct arguments *args)
 
     struct daemon_session dsess = {
         .cc_sock = cc_sock,
-        .cc_comm_sock = -1,     /* will be dealt with later */
+        .cc_addr = DAEMON_ADDR,
+        .cc_port = args->cport,
         .dt_sock = dt_sock,
         .req = &req_pkt,
         .res = &res_pkt,
@@ -491,7 +488,6 @@ static int dummy_datanode_start(struct arguments *args)
         log_ERR("close(cc_sock): %m");
         ret = EXIT_FAILURE;
     }
- nocc:
     return ret;
 }
 
