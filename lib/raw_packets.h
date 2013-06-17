@@ -417,6 +417,13 @@ size_t raw_pkt_size(const void *pkt);
  * success and -1 on failure, with errno set.
  */
 
+/* Convert multibyte fields to and from network byte order in place.
+ *
+ * Return 0 on success, or -1 if the packet had garbage or
+ * unrecognizable fields. */
+int raw_pkt_hton(struct raw_pkt_cmd *pkt);
+int raw_pkt_ntoh(struct raw_pkt_cmd *pkt);
+
 /* Send a command packet.
  *
  * This function modifies `packet'. You should treat the value in

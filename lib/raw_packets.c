@@ -124,8 +124,14 @@ static void raw_res_hton(struct raw_pkt_cmd *res)
     rcmd->r_val = htonl(raw_r_val(res));
 }
 
-static int raw_cmd_hton(struct raw_pkt_cmd *pkt)
+int raw_pkt_hton(struct raw_pkt_cmd *pkt)
 {
+    struct raw_pkt_header *ph = &pkt->ph;
+    if ((ph->_p_magic != RAW_PKT_HEADER_MAGIC ||
+         ph->p_proto_vers > RAW_PKT_HEADER_PROTO_VERS)) {
+        return -1;
+    }
+    raw_ph_hton(pkt);
     switch (raw_mtype(pkt)) {
     case RAW_MTYPE_REQ:
         raw_req_hton(pkt);
@@ -157,8 +163,14 @@ static void raw_res_ntoh(struct raw_pkt_cmd *res)
     rcmd->r_val = ntohl(raw_r_val(res));
 }
 
-static int raw_cmd_ntoh(struct raw_pkt_cmd *pkt)
+int raw_pkt_ntoh(struct raw_pkt_cmd *pkt)
 {
+    raw_ph_ntoh(pkt);
+    struct raw_pkt_header *ph = &pkt->ph;
+    if ((ph->_p_magic != RAW_PKT_HEADER_MAGIC ||
+         ph->p_proto_vers > RAW_PKT_HEADER_PROTO_VERS)) {
+        return -1;
+    }
     switch (raw_mtype(pkt)) {
     case RAW_MTYPE_REQ:
         raw_req_ntoh(pkt);
@@ -228,7 +240,7 @@ static void raw_bsmp_ntoh(struct raw_pkt_bsmp *bsmp)
 
 ssize_t raw_cmd_send(int sockfd, struct raw_pkt_cmd *pkt, int flags)
 {
-    if (raw_cmd_hton(pkt) == -1) {
+    if (raw_pkt_hton(pkt) == -1) {
         errno = EINVAL;
         return -1;
     }
@@ -263,7 +275,7 @@ ssize_t raw_cmd_recv(int sockfd, struct raw_pkt_cmd *pkt, int flags)
         errno = EIO;
         return -1;
     }
-    raw_cmd_ntoh(pkt);
+    raw_pkt_ntoh(pkt);
     if (pkt->ph._p_magic != RAW_PKT_HEADER_MAGIC) {
         errno = EPROTO;
         return -1;
