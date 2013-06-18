@@ -58,9 +58,15 @@ struct control_session {
     void *cpriv;
 
     /* Data node */
-    struct evconnlistener *decl;
-    struct bufferevent    *dbev;
-    void *dpriv;
+    const char         *daddr;
+    uint16_t            dport;
+    struct bufferevent *dbev;
+    void               *dpriv;
+
+    /* Board subsamples */
+    evutil_socket_t  ddatafd;   /* Daemon data socket */
+    evutil_socket_t  cdatafd;   /* Client data socket */
+    struct event    *ddataevt;  /* ddatafd read event */
 
     /* Worker thread */
     pthread_t thread;
@@ -93,9 +99,9 @@ struct control_ops {
     /* Per-connection open/close callbacks; use these e.g. to allocate
      * any per-connection state. These may be NULL also.
      *
-     * When the open callback is invoked, cs->cs_bev is valid but
-     * disabled. When both open and close are called, the
-     * control_session lock is not held.
+     * When the open callback is invoked, the corresponding
+     * bufferevent is valid, but disabled. When both open and close are
+     * called, the control_session lock is not held.
      *
      * Returning -1 from the open callback will refuse the
      * connection. The close callback is invoked from a libevent

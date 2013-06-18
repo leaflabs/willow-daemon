@@ -63,9 +63,11 @@
 /* main() initializes this before doing anything else. */
 static const char* program_name;
 
-/* Ports to listen on for client and data node control connections. */
-#define DNODE_CC_PORT 8880
-#define CLIENT_CC_PORT 8881
+/* Default addresses and ports. */
+#define DAEMON_CLIENT_PORT 1371 /* client control sockets connect to here */
+#define DAEMON_SAMPLE_PORT 1370 /* daemon receive board subsamples here */
+#define DNODE_ADDRESS "127.0.0.1" /* for dummy-datanode debugging */
+#define DNODE_LISTEN_PORT  1369 /* data node listens for connections here */
 
 /* Whether to store data into HDF5 (==1) or just do raw write() (==0;
  * for benchmarking). */
@@ -83,29 +85,67 @@ static const char* program_name;
 
 //////////////////////////////////////////////////////////////////////
 
+static void panic(const char *msg)
+{
+    fprintf(stderr, "%s: %s\n", program_name, msg);
+    _exit(EXIT_FAILURE);
+}
+
 static void usage(int exit_status)
 {
     printf("Usage: %s\n"
            "Options:\n"
-           "  -h, --help\t\tPrint this message\n"
-           "  -N, --dont-daemonize\tSkip daemonization\n",
-           program_name);
+           "  -A, --dnode-address"
+           "\tConnect to data node at this address, default %s\n"
+           "  -c, --client-port"
+           "\tListen here for client control socket connections, default %d\n"
+           "  -d, --dnode-port"
+           "\tConnect to data node on this port, default %d\n"
+           "  -h, --help"
+           "\t\tPrint this message and quit\n"
+           "  -N, --dont-daemonize"
+           "\tSkip daemonization; logs also go to stderr\n"
+           "  -s, --sample-port"
+           "\tCreate data node data socket here, default %d\n",
+           program_name, DNODE_ADDRESS, DAEMON_CLIENT_PORT, DNODE_LISTEN_PORT,
+           DAEMON_SAMPLE_PORT);
     exit(exit_status);
 }
 
-#define DEFAULT_ARGUMENTS { .dont_daemonize = 0 }
+#define DEFAULT_ARGUMENTS                                       \
+        { .client_port = DAEMON_CLIENT_PORT,                    \
+          .dnode_addr = "127.0.0.1", /* dummy-datanode */       \
+          .dnode_port = DNODE_LISTEN_PORT,                      \
+          .sample_port = DAEMON_SAMPLE_PORT,                    \
+          .dont_daemonize = 0,                                  \
+        }
 
-/* Encapsulates results of command-line arguments. */
 struct arguments {
-    int dont_daemonize;         /* Skip daemonization. */
+    uint16_t  client_port;      /* Listen for clients here */
+    char     *dnode_addr;       /* Connect to dnode at this address */
+    uint16_t  dnode_port;       /* Connect to dnode at this port */
+    uint16_t  sample_port;      /* Receive dnode samples here */
+    int       dont_daemonize;   /* Skip daemonization. */
 };
 
 static void parse_args(struct arguments* args, int argc, char *const argv[])
 {
     int print_usage = 0;
-    const char shortopts[] = "hN";
+    const char shortopts[] = "A:c:d:hNs:";
     struct option longopts[] = {
         /* Keep these sorted with shortopts. */
+        { .name = "dnode-address", /* -A */
+          .has_arg = required_argument,
+          .flag = NULL,
+          .val = 'A' },
+        { .name = "client-port", /* -c */
+          .has_arg = required_argument,
+          .flag = NULL,
+          .val = 'c' },
+        { .name = "dnode-port", /* -d */
+          .has_arg = required_argument,
+          .flag = NULL,
+          .val = 'd' },
         { .name = "help",       /* -h */
           .has_arg = no_argument,
           .flag = &print_usage,
@@ -114,8 +154,13 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
           .has_arg = no_argument,
           .flag = &args->dont_daemonize,
           .val = 1 },
+        { .name = "sample-port", /* -s */
+          .has_arg = required_argument,
+          .flag = NULL,
+          .val = 's' },
         {0, 0, 0, 0},
     };
+    /* TODO add error handling in strtol() argument conversion */
     while (1) {
         int option_idx = 0;
         int c = getopt_long(argc, argv, shortopts, longopts, &option_idx);
@@ -128,16 +173,25 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
             if (print_usage) {
                 usage(EXIT_SUCCESS);
             }
-            /* Otherwise, getopt_long() has set *flag=val, so there's
-             * nothing to do until we take long commands with
-             * arguments. When that happens,
-             * `longopts[option_idx].name' was given, with argument
-             * `optarg'. */
+        case 'A':
+            args->dnode_addr = strdup(optarg);
+            if (!args->dnode_addr) {
+                panic("out of memory");
+            }
+            break;
+        case 'c':
+            args->client_port = strtol(optarg, (char**)0, 10);
+            break;
+        case 'd':
+            args->dnode_port = strtol(optarg, (char**)0, 10);
             break;
         case 'h':
             usage(EXIT_SUCCESS);
         case 'N':
             args->dont_daemonize = 1;
+            break;
+        case 's':
+            args->sample_port = strtol(optarg, (char**)0, 10);
             break;
         case '?': /* Fall through. */
         default:
@@ -184,7 +238,8 @@ static void free_ch_storage(struct ch_storage* chns)
 }
 
 static int
-run_event_loop(__unused struct ch_storage *chstorage)
+run_event_loop(struct arguments *args,
+               __unused struct ch_storage *chstorage)
 {
     int ret = EXIT_FAILURE;
     struct event_base *base = event_base_new();
@@ -207,8 +262,10 @@ run_event_loop(__unused struct ch_storage *chstorage)
         log_EMERG("can't install signal handlers");
         goto nosiginstall;
     }
-    struct control_session *control = control_new(base, CLIENT_CC_PORT,
-                                                  DNODE_CC_PORT);
+    struct control_session *control = control_new(base, args->client_port,
+                                                  args->dnode_addr,
+                                                  args->dnode_port,
+                                                  args->sample_port);
     if (!control) {
         log_EMERG("can't create control session");
         goto nocontrol;
@@ -239,7 +296,7 @@ run_event_loop(__unused struct ch_storage *chstorage)
     return ret;
 }
 
-static int daemon_main()
+static int daemon_main(struct arguments *args)
 {
     int ret = EXIT_FAILURE;
     struct ch_storage *chstorage = alloc_ch_storage();
@@ -255,7 +312,7 @@ static int daemon_main()
     /*
      * Everything happens in the event loop.
      */
-    ret = run_event_loop(chstorage);
+    ret = run_event_loop(args, chstorage);
 
     ch_storage_close(chstorage);
  noopen:
@@ -329,9 +386,11 @@ int main(int argc, char *argv[])
     }
 
     /* Go! */
-    log_DEBUG("pid: %d, client port: %d, dnode port: %d",
-              getpid(), CLIENT_CC_PORT, DNODE_CC_PORT);
-    ret = daemon_main();
+    log_DEBUG("pid: %d, client port: %u, dnodeaddr: %s, dnode port: %u, "
+              "sample port: %u",
+              getpid(), args.client_port, args.dnode_addr, args.dnode_port,
+              args.sample_port);
+    ret = daemon_main(&args);
  bail:
     logging_fini();
     exit(ret);

@@ -35,6 +35,9 @@
 #include "control-client.h"
 #include "control-dnode.h"
 
+/* TODO use cached dnode_addr and dnode_c_port to establish periodic
+ * reconnect handler to cover data node crashes. */
+
 static void
 control_fatal_err(const char *message, int code) /* code==-1 for "no code" */
 {
@@ -275,6 +278,8 @@ static void control_client_event(__unused struct bufferevent *bev,
 static void control_dnode_event(__unused struct bufferevent *bev,
                                 short events, void *csessvp)
 {
+    /* FIXME install periodic event that tries to re-establish a
+     * closed dnode connection */
     struct control_session *cs = csessvp;
     assert(bev == cs->dbev);
     control_bevt_handler(cs, events, &cs->dbev, control_dnode_close,
@@ -293,15 +298,15 @@ static void refuse_connection(evutil_socket_t fd,
 }
 
 static void
-control_ecl_handler(struct control_session *cs,
-                    struct bufferevent **bevp,
-                    evutil_socket_t fd,
-                    bufferevent_data_cb read,
-                    bufferevent_data_cb write,
-                    bufferevent_event_cb event,
-                    int (*on_open)(struct control_session*,
-                                   evutil_socket_t),
-                    const char *log_who)
+control_conn_open(struct control_session *cs,
+                  struct bufferevent **bevp,
+                  evutil_socket_t fd,
+                  bufferevent_data_cb read,
+                  bufferevent_data_cb write,
+                  bufferevent_event_cb event,
+                  int (*on_open)(struct control_session*,
+                                 evutil_socket_t),
+                  const char *log_who)
 {
     if (*bevp) {
         refuse_connection(fd, log_who, "another is ongoing");
@@ -329,14 +334,16 @@ control_ecl_handler(struct control_session *cs,
 
 static void
 control_bev_reader(struct control_session *cs,
-                   enum control_worker_why (*reader)(struct control_session*))
+                   enum control_worker_why (*reader)(struct control_session*),
+                   __unused const char *log_who)
 {
     enum control_worker_why read_why_wake = reader(cs);
     switch (read_why_wake) {
     case CONTROL_WHY_NONE:
         break;
     case CONTROL_WHY_EXIT:
-        control_fatal_err("client processor signaled error", -1);
+        log_CRIT("%s socket reader wants to shut down the worker", log_who);
+        control_fatal_err("error reading from bufferevent", -1);
         break;
     default:
         control_must_wake(cs, read_why_wake);
@@ -348,14 +355,14 @@ static void control_client_bev_read(__unused struct bufferevent *bev,
                                     void *csessvp)
 {
     struct control_session *cs = csessvp;
-    control_bev_reader(cs, control_client_read);
+    control_bev_reader(cs, control_client_read, "client");
 }
 
 static void control_dnode_bev_read(__unused struct bufferevent *bev,
                                    void *csessvp)
 {
     struct control_session *cs = csessvp;
-    control_bev_reader(cs, control_dnode_read);
+    control_bev_reader(cs, control_dnode_read, "data node");
 }
 
 static void client_ecl(__unused struct evconnlistener *ecl, evutil_socket_t fd,
@@ -363,17 +370,8 @@ static void client_ecl(__unused struct evconnlistener *ecl, evutil_socket_t fd,
                        void *csessvp)
 {
     struct control_session *cs = csessvp;
-    control_ecl_handler(cs, &cs->cbev, fd, control_client_bev_read, NULL,
-                        control_client_event, control_client_open, "client");
-}
-
-static void dnode_ecl(__unused struct evconnlistener *ecl, evutil_socket_t fd,
-                      __unused struct sockaddr *saddr, __unused int socklen,
-                      void *csessvp)
-{
-    struct control_session *cs = csessvp;
-    control_ecl_handler(cs, &cs->dbev, fd, control_dnode_bev_read, NULL,
-                        control_dnode_event, control_dnode_open, "data node");
+    control_conn_open(cs, &cs->cbev, fd, control_client_bev_read, NULL,
+                      control_client_event, control_client_open, "client");
 }
 
 static void client_ecl_err(__unused struct evconnlistener *ecl,
@@ -382,10 +380,24 @@ static void client_ecl_err(__unused struct evconnlistener *ecl,
     log_ERR("client accept() failed: %m");
 }
 
-static void dnode_ecl_err(__unused struct evconnlistener *ecl,
-                          __unused void *csessvp)
+static void control_sample(evutil_socket_t sockfd,
+                           short events,
+                           void *csessvp)
 {
-    log_ERR("data node accept() failed: %m");
+    struct control_session *cs = csessvp;
+    if (sockfd != cs->ddatafd) {
+        log_ERR("got data from socket %d, expecting %d",
+                sockfd, cs->cdatafd);
+        return;
+    }
+    if ((events & EV_READ) && (cs->cdatafd == -1)) {
+        log_WARNING("received data from daemon, but no one wants it; "
+                    "dropping the packet");
+        struct sockaddr_storage dn_addr;
+        socklen_t len = sizeof(struct sockaddr_storage);
+        recvfrom(cs->ddatafd, NULL, 0, 0, (struct sockaddr*)&dn_addr, &len);
+        return;
+    }
 }
 
 /*
@@ -393,54 +405,99 @@ static void dnode_ecl_err(__unused struct evconnlistener *ecl,
  */
 
 struct control_session* control_new(struct event_base *base,
-                                    uint16_t cport, uint16_t dport)
+                                    uint16_t client_port,
+                                    const char* dnode_addr,
+                                    uint16_t dnode_port,
+                                    uint16_t sample_port)
 {
     int en;
     struct control_session *cs = malloc(sizeof(struct control_session));
     if (!cs) {
+        log_ERR("out of memory");
         goto nocs;
     }
+    cs->base = base;
     struct evconnlistener *cecl =
-        control_new_listener(cs, base, cport, client_ecl, client_ecl_err);
+        control_new_listener(cs, base, client_port, client_ecl,
+                             client_ecl_err);
     if (!cecl) {
+        log_ERR("can't listen for client connections");
         goto nocecl;
     }
-    struct evconnlistener *decl =
-        control_new_listener(cs, base, dport, dnode_ecl, dnode_ecl_err);
-    if (!decl) {
-        goto nodecl;
+    cs->daddr = dnode_addr;
+    cs->dport = dnode_port;
+    int ddatafd = sockutil_get_tcp_connected_p(cs->daddr, cs->dport);
+    if (ddatafd == -1) {
+        log_ERR("can't connect to data node at %s, port %u",
+                dnode_addr, dnode_port);
+        goto nodsock;
+    }
+    if (evutil_make_socket_nonblocking(ddatafd)) {
+        log_ERR("data node control socket doesn't support nonblocking I/O");
+        goto nodnonblock;
     }
     en = pthread_mutex_init(&cs->mtx, NULL);
     if (en) {
+        log_ERR("threading error while initializing control session");
         goto nomtx;
     }
     en = pthread_cond_init(&cs->cv, NULL);
     if (en) {
+        log_ERR("threading error while initializing control session");
         goto nocv;
     }
-    control_must_lock(cs);
     cs->wake_why = CONTROL_WHY_NONE;
-    control_must_unlock(cs);
-    cs->base = base;
     cs->cecl = cecl;
-    cs->decl = decl;
     cs->cbev = NULL;
-    cs->dbev = NULL;
     if (control_client_start(cs)) {
+        log_ERR("can't start client side of control session");
         goto noclient;
     }
+    cs->dbev = NULL;
     if (control_dnode_start(cs)) {
+        log_ERR("can't start data node side of control session");
         goto nodnode;
     }
+    control_conn_open(cs, &cs->dbev, ddatafd, control_dnode_bev_read,
+                      NULL, control_dnode_event, control_dnode_open,
+                      "data node");
+    cs->ddatafd = sockutil_get_udp_socket(sample_port);
+    if (cs->ddatafd == -1) {
+        log_ERR("can't create daemon data socket");
+        goto nobsock;
+    }
+    if (evutil_make_socket_nonblocking(cs->ddatafd) == -1) {
+        log_ERR("nobnonblock");
+        goto nobnonblock;
+    }
+    cs->cdatafd = -1;  /* TODO support for forwarding subsamples */
+    cs->ddataevt = event_new(base, cs->ddatafd, EV_READ | EV_PERSIST,
+                         control_sample, cs);
+    if (!cs->ddataevt) {
+        log_ERR("noddataevt");
+        goto noddataevt;
+    }
+    event_add(cs->ddataevt, NULL);
     control_must_lock(cs);
     en = pthread_create(&cs->thread, NULL, control_worker_main, cs);
     control_must_unlock(cs);
     if (en) {
+        log_ERR("noworker");
         goto noworker;
     }
     return cs;
 
  noworker:
+    event_free(cs->ddataevt);
+ noddataevt:
+ nobnonblock:
+    if (evutil_closesocket(cs->ddatafd) == -1) {
+        log_ERR("can't close sample socket: %m");
+    }
+ nobsock:
+    if (cs->dbev) {
+        bufferevent_free(cs->dbev);
+    }
     control_dnode_stop(cs);
  nodnode:
     control_client_stop(cs);
@@ -455,8 +512,11 @@ struct control_session* control_new(struct event_base *base,
         control_fatal_err("can't destroy cs mutex", en);
     }
  nomtx:
-    evconnlistener_free(decl);
- nodecl:
+ nodnonblock:
+    if (evutil_closesocket(ddatafd) == -1) {
+        log_ERR("can't close data node socket: %m");
+    }
+ nodsock:
     evconnlistener_free(cecl);
  nocecl:
     free(cs);
@@ -469,16 +529,24 @@ void control_free(struct control_session *cs)
     /* Acquired in control_new() */
     control_must_wake(cs, CONTROL_WHY_EXIT);
     control_must_join(cs, NULL);
+    if (cs->ddataevt) {
+        event_free(cs->ddataevt);
+    }
+    if (cs->cdatafd != -1 && evutil_closesocket(cs->cdatafd) == -1) {
+        log_ERR("can't close client data socket: %m");
+    }
+    if (cs->ddatafd != -1 && evutil_closesocket(cs->ddatafd) == -1) {
+        log_ERR("can't close sample socket: %m");
+    }
     control_dnode_stop(cs);
     control_client_stop(cs);
     pthread_cond_destroy(&cs->cv);
     pthread_mutex_destroy(&cs->mtx);
-    evconnlistener_free(cs->decl);
-    evconnlistener_free(cs->cecl);
-    /* Possibly acquired by evconnlistener callbacks */
     if (cs->dbev) {
         bufferevent_free(cs->dbev);
     }
+    evconnlistener_free(cs->cecl);
+    /* Possibly acquired by evconnlistener callbacks */
     if (cs->cbev) {
         bufferevent_free(cs->cbev);
     }

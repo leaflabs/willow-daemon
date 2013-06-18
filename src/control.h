@@ -21,7 +21,9 @@
  *
  *    struct control_session *cs = control_new(base,
  *                                             client_port,
- *                                             dnode_port);
+ *                                             dnode_addr,
+ *                                             dnode_c_port,
+ *                                             sample_port);
  *    event_base_dispatch(base);
  *    control_free(cs);
  */
@@ -35,19 +37,22 @@ struct control_session;
 struct event_base;
 
 /**
- * Get a new control session
+ * Start a new control session
  *
- * Then start it with control_start(). When you're done with it, stop
- * it with control_stop(), and free it with control_free().
+ * When finished, free it with control_free().
  *
  * @param base Event base to install callbacks into
  * @param client_port Port to listen on for client connections
- * @param dnode_port Port to listen on for data node connections
- * @see control_start(), control_stop(), control_free()
+ * @param dnode_addr Address to connect to for data node control socket
+ * @param dnode_c_port Port to connect to for data node control socket
+ * @param sample_port UDP port to receive data node sample data on
+ * @see control_free()
  */
 struct control_session* control_new(struct event_base *base,
                                     uint16_t client_port,
-                                    uint16_t dnode_port);
+                                    const char* dnode_addr,
+                                    uint16_t dnode_c_port,
+                                    uint16_t sample_port);
 
 /**
  * Free resources acquired by a control session.
