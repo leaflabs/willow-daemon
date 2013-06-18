@@ -1,0 +1,197 @@
+// control.proto: protocol messages for the client control socket.
+//
+// Feel free to change this file, but:
+//
+// ************************************************************************
+// ********************* DO NOT ADD REQUIRED FIELDS. **********************
+// ********************* DO NOT ADD REQUIRED FIELDS. **********************
+// ********************* DO NOT ADD REQUIRED FIELDS. **********************
+// ********************* DO NOT ADD REQUIRED FIELDS. **********************
+// ************************************************************************
+//
+//
+// ************************************************************************
+// ************ ALWAYS USE [packed=true] IN REPEATED FIELDS. **************
+// ************ ALWAYS USE [packed=true] IN REPEATED FIELDS. **************
+// ************ ALWAYS USE [packed=true] IN REPEATED FIELDS. **************
+// ************ ALWAYS USE [packed=true] IN REPEATED FIELDS. **************
+// ************************************************************************
+//
+
+//////////////////////////////////////////////////////////////////////
+// Register I/O primitives
+//
+// For low-level or debugging use.
+
+//
+// Per-module registers
+//
+// These are the registers exposed by the data node, grouped by module.
+//
+
+enum ErrAddr {
+    ERR_ERR0 = 0;
+}
+
+enum CentralAddr {
+    CENTRAL_ERR = 0;
+    CENTRAL_STATE = 1;
+    CENTRAL_COOKIE_H = 2;
+    CENTRAL_COOKIE_L = 3;
+}
+
+enum SataAddr {
+    SATA_ERR = 0;
+    SATA_STATE = 1;
+    SATA_DISK_ID = 2;
+    SATA_DISK_PARAM = 3;
+    SATA_NEXT_READ = 4;     // in board samples
+    SATA_READ_LEN = 5;
+    SATA_LAST_WRITE = 6;    // in board samples
+}
+
+enum DaqAddr {
+    DAQ_ERR = 0;
+    DAQ_STATE = 1;
+    DAQ_START_BSAMP = 2;
+    DAQ_CURR_BSAMP = 3;
+    DAQ_CHIP_ALIVE = 4;
+    DAQ_CMD_IO = 5;
+    DAQ_SYNCHRONOUS = 6;
+    DAQ_FIFO_COUNT = 7;
+    DAQ_SUBSAMP_CHIP0 = 16;
+    DAQ_SUBSAMP_CHIP1 = 17;
+    DAQ_SUBSAMP_CHIP2 = 18;
+    DAQ_SUBSAMP_CHIP3 = 19;
+    DAQ_SUBSAMP_CHIP4 = 20;
+    DAQ_SUBSAMP_CHIP5 = 21;
+    DAQ_SUBSAMP_CHIP6 = 22;
+    DAQ_SUBSAMP_CHIP7 = 23;
+    DAQ_SUBSAMP_CHIP8 = 24;
+    DAQ_SUBSAMP_CHIP9 = 25;
+    DAQ_SUBSAMP_CHIP10 = 26;
+    DAQ_SUBSAMP_CHIP11 = 27;
+    DAQ_SUBSAMP_CHIP12 = 28;
+    DAQ_SUBSAMP_CHIP13 = 29;
+    DAQ_SUBSAMP_CHIP14 = 30;
+    DAQ_SUBSAMP_CHIP15 = 31;
+    DAQ_SUBSAMP_CHIP16 = 32;
+    DAQ_SUBSAMP_CHIP17 = 33;
+    DAQ_SUBSAMP_CHIP18 = 34;
+    DAQ_SUBSAMP_CHIP19 = 35;
+    DAQ_SUBSAMP_CHIP20 = 36;
+    DAQ_SUBSAMP_CHIP21 = 37;
+    DAQ_SUBSAMP_CHIP22 = 38;
+    DAQ_SUBSAMP_CHIP23 = 39;
+    DAQ_SUBSAMP_CHIP24 = 40;
+    DAQ_SUBSAMP_CHIP25 = 41;
+    DAQ_SUBSAMP_CHIP26 = 42;
+    DAQ_SUBSAMP_CHIP27 = 43;
+    DAQ_SUBSAMP_CHIP28 = 44;
+    DAQ_SUBSAMP_CHIP29 = 45;
+    DAQ_SUBSAMP_CHIP30 = 46;
+    DAQ_SUBSAMP_CHIP31 = 47;
+}
+
+enum UdpAddr {
+    UDP_ERR = 0;
+    UDP_STATE = 1;
+    UDP_SRC_MAC48_H = 2;
+    UDP_SRC_MAC48_L = 3;
+    UDP_DST_MAC48_H = 4;
+    UDP_DST_MAC48_L = 5;
+    UDP_SRC_IPV4_ADDR = 6;
+    UDP_DST_IPV4_ADDR = 7;
+    UDP_SRC_IPV4_PORT = 8;
+    UDP_DST_IPV4_PORT = 9;
+    UDP_TX_COUNT = 10;
+    UDP_ETHPKT_LEN = 11;
+    UDP_PAYLOAD_LEN = 12;
+}
+
+enum GpioAddr {
+    GPIO_ERR = 0;
+    // [there's no GPIO state machine]
+    GPIO_READ = 2;
+    GPIO_WRITE = 3;
+    GPIO_STATE = 4;
+}
+
+// Direct register I/O message.
+//
+// This is intended for for low-level and debugging use.
+//
+// You can embed a RegisterIO within a ControlCommand and send it to
+// the daemon to do register I/O. If you do, you'll get the result of
+// the I/O back in another RegisterIO embedded in a
+// ControlResponse. (See below for the definitions of ControlCommand
+// and ControlResponse).
+
+message RegisterIO {
+    // Choice of type specifies which group of registers (which
+    // module) you can use.  You must provide a value for "type":
+    enum Type {
+        ERR = 0;
+        CENTRAL = 1;
+        SATA = 2;
+        DAQ = 3;
+        UDP = 4;
+        GPIO = 5;
+    }
+    optional Type type = 1;
+
+    // Register value. Provide "val" on a write; don't on a read:
+    optional fixed32 val = 2;
+
+    // Register address. Provide exactly one of these, depending on 'type'.
+    optional ErrAddr err = 3;
+    optional CentralAddr central = 4;
+    optional SataAddr sata = 5;
+    optional DaqAddr daq = 6;
+    optional UdpAddr udp = 7;
+    optional GpioAddr gpio = 8;
+}
+
+//////////////////////////////////////////////////////////////////////
+// Commands
+//
+// Initialize and pack one of these, then send it to the daemon's
+// client control socket to perform a command. You'll get a
+// ControlResult back.
+
+// Follows union type guidelines as described here:
+// https://developers.google.com/protocol-buffers/docs/techniques#union
+message ControlCommand {
+    enum Type {
+        REG_IO = 255;
+    }
+    optional Type type = 1;
+
+    optional RegisterIO reg_io = 15;
+}
+
+//////////////////////////////////////////////////////////////////////
+// Results
+//
+// These are sent from daemon to client on the client control socket
+// to indicate the result of a ControlCommand.
+
+// Error response
+message ControlResErr {
+    enum ErrCode {
+        NO_DNODE = 0;
+    }
+    optional ErrCode code = 1;
+    optional string msg = 2;
+}
+
+message ControlResponse {
+    enum Type {
+        ERR = 1;
+        REG_IO = 255;
+    }
+    optional Type type = 1;
+
+    optional ControlResErr err = 2;
+    optional RegisterIO reg_io = 15;
+}
