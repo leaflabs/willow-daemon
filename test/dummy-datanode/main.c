@@ -22,7 +22,7 @@
 
 #define DEFAULT_ARGUMENTS                       \
     { .chaos = 1,                               \
-      .cport = 8880,                            \
+      .cport = 1369,                            \
       .dport = 8881,                            \
       .host = "127.0.0.1" }
 
