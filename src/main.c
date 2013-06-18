@@ -13,10 +13,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <assert.h>
 #include <fcntl.h>
 #include <getopt.h>
 #include <math.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -39,9 +39,9 @@
 #include "raw_packets.h"
 
 #include "ch_storage.h"
+#include "control.h"
 #include "hdf5_ch_storage.h"
 #include "raw_ch_storage.h"
-#include "data_node.h"
 
 /* libevent log levels with leading underscores are deprecated as of
  * libevent 2.0.19. That's not available yet in some popular Linux
@@ -63,11 +63,9 @@
 /* main() initializes this before doing anything else. */
 static const char* program_name;
 
-/* Data node's hostname and command/control port, and local packet
- * data port. */
-#define DNODE_HOST "127.0.0.1"
+/* Ports to listen on for client and data node control connections. */
 #define DNODE_CC_PORT 8880
-#define DNODE_DT_PORT 8881
+#define CLIENT_CC_PORT 8881
 
 /* Whether to store data into HDF5 (==1) or just do raw write() (==0;
  * for benchmarking). */
@@ -82,6 +80,8 @@ static const char* program_name;
 #define DNODE_DATA_FILE DNODE_DATA_DIR "/dnode_data.raw"
 #endif
 #define DNODE_DATASET_NAME "ANONYMOUS_DATASET"
+
+//////////////////////////////////////////////////////////////////////
 
 static void usage(int exit_status)
 {
@@ -146,6 +146,22 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
     }
 }
 
+//////////////////////////////////////////////////////////////////////
+
+static void
+sigint_handler(__unused int signum, __unused short what, void *basevp)
+{
+    log_INFO("caught SIGINT");
+    event_base_loopbreak((struct event_base*)basevp);
+}
+
+static void
+sigterm_handler(__unused int signum, __unused short what, void *basevp)
+{
+    log_INFO("caught SIGTERM");
+    event_base_loopbreak((struct event_base*)basevp);
+}
+
 static struct ch_storage* alloc_ch_storage(void)
 {
     struct ch_storage *chns;
@@ -167,86 +183,88 @@ static void free_ch_storage(struct ch_storage* chns)
     }
 }
 
-static int open_dnode_sockets(struct dnode_session *dnsession)
+static int
+run_event_loop(__unused struct ch_storage *chstorage)
 {
-    dnsession->cc_sock = sockutil_get_tcp_connected_p(DNODE_HOST,
-                                                      DNODE_CC_PORT);
-    dnsession->dt_sock = sockutil_get_udp_socket(DNODE_DT_PORT);
-    return (dnsession->cc_sock == -1 || dnsession->dt_sock == -1) ? -1 : 0;
-}
+    int ret = EXIT_FAILURE;
+    struct event_base *base = event_base_new();
+    if (!base) {
+        log_EMERG("can't get event loop");
+        goto nobase;
+    }
+    struct event *ev_sigint = evsignal_new(base, SIGINT, sigint_handler, base);
+    if (!ev_sigint) {
+        log_EMERG("can't get SIGINT handler");
+        goto nosigint;
+    }
+    struct event *ev_sigterm = evsignal_new(base, SIGTERM, sigterm_handler,
+                                            base);
+    if (!ev_sigterm) {
+        log_EMERG("can't get SIGTERM handler");
+        goto nosigterm;
+    }
+    if (event_add(ev_sigint, NULL) || event_add(ev_sigterm, NULL)) {
+        log_EMERG("can't install signal handlers");
+        goto nosiginstall;
+    }
+    struct control_session *control = control_new(base, CLIENT_CC_PORT,
+                                                  DNODE_CC_PORT);
+    if (!control) {
+        log_EMERG("can't create control session");
+        goto nocontrol;
+    }
 
-static int run_event_loop(__unused struct dnode_session *dnsession)
-{
-    log_WARNING("%s: unimplemented", __func__);
-    return EXIT_FAILURE;
+    switch (event_base_dispatch(base)) {
+    case 0:
+        ret = EXIT_SUCCESS;
+        break;
+    case 1:
+        /* This is a bug; signal handlers should persist: */
+        log_DEBUG("no more pending events!");
+        /* Fall through. */
+    default:
+        ret = EXIT_FAILURE;
+        break;
+    }
+
+    control_free(control);
+ nocontrol:
+ nosiginstall:
+    event_free(ev_sigterm);
+ nosigterm:
+    event_free(ev_sigint);
+ nosigint:
+    event_base_free(base);
+ nobase:
+    return ret;
 }
 
 static int daemon_main()
 {
     int ret = EXIT_FAILURE;
-    int cs_is_open = 0;
-
-    /*
-     * Datanode and client session state.
-     */
-    struct raw_pkt_cmd request_packet;
-    raw_packet_init(&request_packet, RAW_MTYPE_REQ, 0);
-    raw_req(&request_packet)->r_id = 0;
-    struct raw_pkt_cmd response_packet;
-    raw_packet_init(&response_packet, RAW_MTYPE_RES, 0);
-    const struct timespec timeout = {
-        .tv_sec = 0,
-        .tv_nsec = 100 * 1000 * 1000, /* 100 msec */
-    };
-    struct dnode_session dn_session = {
-        .cc_sock = -1,
-        .dt_sock = -1,
-        .req = &request_packet,
-        .res = &response_packet,
-        .chns = NULL,
-        .pkt_recv_timeout = &timeout,
-    };
-    /* Set up channel storage */
-    dn_session.chns = alloc_ch_storage();
-    if (!dn_session.chns) {
-        log_ERR("can't allocate channel storage object");
-        goto bail;
+    struct ch_storage *chstorage = alloc_ch_storage();
+    if (!chstorage) {
+        log_CRIT("can't allocate channel storage object");
+        goto nochstorage;
     }
-    cs_is_open = ch_storage_open(dn_session.chns) != -1;
-    if (!cs_is_open) {
-        log_ERR("can't open channel storage: %m");
-        goto bail;
-    }
-    /* Open connection to data node. */
-    if (open_dnode_sockets(&dn_session) == -1) {
-        log_ERR("can't connect to data node at %s port %d: %m",
-                DNODE_HOST, DNODE_CC_PORT);
-        goto bail;
+    if (ch_storage_open(chstorage) == -1) {
+        log_CRIT("can't open channel storage: %m");
+        goto noopen;
     }
 
     /*
      * Everything happens in the event loop.
      */
-    ret = run_event_loop(&dn_session);
+    ret = run_event_loop(chstorage);
 
- bail:
-    if (ret == EXIT_FAILURE) {
-        log_ERR("exiting due to error");
-    }
-    if (dn_session.dt_sock != -1 && close(dn_session.dt_sock) != 0) {
-        log_ERR("unable to close data socket: %m");
-    }
-    if (dn_session.cc_sock != -1 && close(dn_session.cc_sock) != 0) {
-        log_ERR("unable to close command/control socket: %m");
-    }
-    if (dn_session.chns) {
-        if (cs_is_open && ch_storage_close(dn_session.chns) == -1) {
-            log_ERR("unable to close channel storage: %m");
-        }
-        free_ch_storage(dn_session.chns);
-    }
+    ch_storage_close(chstorage);
+ noopen:
+    free_ch_storage(chstorage);
+ nochstorage:
     return ret;
 }
+
+//////////////////////////////////////////////////////////////////////
 
 static void libevent_log_cb(int severity, const char *msg)
 {
@@ -274,7 +292,7 @@ static int setup_libevent(void) /* Before daemonizing */
     event_set_log_callback(libevent_log_cb);
     event_set_fatal_callback(libevent_fatal_error_cb);
     if (evthread_use_pthreads() == -1) {
-        log_ERR("evthread_use_pthreads() failed");
+        log_EMERG("evthread_use_pthreads() failed");
         return -1;
     }
     return 0;
@@ -311,6 +329,8 @@ int main(int argc, char *argv[])
     }
 
     /* Go! */
+    log_DEBUG("pid: %d, client port: %d, dnode port: %d",
+              getpid(), CLIENT_CC_PORT, DNODE_CC_PORT);
     ret = daemon_main();
  bail:
     logging_fini();
