@@ -61,18 +61,18 @@ void raw_pkt_copy(void *dst, const void *src)
 int raw_num_regs(uint8_t r_type)
 {
     switch (r_type) {
-    case RAW_RTYPE_TOP:
-        return RAW_RADDR_TOP_NREGS;
+    case RAW_RTYPE_ERR:
+        return RAW_RADDR_ERR_NREGS;
+    case RAW_RTYPE_CENTRAL:
+        return RAW_RADDR_CENTRAL_NREGS;
     case RAW_RTYPE_SATA:
         return RAW_RADDR_SATA_NREGS;
     case RAW_RTYPE_DAQ:
         return RAW_RADDR_DAQ_NREGS;
     case RAW_RTYPE_UDP:
         return RAW_RADDR_UDP_NREGS;
-    case RAW_RTYPE_EXP:
-        return RAW_RADDR_EXP_NREGS;
-    case RAW_RTYPE_ERR:
-        return RAW_RADDR_ERR_NREGS;
+    case RAW_RTYPE_GPIO:
+        return RAW_RADDR_GPIO_NREGS;
     default:
         return -1;
     }
@@ -344,11 +344,11 @@ const char* raw_r_type_str(uint8_t r_type)
 {
     switch (r_type) {
     case CASE_STRINGIFY(RAW_RTYPE_ERR);
-    case CASE_STRINGIFY(RAW_RTYPE_TOP);
+    case CASE_STRINGIFY(RAW_RTYPE_CENTRAL);
     case CASE_STRINGIFY(RAW_RTYPE_SATA);
     case CASE_STRINGIFY(RAW_RTYPE_DAQ);
     case CASE_STRINGIFY(RAW_RTYPE_UDP);
-    case CASE_STRINGIFY(RAW_RTYPE_EXP);
+    case CASE_STRINGIFY(RAW_RTYPE_GPIO);
     default: return "<UNKNOWN_R_TYPE>";
     }
 }
@@ -359,17 +359,15 @@ const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr)
     case RAW_RTYPE_ERR:
         switch (r_addr) {
         case CASE_STRINGIFY(RAW_RADDR_ERR_ERR0);
-        default: return "<UNKNOWN_R_ADDR>";
+        default: return "<UNKNOWN_ERR_R_ADDR>";
         }
-    case RAW_RTYPE_TOP:
+    case RAW_RTYPE_CENTRAL:
         switch (r_addr) {
-        case CASE_STRINGIFY(RAW_RADDR_TOP_ERR);
-        case CASE_STRINGIFY(RAW_RADDR_TOP_STATE);
-        case CASE_STRINGIFY(RAW_RADDR_TOP_EXP_CK_H);
-        case CASE_STRINGIFY(RAW_RADDR_TOP_EXP_CK_L);
-        case RAW_RADDR_TOP_BSUB_CH_MIN...RAW_RADDR_TOP_BSUB_CH_MAX:
-            return "RAW_RADDR_TOP_BSUB_CH_<x>"; /* TODO be smarter */
-        default: return "<UNKNOWN_R_ADDR>";
+        case CASE_STRINGIFY(RAW_RADDR_CENTRAL_ERR);
+        case CASE_STRINGIFY(RAW_RADDR_CENTRAL_STATE);
+        case CASE_STRINGIFY(RAW_RADDR_CENTRAL_EXP_CK_H);
+        case CASE_STRINGIFY(RAW_RADDR_CENTRAL_EXP_CK_L);
+        default: return "<UNKNOWN_CENTRAL_R_ADDR>";
         }
     case RAW_RTYPE_SATA:
         switch (r_addr) {
@@ -380,7 +378,7 @@ const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr)
         case CASE_STRINGIFY(RAW_RADDR_SATA_R_IDX);
         case CASE_STRINGIFY(RAW_RADDR_SATA_R_LEN);
         case CASE_STRINGIFY(RAW_RADDR_SATA_W_IDX);
-        default: return "<UNKNOWN_R_ADDR>";
+        default: return "<UNKNOWN_SATA_R_ADDR>";
         }
     case RAW_RTYPE_DAQ:
         switch (r_addr) {
@@ -390,7 +388,13 @@ const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr)
         case CASE_STRINGIFY(RAW_RADDR_DAQ_BSMP_CURR);
         case CASE_STRINGIFY(RAW_RADDR_DAQ_CHIP_ALIVE);
         case CASE_STRINGIFY(RAW_RADDR_DAQ_CHIP_CMD);
-        default: return "<UNKNOWN_R_ADDR>";
+        case CASE_STRINGIFY(RAW_RADDR_DAQ_CHIP_SYNCH);
+        case CASE_STRINGIFY(RAW_RADDR_DAQ_FIFO_COUNT);
+        case CASE_STRINGIFY(RAW_RADDR_DAQ_FIFO_FLAGS);
+        case RAW_RADDR_DAQ_BSUB0_CFG...RAW_RADDR_DAQ_BSUB31_CFG:
+            /* TODO be smarter */
+            return "RAW_RADDR_DAQ_BSUBx_CFG";
+        default: return "<UNKNOWN_DAQ_R_ADDR>";
         }
     case RAW_RTYPE_UDP:
         switch (r_addr) {
@@ -404,14 +408,18 @@ const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr)
         case CASE_STRINGIFY(RAW_RADDR_UDP_DST_IP4);
         case CASE_STRINGIFY(RAW_RADDR_UDP_SRC_IP4_PORT);
         case CASE_STRINGIFY(RAW_RADDR_UDP_DST_IP4_PORT);
-        default: return "<UNKNOWN_R_ADDR>";
+        case CASE_STRINGIFY(RAW_RADDR_UDP_PKT_TX_COUNT);
+        case CASE_STRINGIFY(RAW_RADDR_UDP_ETH_PKT_LEN);
+        case CASE_STRINGIFY(RAW_RADDR_UDP_PAYLOAD_LEN);
+        default: return "<UNKNOWN_UDP_R_ADDR>";
         }
-    case RAW_RTYPE_EXP:
+    case RAW_RTYPE_GPIO:
         switch (r_addr) {
-        case CASE_STRINGIFY(RAW_RADDR_EXP_ERR);
-        case CASE_STRINGIFY(RAW_RADDR_EXP_GPIOS);
-        case CASE_STRINGIFY(RAW_RADDR_EXP_GPIO_STATE);
-        default: return "<UNKNOWN_R_ADDR>";
+        case CASE_STRINGIFY(RAW_RADDR_GPIO_ERR);
+        case CASE_STRINGIFY(RAW_RADDR_GPIO_READ);
+        case CASE_STRINGIFY(RAW_RADDR_GPIO_WRITE);
+        case CASE_STRINGIFY(RAW_RADDR_GPIO_STATE);
+        default: return "<UNKNOWN_GPIO_R_ADDR>";
         }
     default: return "<UNKNOWN_R_ADDR>";
     }

@@ -106,13 +106,13 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
     { .r_id = 0, .r_type = 0xFF, .r_addr = 0xFF, .r_val = 0xdeadbeef }
 
 /* Request types */
-#define RAW_RTYPE_ERR  0x00     /* Error */
-#define RAW_RTYPE_TOP  0x01     /* Top-level module */
-#define RAW_RTYPE_SATA 0x02     /* SATA storage */
-#define RAW_RTYPE_DAQ  0x03     /* DAQ: e.g. front-end config, impedance */
-#define RAW_RTYPE_UDP  0x04     /* UDP module config */
-#define RAW_RTYPE_EXP  0x05     /* GPIO config for expansion pins */
-#define RAW_RTYPE_NTYPES (RAW_RTYPE_EXP + 1)
+#define RAW_RTYPE_ERR     0x00  /* Error */
+#define RAW_RTYPE_CENTRAL 0x01  /* Central module */
+#define RAW_RTYPE_SATA    0x02  /* SATA storage */
+#define RAW_RTYPE_DAQ     0x03  /* DAQ: e.g. front-end config, impedance */
+#define RAW_RTYPE_UDP     0x04  /* UDP module config */
+#define RAW_RTYPE_GPIO    0x05  /* GPIO config for expansion pins */
+#define RAW_RTYPE_NTYPES  (RAW_RTYPE_GPIO + 1)
 
 /* I/O direction flag */
 #define RAW_PFLAG_RIOD   (0x1)
@@ -121,8 +121,6 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 
 /*
  * Per-r_type registers and values
- *
- * FIXME update or delete these
  */
 
 /* RAW_RTYPE_ERR */
@@ -130,21 +128,13 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_ERR_ERR0 0x00 /* global error register 0 (r/w) */
 #define RAW_RADDR_ERR_NREGS (RAW_RADDR_ERR_ERR0 + 1)
 
-/* RAW_RTYPE_TOP */
+/* RAW_RTYPE_CENTRAL */
 
-#define RAW_RADDR_TOP_ERR         0x00 /* Module error flags */
-#define RAW_RADDR_TOP_STATE       0x01 /* Module state */
-#define RAW_RADDR_TOP_EXP_CK_H    0x02 /* Experiment cookie, high word */
-#define RAW_RADDR_TOP_EXP_CK_L    0x03 /* Experiment cookie, low word */
-#define RAW_RADDR_TOP_BSUB_CH_MIN 0x10 /* Subsample bitmask, ch.   0-  31 */
-#define RAW_RADDR_TOP_BSUB_CH_MAX 0x2F /*               ..., ch. 992-1023 */
-#define RAW_RADDR_TOP_NREGS (RAW_RADDR_TOP_BSUB_CH_MAX + 1)
-
-enum raw_top_state {            /* FIXME use real values */
-    RAW_TOP_STOP,
-    RAW_TOP_BEGIN_ACQ,
-    RAW_TOP_BEGIN_READ,
-};
+#define RAW_RADDR_CENTRAL_ERR         0x00 /* Module error flags */
+#define RAW_RADDR_CENTRAL_STATE       0x01 /* Module state */
+#define RAW_RADDR_CENTRAL_EXP_CK_H    0x02 /* Experiment cookie, high word */
+#define RAW_RADDR_CENTRAL_EXP_CK_L    0x03 /* Experiment cookie, low word */
+#define RAW_RADDR_CENTRAL_NREGS (RAW_RADDR_CENTRAL_EXP_CK_L + 1)
 
 /* RAW_RTYPE_SATA */
 
@@ -157,11 +147,6 @@ enum raw_top_state {            /* FIXME use real values */
 #define RAW_RADDR_SATA_W_IDX    0x06 /* Last write index */
 #define RAW_RADDR_SATA_NREGS (RAW_RADDR_SATA_W_IDX + 1)
 
-enum raw_sata_state {           /* FIXME use real values */
-    RAW_SATA_STOP,
-    RAW_SATA_READY_WRITE,
-};
-
 /* RAW_RTYPE_DAQ */
 
 #define RAW_RADDR_DAQ_ERR        0x00 /* Module error flags */
@@ -170,7 +155,13 @@ enum raw_sata_state {           /* FIXME use real values */
 #define RAW_RADDR_DAQ_BSMP_CURR  0x03 /* Current board sample index */
 #define RAW_RADDR_DAQ_CHIP_ALIVE 0x04 /* Chip alive bitmask */
 #define RAW_RADDR_DAQ_CHIP_CMD   0x05 /* CMD config */
-#define RAW_RADDR_DAQ_NREGS (RAW_RADDR_DAQ_CHIP_CMD + 1)
+#define RAW_RADDR_DAQ_CHIP_SYNCH 0x06 /* Synchronous sampling mode (TBD) */
+#define RAW_RADDR_DAQ_FIFO_COUNT 0x07 /* FIFO read count ("byte in FIFO") */
+#define RAW_RADDR_DAQ_FIFO_FLAGS 0x08 /* TBD */
+#define RAW_RADDR_DAQ_BSUB0_CFG  0x80 /* subsample #0 configuration */
+/* ... */
+#define RAW_RADDR_DAQ_BSUB31_CFG  0x80 /* subsample #31 configuration */
+#define RAW_RADDR_DAQ_NREGS (RAW_RADDR_DAQ_BSUB31_CFG + 1)
 
 /* RAW_RTYPE_UDP */
 
@@ -184,20 +175,19 @@ enum raw_sata_state {           /* FIXME use real values */
 #define RAW_RADDR_UDP_DST_IP4      0x07 /* Destination IPv4 address */
 #define RAW_RADDR_UDP_SRC_IP4_PORT 0x08 /* Source IPv4 port */
 #define RAW_RADDR_UDP_DST_IP4_PORT 0x09 /* Destination IPv4 port */
-#define RAW_RADDR_UDP_NREGS (RAW_RADDR_UDP_DST_IP4_PORT + 1)
+#define RAW_RADDR_UDP_PKT_TX_COUNT 0x0A /* Packet TX count */
+#define RAW_RADDR_UDP_ETH_PKT_LEN  0x0B /* Ethernet packet length */
+#define RAW_RADDR_UDP_PAYLOAD_LEN  0x0C /* Payload length */
+#define RAW_RADDR_UDP_NREGS (RAW_RADDR_UDP_PAYLOAD_LEN + 1)
 
-enum raw_udp_state {            /* FIXME use real values */
-    RAW_UDP_STOP,
-    RAW_UDP_READY_PARTIAL,
-};
+/* RAW_RTYPE_GPIO */
 
-/* RAW_RTYPE_EXP */
-
-#define RAW_RADDR_EXP_ERR        0x00 /* Module error flags */
+#define RAW_RADDR_GPIO_ERR   0x00 /* Module error flags */
 /* (No state machine for GPIO) */
-#define RAW_RADDR_EXP_GPIOS      0x02 /* Available GPIO bitmask */
-#define RAW_RADDR_EXP_GPIO_STATE 0x03 /* GPIO state */
-#define RAW_RADDR_EXP_NREGS (RAW_RADDR_EXP_GPIO_STATE + 1)
+#define RAW_RADDR_GPIO_READ  0x02 /* GPIO read mask */
+#define RAW_RADDR_GPIO_WRITE 0x03 /* GPIO write mask */
+#define RAW_RADDR_GPIO_STATE 0x04 /* GPIO state */
+#define RAW_RADDR_GPIO_NREGS (RAW_RADDR_GPIO_STATE + 1)
 
 /*
  * Error packet (RAW_MTYPE_ERR) data
@@ -208,7 +198,7 @@ struct raw_cmd_err {
     uint8_t pad_must_be_zero[_RAW_CSIZE];
 };
 
-/* Don't touch; use RAW_PKT_ERR_INITIALIZER, below.. */
+/* Don't touch; use RAW_PKT_ERR_INITIALIZER, below. */
 #define _RAW_ERR_INITIALIZER { .pad_must_be_zero = { [_RAW_CSIZE - 1] = 0 } }
 
 /*
@@ -254,6 +244,8 @@ typedef uint16_t raw_samp_t;
 
 /*
  * Board subsample packet (RAW_MTYPE_BSUB) data
+ *
+ * FIXME update this to new definition
  */
 
 struct raw_pkt_bsub {

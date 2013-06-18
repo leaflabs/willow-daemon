@@ -62,38 +62,38 @@ static reg_map_t reg_map_alloc(void)
 {
     reg_t *err_reg_map = malloc(RAW_RADDR_ERR_NREGS * sizeof(reg_t));
     if (!err_reg_map) { goto noerr; }
-    reg_t *top_reg_map = malloc(RAW_RADDR_TOP_NREGS * sizeof(reg_t));
-    if (!top_reg_map) { goto notop; }
+    reg_t *central_reg_map = malloc(RAW_RADDR_CENTRAL_NREGS * sizeof(reg_t));
+    if (!central_reg_map) { goto nocentral; }
     reg_t *sata_reg_map = malloc(RAW_RADDR_SATA_NREGS * sizeof(reg_t));
     if (!sata_reg_map) { goto nosata; }
     reg_t *daq_reg_map = malloc(RAW_RADDR_DAQ_NREGS * sizeof(reg_t));
     if (!daq_reg_map) { goto nodaq; }
     reg_t *udp_reg_map = malloc(RAW_RADDR_UDP_NREGS * sizeof(reg_t));
     if (!udp_reg_map) { goto noudp; }
-    reg_t *exp_reg_map = malloc(RAW_RADDR_EXP_NREGS * sizeof(reg_t));
-    if (!exp_reg_map) { goto noexp; }
+    reg_t *gpio_reg_map = malloc(RAW_RADDR_GPIO_NREGS * sizeof(reg_t));
+    if (!gpio_reg_map) { goto nogpio; }
 
     reg_map_t ret = malloc(RAW_RTYPE_NTYPES * sizeof(reg_t*));
     if (!ret) { goto nomap; }
     ret[RAW_RTYPE_ERR] = err_reg_map;
-    ret[RAW_RTYPE_TOP] = top_reg_map;
+    ret[RAW_RTYPE_CENTRAL] = central_reg_map;
     ret[RAW_RTYPE_SATA] = sata_reg_map;
     ret[RAW_RTYPE_DAQ] = daq_reg_map;
     ret[RAW_RTYPE_UDP] = udp_reg_map;
-    ret[RAW_RTYPE_EXP] = exp_reg_map;
+    ret[RAW_RTYPE_GPIO] = gpio_reg_map;
     return ret;
 
  nomap:
-    free(exp_reg_map);
- noexp:
+    free(gpio_reg_map);
+ nogpio:
     free(udp_reg_map);
  noudp:
     free(daq_reg_map);
  nodaq:
     free(sata_reg_map);
  nosata:
-    free(top_reg_map);
- notop:
+    free(central_reg_map);
+ nocentral:
     free(err_reg_map);
  noerr:
     return 0;
@@ -103,11 +103,11 @@ static reg_map_t reg_map_alloc(void)
 static void reg_map_free(reg_map_t reg_map)
 {
     free(reg_map_get(reg_map, RAW_RTYPE_ERR));
-    free(reg_map_get(reg_map, RAW_RTYPE_TOP));
+    free(reg_map_get(reg_map, RAW_RTYPE_CENTRAL));
     free(reg_map_get(reg_map, RAW_RTYPE_SATA));
     free(reg_map_get(reg_map, RAW_RTYPE_DAQ));
     free(reg_map_get(reg_map, RAW_RTYPE_UDP));
-    free(reg_map_get(reg_map, RAW_RTYPE_EXP));
+    free(reg_map_get(reg_map, RAW_RTYPE_GPIO));
     free(reg_map);
 }
 
@@ -265,7 +265,7 @@ static int serve_reg_write(struct daemon_session *dsess)
     return send_response(dsess->cc_sock, dsess->res);
 }
 
-static int serve_top_write(struct daemon_session *dsess) /* TODO */
+static int serve_central_write(struct daemon_session *dsess) /* TODO */
 {
     return serve_reg_write(dsess);
 }
@@ -285,7 +285,7 @@ static int serve_udp_write(struct daemon_session *dsess) /* TODO */
     return serve_reg_write(dsess);
 }
 
-static int serve_exp_write(struct daemon_session *dsess) /* TODO */
+static int serve_gpio_write(struct daemon_session *dsess) /* TODO */
 {
     return serve_reg_write(dsess);
 }
@@ -302,11 +302,11 @@ static int serve_request(struct daemon_session *dsess)
         /* The daemon sending _us_ an error is illegal. */
         [RAW_RTYPE_ERR] = serve_request_error,
 
-        [RAW_RTYPE_TOP]  = serve_top_write,
-        [RAW_RTYPE_SATA] = serve_sata_write,
-        [RAW_RTYPE_DAQ]  = serve_daq_write,
-        [RAW_RTYPE_UDP]  = serve_udp_write,
-        [RAW_RTYPE_EXP]  = serve_exp_write,
+        [RAW_RTYPE_CENTRAL] = serve_central_write,
+        [RAW_RTYPE_SATA]    = serve_sata_write,
+        [RAW_RTYPE_DAQ]     = serve_daq_write,
+        [RAW_RTYPE_UDP]     = serve_udp_write,
+        [RAW_RTYPE_GPIO]    = serve_gpio_write,
     };
     int module_n_regs = raw_num_regs(rcmd->r_type);
     serve_fn serve = NULL;
