@@ -179,7 +179,14 @@ message ControlCommand {
 // Error response
 message ControlResErr {
     enum ErrCode {
+        // No data node connected
         NO_DNODE = 0;
+        // Internal daemon error
+        DAEMON = 1;
+        // Protocol error on client control socket
+        C_PROTO = 2;
+        // Protocol error on data node control socket
+        D_PROTO = 3;
     }
     optional ErrCode code = 1;
     optional string msg = 2;

@@ -27,6 +27,16 @@
 
 #include "proto/control.pb-c.h"
 
+
+/* FIXME:
+ *
+ * - add timeouts when processing commands
+ * - check responses request IDs and drop unexpected non-error responses
+ * - send error to client on timeout?
+ * - allow client to configure timeout?
+ * - drop ongoing transaction on client closure
+ */
+
 /* Google says individual protocol buffers should be < 1 MB each:
  *
  * https://developers.google.com/protocol-buffers/docs/techniques#large-data
@@ -40,8 +50,8 @@
  * waiting to read length" */
 typedef int32_t client_cmd_len_t;
 #define CMDLEN_SIZE sizeof(client_cmd_len_t)
-
 #define CLIENT_CMDLEN_WAITING (-1)
+
 struct client_priv {
     ControlCommand *c_cmd; /* Latest unpacked protocol message, or
                             * NULL. Shared with worker thread. */
@@ -58,9 +68,11 @@ struct client_priv {
      * at each read(). */
     uint8_t c_cmd_arr[CLIENT_CMD_MAX_SIZE];
     uint8_t c_rsp_arr[CLIENT_CMD_MAX_SIZE];
-
-    uint16_t req_id;            /* current raw_packets.h request ID */
 };
+
+/********************************************************************
+ * Miscellaneous helpers
+ */
 
 /* Convert a client message length from network to host byte ordering */
 static inline client_cmd_len_t cmd_ntoh(client_cmd_len_t net)
@@ -93,12 +105,11 @@ static const char *client_eproto_str(unsigned eproto)
     return strings[eproto];
 }
 
-/* FIXME replace uses of this function with robust error handling */
-static void client_protocol_error(__unused struct control_session *cs,
-                                  unsigned eproto)
+static void client_fatal_protocol_error(__unused struct control_session *cs,
+                                        unsigned eproto)
 {
-    /* FIXME XXX signal an error or shut down the connection instead,
-     * to prevent DoS attacks. */
+    /* FIXME XXX shut down the connection instead, to prevent DoS
+     * attacks. */
     log_CRIT("client protocol error: %s", client_eproto_str(eproto));
     exit(EXIT_FAILURE);
 }
@@ -130,11 +141,9 @@ static inline void drain_evbuf(struct evbuffer *evb)
     }
 }
 
-/* For fresh connection */
-static void client_reset_priv(struct control_session *cs)
+static void client_reset_state_locked(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
-    control_must_lock(cs);
     if (cpriv->c_cmd) {
         control_command__free_unpacked(cpriv->c_cmd, NULL);
     }
@@ -146,8 +155,80 @@ static void client_reset_priv(struct control_session *cs)
     cpriv->c_rsp = NULL;
     drain_evbuf(cpriv->c_pbuf);
     drain_evbuf(cpriv->c_cmdlen_buf);
+}
+
+/* For fresh connection */
+static void client_reset_state_unlocked(struct control_session *cs)
+{
+    control_must_lock(cs);
+    client_reset_state_locked(cs);
     control_must_unlock(cs);
 }
+
+/********************************************************************
+ * Conveniences for sending responses to client
+ *
+ * NOT SYNCHRONIZED; must be called with control session mutex locked.
+ */
+
+static void client_done_with_cmd(struct control_session *cs)
+{
+    struct client_priv *cpriv = cs->cpriv;
+    control_clear_transactions(cs, 1);
+    assert(cpriv->c_cmd);
+    control_command__free_unpacked(cpriv->c_cmd, NULL);
+    cpriv->c_cmd = NULL;
+}
+
+static void client_send_response(struct control_session *cs,
+                                 ControlResponse *cr)
+{
+    struct client_priv *cpriv = cs->cpriv;
+    size_t len = control_response__get_packed_size(cr);
+    assert(len < CLIENT_CMD_MAX_SIZE); /* or WTF; honestly */
+    size_t packed = control_response__pack(cr, cpriv->c_rsp_arr);
+    client_cmd_len_t clen = cmd_hton((client_cmd_len_t)packed);
+    bufferevent_write(cs->cbev, &clen, CMDLEN_SIZE);
+    bufferevent_write(cs->cbev, cpriv->c_rsp_arr, packed);
+    client_done_with_cmd(cs);
+}
+
+static void client_send_err(struct control_session *cs,
+                            ControlResErr__ErrCode code,
+                            char *msg)
+{
+    ControlResErr crerr = CONTROL_RES_ERR__INIT;
+    crerr.has_code = 1;
+    crerr.code = code;
+    crerr.msg = msg;
+    ControlResponse cr = CONTROL_RESPONSE__INIT;
+    cr.has_type = 1;
+    cr.type = CONTROL_RESPONSE__TYPE__ERR;
+    cr.err = &crerr;
+    client_send_response(cs, &cr);
+}
+
+#define CLIENT_RES_ERR_NO_DNODE(cs) do {                                \
+        client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__NO_DNODE,        \
+                        "not connected to data node");                  \
+    } while (0)
+
+#define CLIENT_RES_ERR_DAEMON(cs, msg) do {                             \
+        client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__DAEMON,          \
+                        "internal daemon error: " msg);                 \
+ } while (0)
+
+#define CLIENT_RES_ERR_C_PROTO(cs, msg) do {                           \
+        client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__C_PROTO,        \
+                        "client protocol error: " msg); } while (0)
+
+#define CLIENT_RES_ERR_D_PROTO(cs, msg) do {                           \
+        client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__D_PROTO,        \
+                        "data node protocol error: " msg); } while (0)
+
+/********************************************************************
+ * Main thread control_ops callbacks
+ */
 
 static int client_start(struct control_session *cs)
 {
@@ -171,9 +252,9 @@ static int client_start(struct control_session *cs)
     priv->c_cmd = NULL;
     priv->c_pbuf = c_pbuf;
     priv->c_cmdlen_buf = c_cmdlen_buf;
-    priv->req_id = 0;
     cs->cpriv = priv;
-    client_reset_priv(cs);
+    client_reset_state_locked(cs); /* worker isn't started; don't
+                                    * bother locking */
     return 0;
 
  bail:
@@ -199,12 +280,16 @@ static void client_stop(struct control_session *cs)
 static void client_ensure_clean(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
+    control_must_lock(cs);
     assert(cpriv);
     assert(cpriv->c_cmd == NULL);
     assert(cpriv->c_pbuf);
     assert(evbuffer_get_length(cpriv->c_pbuf) == 0);
     assert(evbuffer_get_length(cpriv->c_cmdlen_buf) == 0);
     assert(cpriv->c_cmdlen == CLIENT_CMDLEN_WAITING);
+    assert(cs->ctl_txns == NULL);
+    assert(cs->ctl_cur_txn == -1);
+    control_must_unlock(cs);
 }
 
 static int client_open(struct control_session *cs,
@@ -214,15 +299,10 @@ static int client_open(struct control_session *cs,
     return 0;
 }
 
-static void client_close(__unused struct control_session *cs)
+static void client_close(struct control_session *cs)
 {
-    /* FIXME
-     *
-     * Control session already notified worker about lost connection;
-     * we need to make sure it's figured that out before cleaning up
-     * our stuff. */
     assert(cs->cpriv);
-    client_reset_priv(cs);
+    client_reset_state_unlocked(cs);
     client_ensure_clean(cs);
 }
 
@@ -250,7 +330,7 @@ static int client_got_entire_pbuf(struct control_session *cs)
 
     /* Sanity-check the received protocol buffer length. */
     if (cpriv->c_cmdlen > CLIENT_CMD_MAX_SIZE) {
-        client_protocol_error(cs, CLIENT_EPROTO_CMDLEN);
+        client_fatal_protocol_error(cs, CLIENT_EPROTO_CMDLEN);
     }
 
     /* We've received a complete length prefix, so shove any
@@ -263,217 +343,284 @@ static int client_got_entire_pbuf(struct control_session *cs)
             evbuffer_get_length(cpriv->c_pbuf) == (unsigned)cpriv->c_cmdlen);
 }
 
+/* NOT SYNCHRONIZED */
+static void client_reset_for_next_pbuf(struct control_session *cs)
+{
+    struct client_priv *cpriv = cs->cpriv;
+    cpriv->c_cmdlen = CLIENT_CMDLEN_WAITING;
+    assert(evbuffer_get_length(cpriv->c_pbuf) == 0);
+    assert(evbuffer_get_length(cpriv->c_cmdlen_buf) == 0);
+}
+
 static enum control_worker_why client_read(struct control_session *cs)
 {
+    enum control_worker_why ret = CONTROL_WHY_NONE;
+    struct client_priv *cpriv = cs->cpriv;
+
+    control_must_lock(cs);
+
     /*
      * Try to pull an entire protocol buffer out of cs->dbev.
      */
     if (!client_got_entire_pbuf(cs)) {
-        return CONTROL_WHY_NONE; /* Not enough data yet. */
+        goto done;
+    }
+
+    if (cpriv->c_cmd || cs->ctl_txns) {
+        /* There's an existing command we're still dealing with; the
+         * client shouldn't have sent us a new one. */
+        CLIENT_RES_ERR_C_PROTO(cs,
+                               "command received while another "
+                               "is being processed");
+        goto done;
     }
 
     /*
      * The entire protocol buffer has been received; unpack it.
      */
-    control_must_lock(cs);
-    struct client_priv *cpriv = cs->cpriv;
     size_t pbuf_len = evbuffer_get_length(cpriv->c_pbuf);
     size_t nrem = evbuffer_remove(cpriv->c_pbuf, cpriv->c_cmd_arr, pbuf_len);
     assert(nrem == pbuf_len);
     cpriv->c_cmd = control_command__unpack(NULL, pbuf_len, cpriv->c_cmd_arr);
     if (!cpriv->c_cmd) {
-        /* Something's terribly wrong -- out of memory? */
-        log_CRIT("can't unpack command protocol message; dying");
-        control_must_unlock(cs);
-        client_reset_priv(cs);
-        return CONTROL_WHY_EXIT;
+        CLIENT_RES_ERR_DAEMON(cs, "can't unpack client command");
+        goto done;
     }
-    /* Command is unpacked; prepare to read another protocol buffer. */
-    cpriv->c_cmdlen = CLIENT_CMDLEN_WAITING;
-    assert(evbuffer_get_length(cpriv->c_pbuf) == 0);
-    assert(evbuffer_get_length(cpriv->c_cmdlen_buf) == 0);
-    control_must_unlock(cs);
+    client_reset_for_next_pbuf(cs);
 
     /*
-     * Ready to wake the worker. Clients aren't allowed to send us
-     * more than one command at a time, so reading another is a
-     * protocol error.
+     * Ready to wake the worker.
      */
     if (client_got_entire_pbuf(cs)) {
-        client_protocol_error(cs, CLIENT_EPROTO_2CMDS);
-        assert(0);      /* client_protocol_error is currently fatal */
-        return CONTROL_WHY_EXIT; /* appease GCC */
+        /* Clients aren't allowed to send us more than one command at
+         * a time, so the fact that we just read another is a protocol
+         * error.
+         *
+         * Ensuring that there isn't another protocol buffer waiting
+         * in cs->cbev at this time implies that this callback will
+         * get invoked again when the next one finishes arriving. By
+         * sending an error now, we don't get stuck with a complete
+         * command sitting in an evbuffer and libevent having no
+         * reason to invoke a callback to process it. */
+        CLIENT_RES_ERR_C_PROTO(cs, "two commands sent at once; both dropped");
+        client_reset_for_next_pbuf(cs);
+        goto done;
     } else {
-        return CONTROL_WHY_CLIENT_CMD;
+        ret = CONTROL_WHY_CLIENT_CMD;
+        goto done;
     }
+
+ done:
+    control_must_unlock(cs);
+    return ret;
 }
 
-static void client_err_no_dnode(struct control_session *cs)
+/********************************************************************
+ * Worker thread (ControlCommand handling)
+ */
+
+/* Handle a client command with embedded RegisterIO */
+static void client_process_cmd_regio(struct control_session *cs)
 {
-    log_WARNING("%s: got client command, but no datanode is connected",
-                __func__);
     struct client_priv *cpriv = cs->cpriv;
-    ControlResErr crerr = CONTROL_RES_ERR__INIT;
-    crerr.has_code = 1;
-    crerr.code = CONTROL_RES_ERR__ERR_CODE__NO_DNODE;
-    crerr.msg = "data node is not connected";
-    ControlResponse cr = CONTROL_RESPONSE__INIT;
-    cr.has_type = 1;
-    cr.type = CONTROL_RESPONSE__TYPE__ERR;
-    cr.err = &crerr;
-    size_t len = control_response__get_packed_size(&cr);
-    assert(len < CLIENT_CMD_MAX_SIZE); /* or WTF; honestly */
-    size_t packed = control_response__pack(&cr, cpriv->c_rsp_arr);
-    client_cmd_len_t clen = cmd_hton((client_cmd_len_t)packed);
-    bufferevent_write(cs->cbev, &clen, CMDLEN_SIZE);
-    bufferevent_write(cs->cbev, cpriv->c_rsp_arr, packed);
+    RegisterIO *reg_io = cpriv->c_cmd->reg_io;
+
+    if (!reg_io) {
+        CLIENT_RES_ERR_C_PROTO(cs,
+                               "missing reg_io field in command specifying "
+                               "register I/O");
+        return;
+    }
+    if (!reg_io->has_type) {
+        CLIENT_RES_ERR_C_PROTO(cs, "missing RegisterIO type field");
+        return;
+    }
+
+    /* A little evil macro to save typing. */
+    uint16_t reg_addr;
+#define REG_IO_CASE(lcase, ucase)                                       \
+    REGISTER_IO__TYPE__ ## ucase:                                       \
+        if (!reg_io->has_ ## lcase) {                                   \
+            CLIENT_RES_ERR_C_PROTO(cs,                                 \
+                                   "missing " #lcase " register address"); \
+            return;                                                     \
+        }                                                               \
+        reg_addr = reg_io->lcase;                                       \
+        break
+
+    switch (reg_io->type) {
+    case REG_IO_CASE(err, ERR);
+    case REG_IO_CASE(central, CENTRAL);
+    case REG_IO_CASE(sata, SATA);
+    case REG_IO_CASE(daq, DAQ);
+    case REG_IO_CASE(udp, UDP);
+    case REG_IO_CASE(gpio, GPIO);
+    default:
+        CLIENT_RES_ERR_C_PROTO(cs, "no address field set in RegisterIO");
+        return;
+    }
+#undef REG_IO_CASE
+
+    struct control_txn *txn = malloc(sizeof(struct control_txn));
+    if (!txn) {
+        CLIENT_RES_ERR_DAEMON(cs, "out of memory");
+        return;
+    }
+    struct raw_pkt_cmd *rpkt = &txn->req_pkt;
+    struct raw_cmd_req *req = raw_req(rpkt);
+    raw_packet_init(rpkt, RAW_MTYPE_REQ, 0);
+    req->r_type = reg_io->type;
+    req->r_addr = reg_addr;
+    if (reg_io->has_val) {
+        raw_set_flags(&txn->req_pkt, RAW_PFLAG_RIOD_W);
+        req->r_val = reg_io->val;
+    } else {
+        raw_set_flags(&txn->req_pkt, RAW_PFLAG_RIOD_R);
+        req->r_val = 0;
+    }
+    control_set_transactions(cs, txn, 1, 1);
+    cs->wake_why |= CONTROL_WHY_DNODE_TXN;
 }
 
 static void client_process_cmd(struct control_session *cs)
 {
-    log_DEBUG("%s: handling protocol message", __func__);
-    /* All we currently support is RegisterIO */
     struct client_priv *cpriv = cs->cpriv;
-    assert(cpriv->c_cmd->has_type);
-    assert(cpriv->c_cmd->type == CONTROL_COMMAND__TYPE__REG_IO);
-    assert(cpriv->c_cmd->reg_io);
-    RegisterIO *reg_io = cpriv->c_cmd->reg_io;
-    assert(reg_io->has_type);
-    uint16_t reg_addr;
-    switch (reg_io->type) {
-    case REGISTER_IO__TYPE__ERR:
-        if (!reg_io->has_err) {
-            client_protocol_error(cs, CLIENT_EPROTO_PMSG);
-        }
-        reg_addr = reg_io->err;
-        break;
-    case REGISTER_IO__TYPE__CENTRAL:
-        if (!reg_io->has_central) {
-            client_protocol_error(cs, CLIENT_EPROTO_PMSG);
-        }
-        reg_addr = reg_io->central;
-        break;
-    case REGISTER_IO__TYPE__SATA:
-        if (!reg_io->has_sata) {
-            client_protocol_error(cs, CLIENT_EPROTO_PMSG);
-        }
-        reg_addr = reg_io->sata;
-        break;
-    case REGISTER_IO__TYPE__DAQ:
-        if (!reg_io->has_daq) {
-            client_protocol_error(cs, CLIENT_EPROTO_PMSG);
-        }
-        reg_addr = reg_io->daq;
-        break;
-    case REGISTER_IO__TYPE__UDP:
-        if (!reg_io->has_udp) {
-            client_protocol_error(cs, CLIENT_EPROTO_PMSG);
-        }
-        reg_addr = reg_io->udp;
-        break;
-    case REGISTER_IO__TYPE__GPIO:
-        if (!reg_io->has_gpio) {
-            client_protocol_error(cs, CLIENT_EPROTO_PMSG);
-        }
-        reg_addr = reg_io->gpio;
-        break;
-    default:
-        client_protocol_error(cs, CLIENT_EPROTO_PMSG);
-        break;
+    ControlCommand *cmd = cpriv->c_cmd;
+    if (!cmd->has_type) {
+        CLIENT_RES_ERR_C_PROTO(cs, "missing type field in command");
+        return;
     }
 
-    /* Inform the data node side that there's work to be done */
-    struct raw_pkt_cmd *req_pkt = &cs->req_pkt;
-    struct raw_cmd_req *req = raw_req(req_pkt);
-    raw_packet_init(req_pkt, RAW_MTYPE_REQ, 0);
-    req->r_id = cpriv->req_id++;
-    req->r_type = reg_io->type;
-    req->r_addr = reg_addr;
-    raw_clear_flags(req_pkt, RAW_PFLAG_RIOD);
-    if (reg_io->has_val) {
-        req->r_val = reg_io->val;
-        raw_set_flags(req_pkt, RAW_PFLAG_RIOD_W);
-    } else {
-        req->r_val = 0;
-        raw_set_flags(req_pkt, RAW_PFLAG_RIOD_R);
+    log_DEBUG("%s: handling protocol message, type %d", __func__, cmd->type);
+
+    switch (cmd->type) {
+    case CONTROL_COMMAND__TYPE__REG_IO:
+        client_process_cmd_regio(cs);
+        break;
+    /* FIXME add smarts for other types of commands */
+    default:
+        CLIENT_RES_ERR_C_PROTO(cs, "unknown command type");
+        break;
     }
-    cs->wake_why |= CONTROL_WHY_DNODE_REQ;
 }
 
-static void client_thread(struct control_session *cs)
+static void client_process_res_regio(struct control_session *cs)
 {
-    int handled = 0;
-    struct client_priv *cpriv = cs->cpriv;
+    struct control_txn *txn = &cs->ctl_txns[cs->ctl_cur_txn];
+    struct raw_pkt_cmd *req_pkt = &txn->req_pkt, *res_pkt = &txn->res_pkt;
+    struct raw_cmd_req *req = raw_req(req_pkt);
+    struct raw_cmd_res *res = raw_res(res_pkt);
 
-    if (cs->wake_why & CONTROL_WHY_CLIENT_CMD) {
-        assert(cpriv->c_cmd);
-        if (!cs->dbev) {
-            client_err_no_dnode(cs);
-        } else {
-            client_process_cmd(cs);
-        }
-        control_command__free_unpacked(cpriv->c_cmd, NULL);
-        cpriv->c_cmd = NULL;
-        cs->wake_why &= ~CONTROL_WHY_CLIENT_CMD;
-        handled = 1;
+    /* If the response doesn't match the request, something's wrong */
+    if (req->r_id != res->r_id) {
+        log_ERR("got response r_id %u, expected %u", res->r_id, req->r_id);
+        CLIENT_RES_ERR_D_PROTO(cs, "request/response ID mismatch");
+        return;
     }
-    if (cs->wake_why & CONTROL_WHY_CLIENT_RES) {
-        log_WARNING("%s: FIXME: just assuming client ordered RegisterIO",
-                    __func__);
-        struct raw_cmd_res *res = raw_res(&cs->res_pkt);
-        RegisterIO reg_io = REGISTER_IO__INIT;
-        reg_io.has_type = 1;
-        reg_io.type = res->r_type;
+
+    RegisterIO reg_io = REGISTER_IO__INIT;
+    reg_io.has_type = 1;
+    reg_io.type = res->r_type;
 #if (RAW_RTYPE_NTYPES - 1) != RAW_RTYPE_GPIO /* future-proofing */
 #error "changes to RAW_RTYPE_* require client code updates"
 #endif
-        switch (res->r_type) {
-        case RAW_RTYPE_ERR:
-            reg_io.has_err = 1;
-            reg_io.err = res->r_type;
-            break;
-        case RAW_RTYPE_CENTRAL:
-            reg_io.has_central = 1;
-            reg_io.central = res->r_type;
-            break;
-        case RAW_RTYPE_SATA:
-            reg_io.has_sata = 1;
-            reg_io.sata = res->r_type;
-            break;
-        case RAW_RTYPE_DAQ:
-            reg_io.has_daq = 1;
-            reg_io.daq = res->r_type;
-            break;
-        case RAW_RTYPE_UDP:
-            reg_io.has_udp = 1;
-            reg_io.udp = res->r_type;
-            break;
-        case RAW_RTYPE_GPIO:
-            reg_io.has_gpio = 1;
-            reg_io.gpio = res->r_type;
-            break;
-        default:
-            log_ERR("unhandled RAW_RTYPE: %d", res->r_type);
-            assert(0);
-            return;
-        }
-        reg_io.has_val = 1;
-        reg_io.val = res->r_val;
-        ControlResponse cr = CONTROL_RESPONSE__INIT;
-        cr.has_type = 1;
-        cr.type = CONTROL_RESPONSE__TYPE__REG_IO;
-        cr.reg_io = &reg_io;
-        size_t packed = control_response__pack(&cr, cpriv->c_rsp_arr);
-        client_cmd_len_t clen = cmd_hton((client_cmd_len_t)packed);
-        bufferevent_write(cs->cbev, &clen, CMDLEN_SIZE);
-        bufferevent_write(cs->cbev, cpriv->c_rsp_arr, packed);
-        cs->wake_why &= ~CONTROL_WHY_CLIENT_RES;
-        handled = 1;
+    switch (res->r_type) {
+    case RAW_RTYPE_ERR:
+        reg_io.has_err = 1;
+        reg_io.err = res->r_type;
+        break;
+    case RAW_RTYPE_CENTRAL:
+        reg_io.has_central = 1;
+        reg_io.central = res->r_type;
+        break;
+    case RAW_RTYPE_SATA:
+        reg_io.has_sata = 1;
+        reg_io.sata = res->r_type;
+        break;
+    case RAW_RTYPE_DAQ:
+        reg_io.has_daq = 1;
+        reg_io.daq = res->r_type;
+        break;
+    case RAW_RTYPE_UDP:
+        reg_io.has_udp = 1;
+        reg_io.udp = res->r_type;
+        break;
+    case RAW_RTYPE_GPIO:
+        reg_io.has_gpio = 1;
+        reg_io.gpio = res->r_type;
+        break;
+    default:
+        log_ERR("unhandled RAW_RTYPE: %d", res->r_type);
+        assert(0);
+        return;
     }
-    if (!handled) {
-        log_WARNING("unhandled client wake; why=%d", (int)cs->wake_why);
+    reg_io.has_val = 1;
+    reg_io.val = res->r_val;
+    ControlResponse cr = CONTROL_RESPONSE__INIT;
+    cr.has_type = 1;
+    cr.type = CONTROL_RESPONSE__TYPE__REG_IO;
+    cr.reg_io = &reg_io;
+    client_send_response(cs, &cr);
+}
+
+static void client_process_res(struct control_session *cs)
+{
+    struct client_priv *cpriv = cs->cpriv;
+    /* Result packets should only occur when a transaction is
+     * ongoing. It's the data node receive callback's job to
+     * filter unexpected ones out for us. */
+    assert(cs->ctl_txns && cs->ctl_cur_txn >= 0 &&
+           (size_t)cs->ctl_cur_txn < cs->ctl_n_txns);
+    assert(cpriv->c_cmd->has_type);
+    switch (cpriv->c_cmd->type) {
+    case CONTROL_COMMAND__TYPE__REG_IO:
+        client_process_res_regio(cs);
+        break;
+    /* FIXME support new ControlCommand types here */
+    default:
+        log_ERR("got result for unhandled command type; ignoring it");
+        break;
     }
 }
+
+static void client_process_err(__unused struct control_session *cs)
+{
+    log_ERR("%s: FIXME; unimplemented", __func__);
+    exit(EXIT_FAILURE);
+}
+
+#define CLIENT_WHY_WAKE \
+    (CONTROL_WHY_CLIENT_CMD | CONTROL_WHY_CLIENT_RES | CONTROL_WHY_CLIENT_ERR)
+static void client_thread(struct control_session *cs)
+{
+    if (!(cs->wake_why & CLIENT_WHY_WAKE)) {
+        log_WARNING("unexpected client wake; why=%d", (int)cs->wake_why);
+        return;
+    }
+    if (cs->wake_why & CONTROL_WHY_CLIENT_CMD) {
+        /* There should be no ongoing transactions */
+        assert(!cs->ctl_txns);
+
+        if (!cs->dbev) {
+            CLIENT_RES_ERR_NO_DNODE(cs);
+        } else {
+            client_process_cmd(cs);
+        }
+        cs->wake_why &= ~CONTROL_WHY_CLIENT_CMD;
+    }
+    if (cs->wake_why & CONTROL_WHY_CLIENT_RES) {
+        client_process_res(cs);
+        cs->wake_why &= ~CONTROL_WHY_CLIENT_RES;
+    }
+    if (cs->wake_why & CONTROL_WHY_CLIENT_ERR) {
+        client_process_err(cs);
+        cs->wake_why &= ~CONTROL_WHY_CLIENT_ERR;
+    }
+}
+
+/********************************************************************
+ * control_ops
+ */
 
 static const struct control_ops client_control_operations = {
     .cs_start = client_start,

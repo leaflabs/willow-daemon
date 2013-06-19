@@ -15,7 +15,9 @@
 
 #include "control-dnode.h"
 
+#include <assert.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "control-private.h"
 #include "logging.h"
@@ -42,11 +44,16 @@ static void dnode_free_priv(struct control_session *cs)
     cs->dpriv = NULL;
 }
 
-static void dnode_reset_priv(struct control_session *cs)
+static void dnode_reset_state_locked(struct control_session *cs)
 {
     struct dnode_priv *dpriv = cs->dpriv;
-    control_must_lock(cs);
     evbuffer_drain(dpriv->d_rbuf, evbuffer_get_length(dpriv->d_rbuf));
+}
+
+static void dnode_reset_state_unlocked(struct control_session *cs)
+{
+    control_must_lock(cs);
+    dnode_reset_state_locked(cs);
     control_must_unlock(cs);
 }
 
@@ -66,7 +73,7 @@ static int dnode_start(struct control_session *cs)
 
     priv->d_rbuf = d_rbuf;
     cs->dpriv = priv;
-    dnode_reset_priv(cs);
+    dnode_reset_state_locked(cs); /* worker thread isn't running */
     return 0;
 
  bail:
@@ -100,49 +107,74 @@ static int dnode_open(struct control_session *cs,
 
 static void dnode_close(struct control_session *cs)
 {
-    dnode_reset_priv(cs);
+    dnode_reset_state_unlocked(cs);
     dnode_ensure_clean(cs);
 }
 
-static int dnode_got_entire_res(struct control_session *cs)
+static int dnode_got_entire_pkt(struct control_session *cs,
+                                struct raw_pkt_cmd *pkt)
 {
     struct evbuffer *evb = bufferevent_get_input(cs->dbev);
     struct dnode_priv *dpriv = cs->dpriv;
+    int ret = 0;
+    size_t cmdsize = sizeof(struct raw_pkt_cmd);
 
+    control_must_lock(cs);
     size_t d_rbuf_len = evbuffer_get_length(dpriv->d_rbuf);
-    if (d_rbuf_len < sizeof(cs->res_pkt)) {
-        evbuffer_remove_buffer(evb, dpriv->d_rbuf,
-                               sizeof(cs->res_pkt) - d_rbuf_len);
+    if (d_rbuf_len < cmdsize) {
+        evbuffer_remove_buffer(evb, dpriv->d_rbuf, cmdsize - d_rbuf_len);
     }
-
-    int ret = evbuffer_get_length(dpriv->d_rbuf) == sizeof(cs->res_pkt);
-
-    if (ret) {
-        evbuffer_remove(dpriv->d_rbuf, &cs->res_pkt, sizeof(cs->res_pkt));
-        if (raw_pkt_ntoh(&cs->res_pkt) == -1) {
-            log_ERR("received malformed response packet from data node");
+    assert(evbuffer_get_length(dpriv->d_rbuf) <= cmdsize);
+    ret = evbuffer_get_length(dpriv->d_rbuf) == cmdsize;
+    if (!ret) {
+        goto done;
+    }
+    evbuffer_remove(dpriv->d_rbuf, pkt, cmdsize);
+    if (raw_pkt_ntoh(pkt) == -1) {
+        log_WARNING("ignoring malformed data node packet");
+        ret = 0;
+        goto done;
+    }
+    switch (raw_mtype(pkt)) {
+    case RAW_MTYPE_RES:
+        if (!cs->ctl_txns) {
+            log_WARNING("ignoring result received outside of a transaction");
             ret = 0;
         }
+        break;
+    case RAW_MTYPE_ERR:
+        break;
+    default:
+        log_WARNING("ignoring unexpected data node command packet "
+                    "(not response or error)");
+        ret = 0;
+        break;
     }
+ done:
+    control_must_unlock(cs);
     return ret;
 }
 
 static enum control_worker_why
-dnode_HACK_ensure_no_more_responses(struct control_session *cs,
-                                    enum control_worker_why desired)
+dnode_HACK_ensure_no_more_packets(struct control_session *cs,
+                                  enum control_worker_why desired)
 {
     /*
-     * FIXME XXX: handle arrival of multiple asynchronous errors.
+     * FIXME XXX: handle arrival of (possibly many) asynchronous errors.
      *
-     * This code is vulnerable to DoS attacks.
+     * We should:
      *
-     * We need a queue of responses, but that needs a maximum length
-     * and useful response to it getting full (probably just sending a
-     * reset signal and closing the connection), so we're robust
-     * against a spray of error messages from a hosed data node.
+     * - ignore unexpected responses (any after the first, or any
+     *   received while no transaction is ongoing)
+     * - read through everything looking for errors, and propagate up
+     * - do error rate-limiting (eventually) to guard against a hosed
+     *   data node
+     *
+     * Make sure to return CONTROL_WHY_CLIENT_ERR here if appropriate.
      */
-    if (dnode_got_entire_res(cs)) {
-        log_CRIT("%s: oops, there were two dnode results on the wire, but "
+    struct raw_pkt_cmd pkt;
+    if (dnode_got_entire_pkt(cs, &pkt)) {
+        log_CRIT("%s: oops, there were two dnode packets on the wire, but "
                  "we only know how to handle one. we're toast :(",
                  __func__);
         return CONTROL_WHY_EXIT;
@@ -152,32 +184,57 @@ dnode_HACK_ensure_no_more_responses(struct control_session *cs,
 
 static enum control_worker_why dnode_read(struct control_session *cs)
 {
-    /* If we've received an entire response packet, then convert it to
-     * host byte ordering and get the worker thread to wake up and
-     * invoke the client handler, which decides what to do with
-     * it. Otherwise, leave the worker thread alone. */
-    if (!dnode_got_entire_res(cs)) {
+    struct raw_pkt_cmd pkt;
+    if (!dnode_got_entire_pkt(cs, &pkt)) {
         return CONTROL_WHY_NONE;
     }
-    log_DEBUG("%s: got response packet", __func__);
-    return dnode_HACK_ensure_no_more_responses(cs, CONTROL_WHY_CLIENT_RES);
+    uint8_t mtype = raw_mtype(&pkt);
+    enum control_worker_why ret;
+    switch (mtype) {
+    case RAW_MTYPE_RES:
+        if (raw_pkt_is_err(&pkt)) {
+            log_INFO("received error response packet from data node");
+        } else {
+            log_DEBUG("%s: got response packet, r_id %u",
+                      __func__, pkt.p.res.r_id);
+        }
+        ret = CONTROL_WHY_CLIENT_RES;
+        break;
+    case RAW_MTYPE_ERR:
+        log_INFO("received error packet from data node");
+        ret = CONTROL_WHY_CLIENT_ERR;
+        break;
+    default:
+        /* Can't happen */
+        log_EMERG("%s: internal error", __func__);
+        assert(0);
+        return CONTROL_WHY_EXIT;
+    }
+    memcpy(&cs->ctl_txns[cs->ctl_cur_txn].res_pkt, &pkt, sizeof(pkt));
+    return dnode_HACK_ensure_no_more_packets(cs, ret);
 }
 
 static void dnode_thread(struct control_session *cs)
 {
     /* We should only wake up when the client handler has a request
      * for us to forward to the data node. */
-    if (!(cs->wake_why & CONTROL_WHY_DNODE_REQ)) {
+    if (!(cs->wake_why & CONTROL_WHY_DNODE_TXN)) {
         log_ERR("dnode thread handler woke up unexpectedly");
         return;
     }
-    log_DEBUG("%s: writing request packet", __func__);
-    if (raw_pkt_hton(&cs->req_pkt) == 0) {
-        bufferevent_write(cs->dbev, &cs->req_pkt, sizeof(struct raw_pkt_cmd));
+    assert(cs->ctl_txns && cs->ctl_n_txns && cs->ctl_cur_txn >= 0 &&
+           (size_t)cs->ctl_cur_txn < cs->ctl_n_txns);
+    struct raw_pkt_cmd *cur_req = &cs->ctl_txns[cs->ctl_cur_txn].req_pkt;
+    struct raw_pkt_cmd req_copy;
+    memcpy(&req_copy, cur_req, sizeof(req_copy));
+    if (raw_pkt_hton(&req_copy) == 0) {
+        log_DEBUG("%s: writing request packet, r_id %u",
+                  __func__, raw_req(cur_req)->r_id);
+        bufferevent_write(cs->dbev, &req_copy, sizeof(req_copy));
     } else {
         log_ERR("ignoring attempt to send malformed request packet");
     }
-    cs->wake_why &= ~CONTROL_WHY_DNODE_REQ;
+    cs->wake_why &= ~CONTROL_WHY_DNODE_TXN;
 }
 
 static const struct control_ops dnode_control_operations = {

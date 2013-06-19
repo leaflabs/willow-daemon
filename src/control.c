@@ -82,10 +82,19 @@ static int control_client_open(struct control_session *cs,
 
 static void control_client_close(struct control_session *cs)
 {
-    if (!control_client_ops->cs_close) {
-        return;
+    control_must_lock(cs);
+    assert(cs->cbev);           /* or we never opened */
+    bufferevent_free(cs->cbev);
+    cs->cbev = NULL;
+    if (cs->ctl_txns) {
+        /* Hope you weren't in the middle of anything important... */
+        log_INFO("halting data node I/O due to closed client connection");
+        control_clear_transactions(cs, 1);
     }
-    control_client_ops->cs_close(cs);
+    control_must_unlock(cs);
+    if (control_client_ops->cs_close) {
+        control_client_ops->cs_close(cs);
+    }
 }
 
 static enum control_worker_why control_client_read(struct control_session *cs)
@@ -131,10 +140,22 @@ static int control_dnode_open(struct control_session *cs,
 
 static void control_dnode_close(struct control_session *cs)
 {
-    if (!control_dnode_ops->cs_close) {
-        return;
+    control_must_lock(cs);
+    assert(cs->dbev);           /* or we never opened */
+    bufferevent_free(cs->dbev);
+    cs->dbev = NULL;
+    if (cs->ctl_txns) {
+        /* FIXME if there are ongoing transactions, then the client
+         * connection should also be open; we should get the
+         * client-side code to send an error response (how?), or naive
+         * client will block forever. */
+        log_INFO("halting data node I/O due to closed dnode connection");
+        control_clear_transactions(cs, 1);
     }
-    return control_dnode_ops->cs_close(cs);
+    control_must_unlock(cs);
+    if (control_dnode_ops->cs_close) {
+        control_dnode_ops->cs_close(cs);
+    }
 }
 
 static enum control_worker_why control_dnode_read(struct control_session *cs)
@@ -235,7 +256,7 @@ static void* control_worker_main(void *csessvp)
         if (cs->wake_why & (CONTROL_WHY_CLIENT_CMD | CONTROL_WHY_CLIENT_RES)) {
             control_client_thread(cs);
         }
-        if (cs->wake_why & CONTROL_WHY_DNODE_REQ) {
+        if (cs->wake_why & CONTROL_WHY_DNODE_TXN) {
             control_dnode_thread(cs);
         }
         control_must_unlock(cs);
@@ -249,15 +270,10 @@ static void* control_worker_main(void *csessvp)
  */
 
 static void control_bevt_handler(struct control_session *cs, short events,
-                                 struct bufferevent **bevp,
                                  void (*on_close)(struct control_session*),
                                  const char *log_who)
 {
     if (events & BEV_EVENT_EOF || events & BEV_EVENT_ERROR) {
-        control_must_lock(cs);
-        bufferevent_free(*bevp);
-        *bevp = NULL;
-        control_must_unlock(cs);
         on_close(cs);
         log_INFO("%s connection closed", log_who);
     } else {
@@ -270,9 +286,7 @@ static void control_client_event(__unused struct bufferevent *bev,
 {
     struct control_session *cs = csessvp;
     assert(bev == cs->cbev);
-    control_bevt_handler(cs, events, &cs->cbev, control_client_close,
-                         "client");
-    assert(cs->cbev == NULL);
+    control_bevt_handler(cs, events, control_client_close, "client");
 }
 
 static void control_dnode_event(__unused struct bufferevent *bev,
@@ -282,9 +296,7 @@ static void control_dnode_event(__unused struct bufferevent *bev,
      * closed dnode connection */
     struct control_session *cs = csessvp;
     assert(bev == cs->dbev);
-    control_bevt_handler(cs, events, &cs->dbev, control_dnode_close,
-                         "data node");
-    assert(cs->dbev == NULL);
+    control_bevt_handler(cs, events, control_dnode_close, "data node");
 }
 
 static void refuse_connection(evutil_socket_t fd,
@@ -478,6 +490,10 @@ struct control_session* control_new(struct event_base *base,
         goto noddataevt;
     }
     event_add(cs->ddataevt, NULL);
+    cs->ctl_txns = NULL;
+    cs->ctl_n_txns = 0;
+    cs->ctl_cur_txn = -1;
+    cs->ctl_cur_rid = 0;
     control_must_lock(cs);
     en = pthread_create(&cs->thread, NULL, control_worker_main, cs);
     control_must_unlock(cs);
@@ -546,10 +562,15 @@ void control_free(struct control_session *cs)
         bufferevent_free(cs->dbev);
     }
     evconnlistener_free(cs->cecl);
-    /* Possibly acquired by evconnlistener callbacks */
+
+    /* Possibly acquired elsewhere */
     if (cs->cbev) {
         bufferevent_free(cs->cbev);
     }
+    if (cs->ctl_txns) {
+        free(cs->ctl_txns);
+    }
+
     free(cs);
 }
 
@@ -559,8 +580,40 @@ struct event_base* control_get_base(struct control_session *cs)
 }
 
 /*
- * pthreads helpers
+ * Private API
  */
+
+void control_set_transactions(struct control_session *cs,
+                              struct control_txn *txns, size_t n_txns,
+                              int have_lock)
+{
+    if (!have_lock) {
+        control_must_lock(cs);
+    }
+    /* You're not allowed to set up new transactions while existing
+     * ones are ongoing, only to clear them. */
+    assert((cs->ctl_txns == NULL &&
+            cs->ctl_cur_txn == -1 &&
+            cs->ctl_n_txns == 0) ||
+           (txns == NULL && n_txns == 0));
+    if (cs->ctl_txns) {
+        free(cs->ctl_txns);
+    }
+    cs->ctl_txns = txns;
+    cs->ctl_n_txns = n_txns;
+    if (n_txns == 0) {
+        cs->ctl_cur_txn = -1;
+        goto done;
+    }
+    cs->ctl_cur_txn = 0;
+    for (size_t i = 0; i < n_txns; i++) {
+        ctxn_req(&txns[i])->r_id = cs->ctl_cur_rid++;
+    }
+ done:
+    if (!have_lock) {
+        control_must_unlock(cs);
+    }
+}
 
 void __control_must_cond_wait(struct control_session *cs)
 {

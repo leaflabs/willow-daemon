@@ -32,6 +32,25 @@ struct event_base;
 struct evconnlistener;
 struct bufferevent;
 
+/* For decoding protocol messages into requests/responses. Contains a
+ * single req/res transaction that needs to take place. */
+struct control_txn {
+    struct raw_pkt_cmd req_pkt;        /* Request to perform */
+    struct raw_pkt_cmd res_pkt;        /* Holds received response */
+};
+
+/* Get the request out of a transaction */
+static inline struct raw_cmd_req* ctxn_req(struct control_txn *txn)
+{
+    return raw_req(&txn->req_pkt);
+}
+
+/* Get the response out of a transaction */
+static inline struct raw_cmd_res* ctxn_res(struct control_txn *txn)
+{
+    return raw_res(&txn->res_pkt);
+}
+
 /* Flags for why we woke up the worker thread */
 enum control_worker_why {
     CONTROL_WHY_NONE   = 0x00, /* Go back to sleep (e.g. spurious wakeup) */
@@ -39,12 +58,14 @@ enum control_worker_why {
     CONTROL_WHY_EXIT   = 0x01, /* Thread should exit */
 
     /* These are processed by client-side code: */
-    CONTROL_WHY_CLIENT_CMD = 0x02, /* Unpacked new client command message*/
-    CONTROL_WHY_CLIENT_RES = 0x04, /* raw_pkt_cmd response needs to
-                                    * be processed */
+    CONTROL_WHY_CLIENT_CMD = 0x02, /* Unpacked new client command message */
+    CONTROL_WHY_CLIENT_RES = 0x04, /* raw_pkt_cmd containing a response
+                                    * needs to be processed */
+    CONTROL_WHY_CLIENT_ERR = 0x08, /* raw_pkt_cmd contianing an error
+                                    * needs to be processed */
 
     /* These are processed by dnode-side code: */
-    CONTROL_WHY_DNODE_REQ  = 0x08, /* raw_pkt_cmd request needs to be sent */
+    CONTROL_WHY_DNODE_TXN  = 0x10, /* Transaction must be performed */
 };
 
 /** Control session. */
@@ -75,10 +96,14 @@ struct control_session {
     unsigned wake_why; /* OR of control_worker_why flags describing
                         * why ->thread needs to wake up */
 
-    /* Worker thread-only state; used along with wake_why for
-     * communication between client and data node routines. */
-    struct raw_pkt_cmd req_pkt;
-    struct raw_pkt_cmd res_pkt;
+    /* Command processing -- use control_set_transactions() to set up work */
+    struct control_txn *ctl_txns; /* Transactions to perform as part
+                                   * of processing a client command,
+                                   * or NULL if not working on one. */
+    size_t ctl_n_txns;          /* Length of ctl_txns */
+    ssize_t ctl_cur_txn;        /* Current transaction, or -1 if not
+                                 * performing one. */
+    uint16_t ctl_cur_rid;       /* Current raw packet request ID; wraps. */
 };
 
 /**
@@ -119,6 +144,29 @@ struct control_ops {
     /* Worker thread callback. */
     void (*cs_thread)(struct control_session *cs);
 };
+
+/*
+ * Deferred work helpers
+ */
+
+/* Sets up data node transactions to be performed as deferred work.
+ *
+ * Doesn't start the deferred work; you'll need to do that from a read
+ * callback's return value.
+ *
+ * have_lock: set to 0 if you already have the control session mutex
+ *            locked, 1 otherwise.
+ */
+void control_set_transactions(struct control_session *cs,
+                              struct control_txn *txns, size_t n_txns,
+                              int have_lock);
+
+/* Clear any pending transactions. */
+static inline void control_clear_transactions(struct control_session *cs,
+                                              int have_lock)
+{
+    control_set_transactions(cs, NULL, 0, have_lock);
+}
 
 /*
  * Threading helpers
