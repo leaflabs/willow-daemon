@@ -21,7 +21,7 @@
 #include "chaos.h"
 
 #define DEFAULT_ARGUMENTS                       \
-    { .chaos = 1,                               \
+    { .chaos = 0,                               \
       .cport = 1369,                            \
       .dport = 8881,                            \
       .host = "127.0.0.1" }
