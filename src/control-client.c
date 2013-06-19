@@ -41,6 +41,27 @@
 typedef int32_t client_cmd_len_t;
 #define CMDLEN_SIZE sizeof(client_cmd_len_t)
 
+#define CLIENT_CMDLEN_WAITING (-1)
+struct client_priv {
+    ControlCommand *c_cmd; /* Latest unpacked protocol message, or
+                            * NULL. Shared with worker thread. */
+    ControlResponse *c_rsp;     /* Latest response to send, or NULL.
+                                 * Worker thread only. */
+
+    struct evbuffer *c_pbuf; /* buffers c_cmd protocol buffer while waiting */
+
+    struct evbuffer *c_cmdlen_buf; /* buffers c_cmdlen while we're waiting */
+    client_cmd_len_t c_cmdlen;     /* length of c_pbuf, NOT length of c_cmd */
+
+    /* Allocate a command and response's worth of contiguous space at
+     * client_start() time, rather than using e.g. evbuffer_pullup()
+     * at each read(). */
+    uint8_t c_cmd_arr[CLIENT_CMD_MAX_SIZE];
+    uint8_t c_rsp_arr[CLIENT_CMD_MAX_SIZE];
+
+    uint16_t req_id;            /* current raw_packets.h request ID */
+};
+
 /* Convert a client message length from network to host byte ordering */
 static inline client_cmd_len_t cmd_ntoh(client_cmd_len_t net)
 {
@@ -81,27 +102,6 @@ static void client_protocol_error(__unused struct control_session *cs,
     log_CRIT("client protocol error: %s", client_eproto_str(eproto));
     exit(EXIT_FAILURE);
 }
-
-#define CLIENT_CMDLEN_WAITING (-1)
-struct client_priv {
-    ControlCommand *c_cmd; /* Latest unpacked protocol message, or
-                            * NULL. Shared with worker thread. */
-    ControlResponse *c_rsp;     /* Latest response to send, or NULL.
-                                 * Worker thread only. */
-
-    struct evbuffer *c_pbuf; /* buffers c_cmd protocol buffer while waiting */
-
-    struct evbuffer *c_cmdlen_buf; /* buffers c_cmdlen while we're waiting */
-    client_cmd_len_t c_cmdlen;     /* length of c_pbuf, NOT length of c_cmd */
-
-    /* Allocate a command and response's worth of contiguous space at
-     * client_start() time, rather than using e.g. evbuffer_pullup()
-     * at each read(). */
-    uint8_t c_cmd_arr[CLIENT_CMD_MAX_SIZE];
-    uint8_t c_rsp_arr[CLIENT_CMD_MAX_SIZE];
-
-    uint16_t req_id;            /* current raw_packets.h request ID */
-};
 
 /* NOT SYNCHRONIZED; do not call while worker thread is running.*/
 static void client_free_priv(struct control_session *cs)
