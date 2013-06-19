@@ -32,7 +32,9 @@ void chaos_init(int enable_chaos)
 {
     chaos_enabled_p = enable_chaos;
     long seed = (long)time(0);
-    log_INFO("chaos seed: %ld", seed);
+    if (chaos_enabled_p) {
+        log_INFO("chaos seed: %ld", seed);
+    }
     srand48_r(seed, &dr_buf); /* FIXME use TLS instead of dr_buf. */
 }
 
