@@ -139,10 +139,10 @@ static inline struct raw_cmd_req* daemon_res(struct daemon_session *d_session)
 
 static void parse_args(struct arguments *args, int argc, char *const argv[])
 {
-    const char shortopts[] = "cC:D:H:";
+    const char shortopts[] = "c:C:D:H:";
     struct option longopts[] = {
         { .name = "chaos",
-          .has_arg = optional_argument,
+          .has_arg = required_argument,
           .flag = 0,
           .val = 'c' },
         { .name = "cport",
