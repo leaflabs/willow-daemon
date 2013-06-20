@@ -23,15 +23,24 @@ To stop acquisition:
 
 To begin partial live streaming:
 
-1. Configure UDP IPv4 source register
-2. Configure UDP IPv4 destination register
-3. Configure UDP MAC destination register
+0. Configure UDP IPv4 source register
+1. Configure UDP IPv4 destination register
+2. Configure UDP MAC destination register, HIGH
+3. Configure UDP MAC destination register, LOW
 4. Configure top level partial channel mask registers (64 slots)
-5. Write READY_PARTIAL to UDP module state register
+5. Write 0 (STOP) to UDP state register
+8 Write 0 (STOP) to DAQ state register
+9. Write 1 to DAQ FIFO flags register (bring reset line HIGH)
+10. Write 0 to DAQ FIFO flags register (brings reset line LOW)
+11 Write 0x00000001 to UDP state register
+12. Write 0x00000005 to DAQ state register
 
 To stop partial live streaming:
 
-1. Write STOP to UDP module state register
+1. Write 0 (STOP) to DAQ state register
+2. Write 0 (STOP) to UDP state register
+3. Write 1 to DAQ FIFO flags register (bring reset line HIGH)
+4. Write 0 to DAQ FIFO flags register (brings reset line LOW)
 
 # Reading Back Data From Disk
 
