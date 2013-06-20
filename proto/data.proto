@@ -1,0 +1,66 @@
+// data.proto: protocol messages for the client data socket.
+//
+// Feel free to change this file, but:
+//
+// ************************************************************************
+// ********************* DO NOT ADD REQUIRED FIELDS. **********************
+// ********************* DO NOT ADD REQUIRED FIELDS. **********************
+// ********************* DO NOT ADD REQUIRED FIELDS. **********************
+// ********************* DO NOT ADD REQUIRED FIELDS. **********************
+// ************************************************************************
+//
+//
+// ************************************************************************
+// ************ ALWAYS USE [packed=true] IN REPEATED FIELDS. **************
+// ************ ALWAYS USE [packed=true] IN REPEATED FIELDS. **************
+// ************ ALWAYS USE [packed=true] IN REPEATED FIELDS. **************
+// ************ ALWAYS USE [packed=true] IN REPEATED FIELDS. **************
+// ************************************************************************
+
+// The daemon sends Sample (see below) messages to the client data socket.
+
+message BoardSubsample {
+    optional bool is_live = 1;
+    optional bool is_last = 2;
+    optional uint64 exp_cookie = 3;
+    optional uint32 board_id = 4;
+    optional uint32 samp_idx = 5;
+    optional uint32 chip_live = 6;
+
+    // These arrays are parallel to each other, so chips[0],
+    // channels[0] gives the chip/channel for the sample at samples[0].
+    repeated uint32 chips = 7 [packed = true];
+    repeated uint32 channels = 8 [packed = true];
+    repeated uint32 samples = 9 [packed = true];
+
+    // Each GPIO's state is stored in the corresponding bit of the
+    // bottom two bytes.
+    optional uint32 gpio = 10;
+
+    optional uint32 dac_channel = 11;
+    optional uint32 dac_value = 12;
+}
+
+message BoardSample {
+    optional bool is_live = 1;
+    optional bool is_last = 2;
+    optional uint64 exp_cookie = 3;
+    optional uint32 board_id = 4;
+    optional uint32 samp_idx = 5;
+    optional uint32 chip_live = 6;
+
+    // Note the asymmetry with BoardSubsample here: we store the
+    // larger amount of sample data in a BoardSample as bytes for
+    // efficiency.
+    optional bytes samples = 7;
+}
+
+message DnodeSample {
+    enum Type {
+        SAMPLE = 1;
+        SUBSAMPLE = 2;
+    }
+    optional Type type = 1;
+    optional BoardSubsample subsample = 2;
+    optional BoardSample sample = 3;
+}

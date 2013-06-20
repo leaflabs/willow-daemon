@@ -159,14 +159,34 @@ message RegisterIO {
 // client control socket to perform a command. You'll get a
 // ControlResult back.
 
+// Configure a live stream.
+//
+// If "enable" is present and true, you'll start to get BoardSubsample
+// (see data.proto) messages via UDP at IPv4 address "dest_udp_addr4",
+// on port "dest_udp_port". You can omit either/both of the
+// address/port if you've previously configured them and just want to
+// turn the stream back on again.
+//
+// If "enable" is present and false, any existing stream will stop
+// being sent. If either/both of dest_udp_addr4 and dest_udp_port are
+// present in this case, the stream will be reconfigured after it is
+// disabled.
+message ControlCmdStream {
+    optional fixed32 dest_udp_addr4 = 1;
+    optional uint32 dest_udp_port = 2;
+    optional bool enable = 3;
+}
+
 // Follows union type guidelines as described here:
 // https://developers.google.com/protocol-buffers/docs/techniques#union
 message ControlCommand {
     enum Type {
+        STREAM = 1;
         REG_IO = 255;
     }
     optional Type type = 1;
 
+    optional ControlCmdStream stream = 2;
     optional RegisterIO reg_io = 15;
 }
 
@@ -195,10 +215,13 @@ message ControlResErr {
 message ControlResponse {
     enum Type {
         ERR = 1;
+        // If type==SUCCESS, the previous command succeeded; no other
+        // fields will be set.
+        SUCCESS = 2;
         REG_IO = 255;
     }
     optional Type type = 1;
 
-    optional ControlResErr err = 2;
-    optional RegisterIO reg_io = 15;
+    optional ControlResErr err = 2; // when type==ERR
+    optional RegisterIO reg_io = 15; // when type==REG_IO
 }
