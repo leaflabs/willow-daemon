@@ -20,7 +20,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <pthread.h>
-#include <signal.h>             /* for sig_atomic_t */
 
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
