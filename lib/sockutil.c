@@ -29,26 +29,30 @@
  * returns 0 if socket is successfully configured, or -1 on error. */
 typedef int (*sock_cfg_fn)(int, struct addrinfo*);
 
-static int sockutil_get_socket(int socktype, int passive,
-                               const char *host, uint16_t port,
-                               sock_cfg_fn sock_cfg)
+static int sockutil_get_socket_h(int socktype, int passive,
+                                 const char *host, uint16_t port,
+                                 sock_cfg_fn sock_cfg,
+                                 struct addrinfo *hints)
 {
     int ret = -1;
 
-    struct addrinfo hints;
-    memset(&hints, 0, sizeof(struct addrinfo));
-    hints.ai_canonname = NULL;
-    hints.ai_addr = NULL;
-    hints.ai_next = NULL;
-    hints.ai_flags = (passive ? AI_PASSIVE : 0) | AI_NUMERICSERV;
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = socktype;
+    struct addrinfo defaults;
+    if (!hints) {
+        memset(&defaults, 0, sizeof(struct addrinfo));
+        defaults.ai_canonname = NULL;
+        defaults.ai_addr = NULL;
+        defaults.ai_next = NULL;
+        defaults.ai_flags = (passive ? AI_PASSIVE : 0) | AI_NUMERICSERV;
+        defaults.ai_family = AF_UNSPEC;
+        defaults.ai_socktype = socktype;
+        hints = &defaults;
+    }
 
     char port_str[20];
     snprintf(port_str, sizeof(port_str), "%u", port);
 
     struct addrinfo *ai_results;
-    int gai_ret = getaddrinfo(host, port_str, &hints, &ai_results);
+    int gai_ret = getaddrinfo(host, port_str, hints, &ai_results);
     if (gai_ret != 0) {
         // If getaddrinfo() fails, we might try falling back on
         // calling socket(AF_INET, socktype, 0) ourselves to try to
@@ -81,6 +85,14 @@ static int sockutil_get_socket(int socktype, int passive,
     freeaddrinfo(ai_results);
 
     return ret;
+}
+
+static inline int sockutil_get_socket(int socktype, int passive,
+                                      const char *host, uint16_t port,
+                                      sock_cfg_fn sock_cfg)
+{
+    return sockutil_get_socket_h(socktype, passive, host, port, sock_cfg,
+                                 NULL);
 }
 
 static int sockutil_cfg_bind_sock(int sock, struct addrinfo *arp)
