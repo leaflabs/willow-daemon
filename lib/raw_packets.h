@@ -287,6 +287,14 @@ struct raw_pkt_bsmp {
  */
 void raw_packet_init(void *packet, uint8_t mtype, uint8_t flags);
 
+/* Initialize a request packet */
+void raw_req_init(struct raw_pkt_cmd *req, uint8_t flags, uint16_t r_id,
+                  uint8_t r_type, uint8_t r_addr, uint32_t r_val);
+
+/* Initialize a response packet */
+void raw_res_init(struct raw_pkt_cmd *res, uint8_t flags, uint16_t r_id,
+                  uint8_t r_type, uint8_t r_addr, uint32_t r_val);
+
 /* Allocate and initialize a board subsample packet. Free it with free(). */
 struct raw_pkt_bsub* raw_alloc_bsub(size_t nsamp);
 

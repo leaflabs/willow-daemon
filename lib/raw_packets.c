@@ -42,6 +42,28 @@ void raw_packet_init(void *packet, uint8_t mtype, uint8_t flags)
     }
 }
 
+void raw_req_init(struct raw_pkt_cmd *req, uint8_t flags, uint16_t r_id,
+                  uint8_t r_type, uint8_t r_addr, uint32_t r_val)
+{
+    raw_packet_init(req, RAW_MTYPE_REQ, flags);
+    struct raw_cmd_req *rcmd = raw_req(req);
+    rcmd->r_id = r_id;
+    rcmd->r_type = r_type;
+    rcmd->r_addr = r_addr;
+    rcmd->r_val = r_val;
+}
+
+void raw_res_init(struct raw_pkt_cmd *res, uint8_t flags, uint16_t r_id,
+                  uint8_t r_type, uint8_t r_addr, uint32_t r_val)
+{
+    raw_packet_init(res, RAW_MTYPE_RES, flags);
+    struct raw_cmd_res *rcmd = raw_res(res);
+    rcmd->r_id = r_id;
+    rcmd->r_type = r_type;
+    rcmd->r_addr = r_addr;
+    rcmd->r_val = r_val;
+}
+
 struct raw_pkt_bsub* raw_alloc_bsub(size_t nsamp)
 {
     struct raw_pkt_bsub *ret = malloc(sizeof(struct raw_pkt_bsub) +
