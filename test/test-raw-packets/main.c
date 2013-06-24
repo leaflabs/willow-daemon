@@ -51,8 +51,11 @@ struct raw_pkt_cmd *req2 = &req2_pkt;
 struct raw_pkt_cmd err_pkt;
 struct raw_pkt_cmd *err = &err_pkt;
 const size_t bs_nsamp = 17;
+struct raw_pkt_bsub bs1;
 struct raw_pkt_bsub *bsub1;
+struct raw_pkt_bsub bs1c;
 struct raw_pkt_bsub *bsub1copy;
+struct raw_pkt_bsub bs2;
 struct raw_pkt_bsub *bsub2;
 struct raw_pkt_bsmp bsmp1_pkt;
 struct raw_pkt_bsmp bsmp1copy_pkt;
@@ -73,12 +76,14 @@ static void setup_raw(void)
     raw_packet_init(bsmp1copy, RAW_MTYPE_BSMP, 0);
     raw_packet_init(bsmp2, RAW_MTYPE_BSMP, 0);
 
-    bsub1 = raw_alloc_bsub(bs_nsamp);
-    bsub1copy = raw_alloc_bsub(bs_nsamp);
-    bsub2 = raw_alloc_bsub(bs_nsamp);
+    bsub1 = &bs1;
+    bsub1copy = &bs1c;
+    bsub2 = &bs2;
+    raw_packet_init(bsub1, RAW_MTYPE_BSUB, 0);
+    raw_packet_init(bsub1copy, RAW_MTYPE_BSUB, 0);
+    raw_packet_init(bsub2, RAW_MTYPE_BSUB, 0);
 
-    if (bsub1 == 0 || bsub2 == 0 || bsub1copy == 0 ||
-        socketpair(AF_UNIX, SOCK_DGRAM, 0, sockfd) != 0) {
+    if (socketpair(AF_UNIX, SOCK_DGRAM, 0, sockfd)) {
         sockfd[0] = -1;
         sockfd[1] = -1;
         return;
@@ -88,8 +93,16 @@ static void setup_raw(void)
     memset(&req2->p, 0x55, sizeof(struct raw_cmd_req));
     raw_pkt_copy(req1copy, req1);
 
-    memset(&bsub1->b_samps, 0xAA, raw_bsub_sampsize(bsub1));
-    memset(&bsub2->b_samps, 0x55, raw_bsub_sampsize(bsub2));
+    for (int i = 0; i < RAW_BSUB_NSAMP; i++) {
+        bsub1->b_cfg[i].bs_chip = 1;
+        bsub1->b_cfg[i].bs_chan = i;
+        bsub2->b_cfg[i].bs_chip = 2;
+        bsub2->b_cfg[i].bs_chan = RAW_BSUB_NSAMP - i;
+    }
+    bsub1->b_chip_live = 0xAAAAAAAA;
+    bsub2->b_chip_live = 0x55555555;
+    memset(&bsub1->b_samps, 0xAA, RAW_BSUB_NSAMP * sizeof(raw_samp_t));
+    memset(&bsub2->b_samps, 0x55, RAW_BSUB_NSAMP * sizeof(raw_samp_t));
     raw_pkt_copy(bsub1copy, bsub1);
 
     memset(&bsmp1->b_samps, 0xAA, raw_bsmp_sampsize(bsmp1));
@@ -99,9 +112,6 @@ static void setup_raw(void)
 
 static void teardown_raw(void)
 {
-    free(bsub1);
-    free(bsub1copy);
-    free(bsub2);
     if (sockfd[0] != -1) {
         close(sockfd[0]);
     }
@@ -140,8 +150,12 @@ START_TEST(test_sizes_packing)
     ck_assert_int_eq(offsetof(struct raw_pkt_bsub, b_cookie_l), 8);
     ck_assert_int_eq(offsetof(struct raw_pkt_bsub, b_id), 12);
     ck_assert_int_eq(offsetof(struct raw_pkt_bsub, b_sidx), 16);
-    ck_assert_int_eq(offsetof(struct raw_pkt_bsub, b_nsamp), 20);
-    ck_assert_int_eq(offsetof(struct raw_pkt_bsub, b_samps), 24);
+    ck_assert_int_eq(offsetof(struct raw_pkt_bsub, b_chip_live), 20);
+    ck_assert_int_eq(offsetof(struct raw_pkt_bsub, b_cfg), 24);
+    ck_assert_int_eq(offsetof(struct raw_pkt_bsub, b_samps), 88);
+    ck_assert_int_eq(offsetof(struct raw_pkt_bsub, b_gpio), 152);
+    ck_assert_int_eq(offsetof(struct raw_pkt_bsub, b_dac_cfg), 154);
+    ck_assert_int_eq(offsetof(struct raw_pkt_bsub, b_dac), 155);
 
     ck_assert_int_eq(offsetof(struct raw_pkt_bsmp, b_cookie_h), 4);
     ck_assert_int_eq(offsetof(struct raw_pkt_bsmp, b_cookie_l), 8);
@@ -162,12 +176,8 @@ START_TEST(test_sizes_packing)
     ck_assert_int_eq(raw_pkt_size(req1), sizeof(*req1));
     ck_assert_int_eq(raw_pkt_size(req1), sizeof(struct raw_pkt_cmd));
     ck_assert_int_eq(raw_pkt_size(err), sizeof(*err));
-    if (bsub1) {
-        const size_t bsub_size = (sizeof(struct raw_pkt_bsub) +
-                                  bs_nsamp * sizeof(raw_samp_t));
-        ck_assert_int_eq(raw_pkt_size(bsub1), bsub_size);
-        ck_assert_int_eq(raw_bsub_size(bsub1), bsub_size);
-    }
+    const size_t bsub_size = sizeof(struct raw_pkt_bsub);
+    ck_assert_int_eq(raw_pkt_size(bsub1), bsub_size);
     ck_assert_int_eq(raw_pkt_size(bsmp1),
                      offsetof(struct raw_pkt_bsmp, b_samps) +
                      _RAW_BSMP_NSAMP * sizeof(raw_samp_t));
@@ -202,7 +212,6 @@ START_TEST(test_roundtrips)
     do_roundtrip(req2, req1,
                  raw_cmd_send,
                  raw_cmd_recv);
-    ck_assert_int_eq(raw_bsub_nsamp(bsub1), raw_bsub_nsamp(bsub2));
     do_roundtrip(bsub2, bsub1,
                  raw_bsub_send,
                  raw_bsub_recv);
@@ -218,8 +227,7 @@ START_TEST(test_roundtrips)
     ck_assert_int_eq_h(bsub1->b_cookie_l, htonl(bsub1copy->b_cookie_l));
     ck_assert_int_eq_h(bsub1->b_id, htonl(bsub1copy->b_id));
     ck_assert_int_eq_h(bsub1->b_sidx, htonl(bsub1copy->b_sidx));
-    ck_assert_int_eq_h(bsub1->b_nsamp, htonl(bsub1copy->b_nsamp));
-    for (i = 0; i < raw_bsub_nsamp(bsub1copy); i++) {
+    for (i = 0; i < RAW_BSUB_NSAMP; i++) {
         ck_assert_int_eq_h(bsub1->b_samps[i], htons(bsub1copy->b_samps[i]));
     }
     ck_assert_int_eq_h(bsmp1->b_cookie_h, htonl(bsmp1copy->b_cookie_h));
@@ -250,8 +258,7 @@ START_TEST(test_roundtrips)
     ck_assert_int_eq_h(bsub2->b_cookie_l, bsub1copy->b_cookie_l);
     ck_assert_int_eq_h(bsub2->b_id, bsub1copy->b_id);
     ck_assert_int_eq_h(bsub2->b_sidx, bsub1copy->b_sidx);
-    ck_assert_int_eq_h(bsub2->b_nsamp, bsub1copy->b_nsamp);
-    for (i = 0; i < raw_bsub_nsamp(bsub1copy); i++) {
+    for (i = 0; i < RAW_BSUB_NSAMP; i++) {
         ck_assert_int_eq_h(bsub2->b_samps[i], bsub1copy->b_samps[i]);
     }
     ck_assert_int_eq_h(bsmp2->b_cookie_h, bsmp1copy->b_cookie_h);

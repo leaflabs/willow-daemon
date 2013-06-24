@@ -244,9 +244,14 @@ typedef uint16_t raw_samp_t;
 
 /*
  * Board subsample packet (RAW_MTYPE_BSUB) data
- *
- * FIXME update this to new definition
  */
+
+struct raw_bsub_cfg {
+    uint8_t bs_chip;               /* chip index */
+    uint8_t bs_chan;               /* channel index */
+};
+
+#define RAW_BSUB_NSAMP 32
 
 struct raw_pkt_bsub {
     struct raw_pkt_header ph;
@@ -254,8 +259,14 @@ struct raw_pkt_bsub {
     uint32_t b_cookie_l;        /* experiment cookie low word */
     uint32_t b_id;              /* board id */
     uint32_t b_sidx;            /* sample index */
-    uint32_t b_nsamp;           /* number of samples */
-    raw_samp_t b_samps[];       /* ... of length b_nsamp */
+    uint32_t b_chip_live;       /* live chip mask */
+
+    struct raw_bsub_cfg b_cfg[RAW_BSUB_NSAMP]; /* chip/channel config */
+    raw_samp_t b_samps[RAW_BSUB_NSAMP]; /* the samples themselves */
+
+    uint16_t b_gpio;            /* GPIO data */
+    uint8_t b_dac_cfg;          /* DAC enable/channel */
+    uint8_t b_dac;              /* DAC value */
 };
 
 /*
@@ -294,9 +305,6 @@ void raw_req_init(struct raw_pkt_cmd *req, uint8_t flags, uint16_t r_id,
 /* Initialize a response packet */
 void raw_res_init(struct raw_pkt_cmd *res, uint8_t flags, uint16_t r_id,
                   uint8_t r_type, uint8_t r_addr, uint32_t r_val);
-
-/* Allocate and initialize a board subsample packet. Free it with free(). */
-struct raw_pkt_bsub* raw_alloc_bsub(size_t nsamp);
 
 /* Type-generic packet copy. */
 void raw_pkt_copy(void *dst, const void *src);
@@ -385,24 +393,6 @@ static inline size_t raw_bsmp_size(__unused const struct raw_pkt_bsmp *bsmp)
     return sizeof(struct raw_pkt_bsmp);
 }
 
-/* Number of samples in a board subsample. */
-static inline size_t raw_bsub_nsamp(const struct raw_pkt_bsub *bsub)
-{
-    return bsub->b_nsamp;
-}
-
-/* Size of samples array in a board sample. */
-static inline size_t raw_bsub_sampsize(const struct raw_pkt_bsub *bsub)
-{
-    return raw_bsub_nsamp(bsub) * sizeof(raw_samp_t);
-}
-
-/* Overall size of a board subsample. */
-static inline size_t raw_bsub_size(const struct raw_pkt_bsub *bsub)
-{
-    return sizeof(struct raw_pkt_bsub) + raw_bsub_sampsize(bsub);
-}
-
 /* Type-generic packet size
  *
  * pkt: pointer to struct raw_pkt_cmd, raw_pkt_bsub, or
@@ -423,6 +413,8 @@ size_t raw_pkt_size(const void *pkt);
  * unrecognizable fields. */
 int raw_pkt_hton(struct raw_pkt_cmd *pkt);
 int raw_pkt_ntoh(struct raw_pkt_cmd *pkt);
+int raw_bsub_hton(struct raw_pkt_bsub *bsub);
+int raw_bsub_ntoh(struct raw_pkt_bsub *bsub);
 
 /* Send a command packet.
  *
@@ -441,16 +433,10 @@ ssize_t raw_cmd_send(int sockfd, struct raw_pkt_cmd *pkt, int flags);
  * `flags' are as with recv(). */
 ssize_t raw_cmd_recv(int sockfd, struct raw_pkt_cmd *pkt, int flags);
 
-/* Like raw_cmd_send(), but for RAW_MTYPE_BSUB packets.
- *
- * This is mostly for debugging. */
-ssize_t raw_bsub_send(int sockfd, struct raw_pkt_bsub *bsub, int flags);
+/* Like raw_cmd_send(), but for RAW_MTYPE_BUB packets. */
+ssize_t raw_bsub_send(int sockfd, struct raw_pkt_bsub *bsmp, int flags);
 
-/* Like raw_cmd_recv(), but for RAW_MTYPE_BSUB packets.
- *
- * `bsub' must be properly initalized to reflect how many samples you
- * expect to receive.
- */
+/* Like raw_cmd_recv(), but for RAW_MTYPE_BSUB packets. */
 ssize_t raw_bsub_recv(int sockfd, struct raw_pkt_bsub *bsub, int flags);
 
 /* Like raw_cmd_send(), but for RAW_MTYPE_BSMP packets.

@@ -64,17 +64,6 @@ void raw_res_init(struct raw_pkt_cmd *res, uint8_t flags, uint16_t r_id,
     rcmd->r_val = r_val;
 }
 
-struct raw_pkt_bsub* raw_alloc_bsub(size_t nsamp)
-{
-    struct raw_pkt_bsub *ret = malloc(sizeof(struct raw_pkt_bsub) +
-                                      nsamp * sizeof(raw_samp_t));
-    if (ret) {
-        raw_packet_init(ret, RAW_MTYPE_BSUB, 0);
-        ret->b_nsamp = nsamp;
-    }
-    return ret;
-}
-
 void raw_pkt_copy(void *dst, const void *src)
 {
     memcpy(dst, src, raw_pkt_size(src));
@@ -109,7 +98,7 @@ size_t raw_pkt_size(const void *pkt)
     case RAW_MTYPE_ERR:
         return sizeof(struct raw_pkt_cmd);
     case RAW_MTYPE_BSUB:
-        return raw_bsub_size(pkt);
+        return sizeof(struct raw_pkt_bsub);
     case RAW_MTYPE_BSMP:
         return raw_bsmp_size(pkt);
     }
@@ -208,30 +197,44 @@ int raw_pkt_ntoh(struct raw_pkt_cmd *pkt)
     }
 }
 
-static void raw_bsub_hton(struct raw_pkt_bsub *bsub)
+int raw_bsub_hton(struct raw_pkt_bsub *bsub)
 {
+    struct raw_pkt_header *ph = &bsub->ph;
+    if ((ph->_p_magic != RAW_PKT_HEADER_MAGIC ||
+         ph->p_proto_vers > RAW_PKT_HEADER_PROTO_VERS)) {
+        return -1;
+    }
     raw_ph_hton(&bsub->ph);
     bsub->b_cookie_h = htonl(bsub->b_cookie_h);
     bsub->b_cookie_l = htonl(bsub->b_cookie_l);
     bsub->b_id = htonl(bsub->b_id);
     bsub->b_sidx = htonl(bsub->b_sidx);
-    for (size_t i = 0; i < bsub->b_nsamp; i++) {
+    bsub->b_chip_live = htonl(bsub->b_chip_live);
+    for (size_t i = 0; i < RAW_BSUB_NSAMP; i++) {
         bsub->b_samps[i] = raw_samp_hton(bsub->b_samps[i]);
     }
-    bsub->b_nsamp = htonl(bsub->b_nsamp);
+    bsub->b_gpio = htons(bsub->b_gpio);
+    return 0;
 }
 
-static void raw_bsub_ntoh(struct raw_pkt_bsub *bsub)
+int raw_bsub_ntoh(struct raw_pkt_bsub *bsub)
 {
     raw_ph_ntoh(&bsub->ph);
+    struct raw_pkt_header *ph = &bsub->ph;
+    if ((ph->_p_magic != RAW_PKT_HEADER_MAGIC ||
+         ph->p_proto_vers > RAW_PKT_HEADER_PROTO_VERS)) {
+        return -1;
+    }
     bsub->b_cookie_h = ntohl(bsub->b_cookie_h);
     bsub->b_cookie_l = ntohl(bsub->b_cookie_l);
     bsub->b_id = ntohl(bsub->b_id);
     bsub->b_sidx = ntohl(bsub->b_sidx);
-    bsub->b_nsamp = ntohl(bsub->b_nsamp);
-    for (size_t i = 0; i < bsub->b_nsamp; i++) {
+    bsub->b_chip_live = ntohl(bsub->b_chip_live);
+    for (size_t i = 0; i < RAW_BSUB_NSAMP; i++) {
         bsub->b_samps[i] = raw_samp_ntoh(bsub->b_samps[i]);
     }
+    bsub->b_gpio = ntohs(bsub->b_gpio);
+    return 0;
 }
 
 static void raw_bsmp_hton(struct raw_pkt_bsmp *bsmp)
@@ -310,23 +313,20 @@ ssize_t raw_cmd_recv(int sockfd, struct raw_pkt_cmd *pkt, int flags)
 
 ssize_t raw_bsub_recv(int sockfd, struct raw_pkt_bsub *bsub, int flags)
 {
-    size_t nsamp = bsub->b_nsamp;
-    int ret = recv(sockfd, bsub, raw_bsub_size(bsub), flags);
-    if (ret == -1) {
-        return -1;
-    }
-    if (raw_mtype_ntoh(raw_mtype(bsub)) != RAW_MTYPE_BSUB) {
+    int ret = recv(sockfd, bsub, sizeof(*bsub), flags);
+    if (ret != 0 && raw_bsub_ntoh(bsub)) {
         errno = EPROTO;
         return -1;
     }
-    if (ntohl(bsub->b_nsamp) > nsamp) {
-        /* Caller's raw_pkt_bsub is too small; the following
-         * raw_bsub_ntoh() will touch random memory. */
-        errno = EINVAL;
+    return ret;
+}
+
+ssize_t raw_bsub_send(int sockfd, struct raw_pkt_bsub *bsub, int flags)
+{
+    if (raw_bsub_hton(bsub)) {
         return -1;
     }
-    raw_bsub_ntoh(bsub);
-    return ret;
+    return send(sockfd, bsub, sizeof(*bsub), flags);
 }
 
 ssize_t raw_bsmp_recv(int sockfd, struct raw_pkt_bsmp *bsmp, int flags)
@@ -340,13 +340,6 @@ ssize_t raw_bsmp_recv(int sockfd, struct raw_pkt_bsmp *bsmp, int flags)
         return -1;
     }
     return ret;
-}
-
-ssize_t raw_bsub_send(int sockfd, struct raw_pkt_bsub *bsub, int flags)
-{
-    const size_t size = raw_bsub_size(bsub);
-    raw_bsub_hton(bsub);
-    return send(sockfd, bsub, size, flags);
 }
 
 ssize_t raw_bsmp_send(int sockfd, struct raw_pkt_bsmp *bsmp, int flags)
