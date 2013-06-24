@@ -127,6 +127,23 @@ int sockutil_get_udp_connected_p(const char *host, uint16_t port)
     return sockutil_get_socket(SOCK_DGRAM, 0, host, port, sockutil_cfg_conn);
 }
 
+int sockutil_get_udp_connected(struct sockaddr *addr, socklen_t addrlen)
+{
+    int ret = socket(addr->sa_family, SOCK_DGRAM, 0);
+    if (ret == -1) {
+        goto bail;
+    }
+    if (connect(ret, addr, addrlen)) {
+        goto bail;
+    }
+    return ret;
+ bail:
+    if (ret != -1) {
+        close(ret);             /* swallow any errors */
+    }
+    return -1;
+}
+
 int sockutil_get_tcp_passive(uint16_t port, int backlog)
 {
     int sock = sockutil_get_socket(SOCK_STREAM, 1, NULL, port,
