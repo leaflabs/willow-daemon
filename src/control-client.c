@@ -419,6 +419,91 @@ static enum control_worker_why client_read(struct control_session *cs)
  * Worker thread (ControlCommand handling)
  */
 
+/*
+ * Conveniences for dealing with transactions.
+ *
+ * NB: all r_id values get set by control_set_transactions().
+ */
+
+__unused
+static inline void client_err_r(struct control_txn *txn, uint8_t r_addr)
+{
+    raw_req_init(&txn->req_pkt, RAW_PFLAG_RIOD_R,
+                 0, RAW_RTYPE_ERR, r_addr, 0);
+}
+__unused
+static inline void client_err_w(struct control_txn *txn,
+                                uint8_t r_addr, uint32_t r_val)
+{
+    raw_req_init(&txn->req_pkt, RAW_PFLAG_RIOD_W,
+                 0, RAW_RTYPE_ERR, r_addr, r_val);
+}
+__unused
+static inline void client_central_r(struct control_txn *txn, uint8_t r_addr)
+{
+    raw_req_init(&txn->req_pkt, RAW_PFLAG_RIOD_R,
+                 0, RAW_RTYPE_CENTRAL, r_addr, 0);
+}
+__unused
+static inline void client_central_w(struct control_txn *txn,
+                                    uint8_t r_addr, uint32_t r_val)
+{
+    raw_req_init(&txn->req_pkt, RAW_PFLAG_RIOD_W,
+                 0, RAW_RTYPE_CENTRAL, r_addr, r_val);
+}
+__unused
+static inline void client_sata_r(struct control_txn *txn, uint8_t r_addr)
+{
+    raw_req_init(&txn->req_pkt, RAW_PFLAG_RIOD_R,
+                 0, RAW_RTYPE_SATA, r_addr, 0);
+}
+__unused
+static inline void client_sata_w(struct control_txn *txn,
+                                 uint8_t r_addr, uint32_t r_val)
+{
+    raw_req_init(&txn->req_pkt, RAW_PFLAG_RIOD_W,
+                 0, RAW_RTYPE_SATA, r_addr, r_val);
+}
+__unused
+static inline void client_daq_r(struct control_txn *txn, uint8_t r_addr)
+{
+    raw_req_init(&txn->req_pkt, RAW_PFLAG_RIOD_R,
+                 0, RAW_RTYPE_DAQ, r_addr, 0);
+}
+__unused
+static inline void client_daq_w(struct control_txn *txn,
+                                uint8_t r_addr, uint32_t r_val)
+{
+    raw_req_init(&txn->req_pkt, RAW_PFLAG_RIOD_W,
+                 0, RAW_RTYPE_DAQ, r_addr, r_val);
+}
+__unused
+static inline void client_udp_r(struct control_txn *txn, uint8_t r_addr)
+{
+    raw_req_init(&txn->req_pkt, RAW_PFLAG_RIOD_R,
+                 0, RAW_RTYPE_UDP, r_addr, 0);
+}
+__unused
+static inline void client_udp_w(struct control_txn *txn,
+                                uint8_t r_addr, uint32_t r_val)
+{
+    raw_req_init(&txn->req_pkt, RAW_PFLAG_RIOD_W,
+                 0, RAW_RTYPE_UDP, r_addr, r_val);
+}
+__unused
+static inline void client_gpio_r(struct control_txn *txn, uint8_t r_addr)
+{
+    raw_req_init(&txn->req_pkt, RAW_PFLAG_RIOD_R,
+                 0, RAW_RTYPE_GPIO, r_addr, 0);
+}
+__unused
+static inline void client_gpio_w(struct control_txn *txn,
+                                 uint8_t r_addr, uint32_t r_val)
+{
+    raw_req_init(&txn->req_pkt, RAW_PFLAG_RIOD_W,
+                 0, RAW_RTYPE_GPIO, r_addr, r_val);
+}
+
 /* Handle a client command with embedded RegisterIO */
 static void client_process_cmd_regio(struct control_session *cs)
 {
