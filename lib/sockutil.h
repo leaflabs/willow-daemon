@@ -85,4 +85,24 @@ int sockutil_get_sock_iface(int sockfd, int *iface);
  */
 int sockutil_get_iface_hwaddr(int iface, uint8_t *hwaddr, size_t *len);
 
+/**
+ * @brief Convenience for a pair of calls to sockutil_get_sock_iface()
+ *        and sockutil_get_iface_hwaddr()
+ *
+ * @param sockfd Socket whose hardware address to get
+ * @param hwaddr Buffer to store hardware address in
+ * @param len Maximum number of bytes in buffer
+ * @return 0 on success, -1 on failure
+ * @see sockutil_get_sock_iface(), sockutil_get_iface_hwaddr()
+ */
+static inline int sockutil_get_sock_hwaddr(int sockfd, uint8_t *hwaddr,
+                                           size_t *len)
+{
+    int iface;
+    if (sockutil_get_sock_iface(sockfd, &iface)) {
+        return -1;
+    }
+    return sockutil_get_iface_hwaddr(iface, hwaddr, len);
+}
+
 #endif
