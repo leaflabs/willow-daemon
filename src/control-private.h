@@ -85,9 +85,7 @@ struct control_session {
     void               *dpriv;
 
     /* Board subsamples */
-    evutil_socket_t  ddatafd;   /* Daemon data socket */
-    evutil_socket_t  cdatafd;   /* Client data socket */
-    struct event    *ddataevt;  /* ddatafd read event */
+    evutil_socket_t  ddatafd;   /* Daemon data socket, open entire session */
 
     /* Worker thread */
     pthread_t thread;

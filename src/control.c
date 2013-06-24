@@ -391,24 +391,6 @@ static void client_ecl_err(__unused struct evconnlistener *ecl,
     log_ERR("client accept() failed: %m");
 }
 
-static void control_sample(evutil_socket_t sockfd,
-                           short events,
-                           void *csessvp)
-{
-    struct control_session *cs = csessvp;
-    if (sockfd != cs->ddatafd) {
-        log_ERR("got data from socket %d, expecting %d",
-                sockfd, cs->cdatafd);
-        return;
-    }
-    if ((events & EV_READ) && (cs->cdatafd == -1)) {
-        log_WARNING("received data from daemon, but no one wants it; "
-                    "dropping the packet");
-        recvfrom(cs->ddatafd, NULL, 0, 0, NULL, NULL);
-        return;
-    }
-}
-
 /*
  * Public API
  */
@@ -479,14 +461,6 @@ struct control_session* control_new(struct event_base *base,
         log_ERR("nobnonblock");
         goto nobnonblock;
     }
-    cs->cdatafd = -1;  /* TODO support for forwarding subsamples */
-    cs->ddataevt = event_new(base, cs->ddatafd, EV_READ | EV_PERSIST,
-                         control_sample, cs);
-    if (!cs->ddataevt) {
-        log_ERR("noddataevt");
-        goto noddataevt;
-    }
-    event_add(cs->ddataevt, NULL);
     cs->ctl_txns = NULL;
     cs->ctl_n_txns = 0;
     cs->ctl_cur_txn = -1;
@@ -501,8 +475,6 @@ struct control_session* control_new(struct event_base *base,
     return cs;
 
  noworker:
-    event_free(cs->ddataevt);
- noddataevt:
  nobnonblock:
     if (evutil_closesocket(cs->ddatafd) == -1) {
         log_ERR("can't close sample socket: %m");
@@ -546,12 +518,6 @@ void control_free(struct control_session *cs)
     /* Acquired in control_new() */
     control_must_wake(cs, CONTROL_WHY_EXIT);
     control_must_join(cs, NULL);
-    if (cs->ddataevt) {
-        event_free(cs->ddataevt);
-    }
-    if (cs->cdatafd != -1 && evutil_closesocket(cs->cdatafd) == -1) {
-        log_ERR("can't close client data socket: %m");
-    }
     if (cs->ddatafd != -1 && evutil_closesocket(cs->ddatafd) == -1) {
         log_ERR("can't close sample socket: %m");
     }
