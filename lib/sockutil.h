@@ -80,6 +80,20 @@ int sockutil_get_tcp_connected_p(const char *host, uint16_t port);
 int sockutil_get_sock_iface(int sockfd, int *iface);
 
 /**
+ * @brief Get an interface address associated for an address family.
+ *
+ * @param iface Interface number whose address to get
+ * @param family Family (AF_INET, AF_INET6)
+ * @param addr Returned address
+ * @param len Maximum number of bytes in addr to write; on return,
+ *            number written. This exceeds initial value on
+ *            truncation.
+ * @return 0 on success, -1 on failure.
+ */
+int sockutil_get_iface_addr(int iface, int family,
+                            struct sockaddr *addr, socklen_t *len);
+
+/**
  * @brief Get hardware (MAC48 only for now) address for a network interface
  *
  * @param iface Interface's number; see <net/if.h>

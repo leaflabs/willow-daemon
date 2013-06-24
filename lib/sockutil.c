@@ -215,6 +215,45 @@ int sockutil_get_sock_iface(int sockfd, int *iface)
     return ret;
 }
 
+int sockutil_get_iface_addr(unsigned iface, int family,
+                            struct sockaddr *addr, socklen_t *len)
+{
+    int ret = -1;
+    struct ifaddrs *ifaddrs;
+    if (getifaddrs(&ifaddrs)) {
+        return -1;
+    }
+    for (struct ifaddrs *ifa = ifaddrs; ifa != NULL; ifa = ifa->ifa_next) {
+        if (!ifa->ifa_name) {
+            continue;
+        }
+        int ifa_family = ifa->ifa_addr->sa_family;
+        unsigned ifidx = if_nametoindex(ifa->ifa_name);
+        if (ifidx == 0) {
+            log_ERR("can't convert iface %s to index: %m", ifa->ifa_name);
+            break;
+        }
+        if (iface == ifidx && family == ifa_family) {
+            socklen_t tocopy;
+            if (family == AF_INET) {
+                tocopy = sizeof(struct sockaddr_in);
+            } else if (family == AF_INET6) {
+                tocopy = sizeof(struct sockaddr_in6);
+            } else {
+                log_WARNING("%s: unsupported address family %d", __func__,
+                            family);
+                break;
+            }
+            memcpy(addr, ifa->ifa_addr, tocopy > *len ? *len : tocopy);
+            *len = tocopy;
+            ret = 0;
+            break;
+        }
+    }
+    freeifaddrs(ifaddrs);
+    return ret;
+}
+
 /* MASSIVE HACK ALERT (but thanks, sysfs!) */
 #define SYSFS_PREFIX "/sys/class/net/"
 #define SYSFS_POSTFIX "/address"
