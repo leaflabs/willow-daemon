@@ -13,9 +13,15 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <ifaddrs.h>
+#include <net/if.h>
 #include <netinet/in.h>
 #include <netdb.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -139,4 +145,132 @@ int sockutil_get_tcp_connected_p(const char *host, uint16_t port)
 {
     return sockutil_get_socket(SOCK_STREAM, 0, host, port,
                                sockutil_cfg_conn);
+}
+
+static int sin_addr_eq(struct sockaddr_in *a, struct sockaddr_in *b)
+{
+    return a->sin_addr.s_addr == b->sin_addr.s_addr;
+}
+
+static int sin6_addr_eq(struct sockaddr_in6 *a, struct sockaddr_in6 *b)
+{
+    return 0 == memcmp(&a->sin6_addr, &b->sin6_addr, sizeof(struct in6_addr));
+}
+
+int sockutil_get_sock_iface(int sockfd, int *iface)
+{
+    int ret = -1;
+    struct sockaddr_storage sas;
+    socklen_t sas_len = sizeof(sas);
+    if (getsockname(sockfd, (struct sockaddr*)&sas, &sas_len)) {
+        return -1;
+    }
+    assert(sas_len <= sizeof(sas)); /* by definition of sockaddr_storage */
+    struct ifaddrs *ifaddrs;
+    if (getifaddrs(&ifaddrs)) {
+        return -1;
+    }
+    for (struct ifaddrs *ifa = ifaddrs; ifa != NULL; ifa = ifa->ifa_next) {
+        if (!ifa->ifa_name) {
+            continue;
+        }
+        int family = ifa->ifa_addr->sa_family;
+        unsigned ifidx = if_nametoindex(ifa->ifa_name);
+        if (ifidx == 0) {
+            log_ERR("can't convert iface name %s to index: %m", ifa->ifa_name);
+            break;
+        }
+        if (family == AF_INET && sas.ss_family == AF_INET) {
+            if (sin_addr_eq((struct sockaddr_in*)ifa->ifa_addr,
+                            (struct sockaddr_in*)&sas)) {
+                *iface = ifidx;
+                break;
+            }
+        } else if (family == AF_INET6 && sas.ss_family == AF_INET6) {
+            if (sin6_addr_eq((struct sockaddr_in6*)ifa->ifa_addr,
+                             (struct sockaddr_in6*)&sas)) {
+                *iface = ifidx;
+                break;
+            }
+        }
+    }
+    freeifaddrs(ifaddrs);
+    return ret;
+}
+
+/* MASSIVE HACK ALERT (but thanks, sysfs!) */
+#define SYSFS_PREFIX "/sys/class/net/"
+#define SYSFS_POSTFIX "/address"
+ssize_t sockutil_get_iface_hwaddr(int iface, uint8_t *hwaddr, size_t *len)
+{
+    /* sysfs tells us HW addresses for each <iface> in
+     * "aa:bb:cc:ee:ff" ASCII format in the files
+     * "/sys/class/net/<iface>/address".
+     *
+     * 18 == strlen("aa:bb:cc:ee:ff") + 1 */
+    char hack[18];
+
+    int ret = -1;
+    char *buf = NULL;
+    int fd = -1;
+    char ifname[IFNAMSIZ];
+
+    if (if_indextoname(iface, ifname) == NULL) {
+        return -1;
+    }
+    size_t iface_len = strlen(ifname);
+
+    if (*len < 6) {
+        /* um, you did want a MAC48, right? */
+        goto bail;
+    }
+
+    size_t buflen = strlen(SYSFS_PREFIX SYSFS_POSTFIX) + iface_len + 1;
+    buf = malloc(buflen);
+    if (!buf) {
+        goto bail;
+    }
+    int s = snprintf(buf, buflen, SYSFS_PREFIX "%s" SYSFS_POSTFIX, ifname);
+    if (s < 0) {
+        goto bail;
+    }
+    assert((size_t)s < buflen); /* or output was truncated -> can't happen */
+    fd = open(buf, O_RDONLY);
+    if (fd == -1) {
+        /* no sysfs :( */
+        log_WARNING("can't open %s; do you have sysfs?", buf);
+        goto bail;
+    }
+
+    size_t nread = 0;
+    size_t toread = sizeof(hack) - 1;
+    while (nread < toread) {
+        ssize_t n = read(fd, hack + nread, toread - nread);
+        if (n == 0 || (n < 0 && errno != EINTR)) {
+            goto bail;
+        }
+        nread += (size_t)n;
+    }
+    hack[toread] = '\0';
+    /* Make sure this looks like what we expect */
+    if (!(hack[2] == ':' && hack[5] == ':' && hack[8] == ':' &&
+          hack[11] == ':')) {
+        log_WARNING("unexpected results while reading %s: %s", buf, hack);
+        goto bail;
+    }
+    /* Convert ASCII MAC48 to bytes */
+    for (size_t i = 0; i < 6; i++) {
+        hwaddr[i] = (uint8_t)strtol(hack + i * 3, NULL, 16);
+    }
+    *len = 6;
+    ret = 0;
+
+ bail:
+    if (buf) {
+        free(buf);
+    }
+    if (fd != -1 && close(fd)) {
+        ret = -1;
+    }
+    return ret;
 }

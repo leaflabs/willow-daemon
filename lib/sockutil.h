@@ -64,4 +64,25 @@ int sockutil_get_tcp_passive(uint16_t port, int backlog);
  */
 int sockutil_get_tcp_connected_p(const char *host, uint16_t port);
 
+/**
+ * @brief Get the name of the network interface associated with a socket
+ * @param sockfd Socket whose network interface's name to get
+ * @param iface Return value: interface number (see <net/if.h>)
+ * @return 0 on success, -1 on failure.
+ */
+int sockutil_get_sock_iface(int sockfd, int *iface);
+
+/**
+ * @brief Get hardware (MAC48 only for now) address for a network interface
+ *
+ * @param iface Interface's number; see <net/if.h>
+ * @param hwaddr Buffer to write address into.
+ * @param len Points to maximum number of bytes to store in hwaddr
+ *            (currently, must be at least 6). On return, contains
+ *            actual number of bytes stored (will be larger than on
+ *            entry if truncation occurred).
+ * @return 0 on success, -1 on failure.
+ */
+int sockutil_get_iface_hwaddr(int iface, uint8_t *hwaddr, size_t *len);
+
 #endif
