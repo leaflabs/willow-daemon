@@ -27,6 +27,13 @@
 
 #include "proto/control.pb-c.h"
 
+#define LOCAL_DEBUG_LOGV 0
+
+#if LOCAL_DEBUG_LOGV
+#define LOCAL_DEBUG(...) log_DEBUG(__VA_ARGS__)
+#else
+#define LOCAL_DEBUG(...) ((void)0)
+#endif
 
 /* FIXME:
  *
