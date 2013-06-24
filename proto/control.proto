@@ -207,6 +207,8 @@ message ControlResErr {
         C_PROTO = 2;
         // Protocol error on data node control socket
         D_PROTO = 3;
+        // Data node transaction failed
+        DNODE = 4;
     }
     optional ErrCode code = 1;
     optional string msg = 2;
