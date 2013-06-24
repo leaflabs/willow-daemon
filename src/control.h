@@ -50,7 +50,7 @@ struct event_base;
  */
 struct control_session* control_new(struct event_base *base,
                                     uint16_t client_port,
-                                    const char* dnode_addr,
+                                    const char *dnode_addr,
                                     uint16_t dnode_c_port,
                                     uint16_t sample_port);
 
