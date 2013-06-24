@@ -551,18 +551,9 @@ static void client_process_cmd_regio(struct control_session *cs)
         CLIENT_RES_ERR_DAEMON(cs, "out of memory");
         return;
     }
-    struct raw_pkt_cmd *rpkt = &txn->req_pkt;
-    struct raw_cmd_req *req = raw_req(rpkt);
-    raw_packet_init(rpkt, RAW_MTYPE_REQ, 0);
-    req->r_type = reg_io->type;
-    req->r_addr = reg_addr;
-    if (reg_io->has_val) {
-        raw_set_flags(&txn->req_pkt, RAW_PFLAG_RIOD_W);
-        req->r_val = reg_io->val;
-    } else {
-        raw_set_flags(&txn->req_pkt, RAW_PFLAG_RIOD_R);
-        req->r_val = 0;
-    }
+    uint8_t ioflag = reg_io->has_val ? RAW_PFLAG_RIOD_W : RAW_PFLAG_RIOD_R;
+    uint32_t ioval = reg_io->has_val ? reg_io->val : 0;
+    raw_req_init(&txn->req_pkt, ioflag, 0, reg_io->type, reg_addr, ioval);
     control_set_transactions(cs, txn, 1, 1);
     cs->wake_why |= CONTROL_WHY_DNODE_TXN;
 }
