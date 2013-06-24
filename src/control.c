@@ -404,9 +404,7 @@ static void control_sample(evutil_socket_t sockfd,
     if ((events & EV_READ) && (cs->cdatafd == -1)) {
         log_WARNING("received data from daemon, but no one wants it; "
                     "dropping the packet");
-        struct sockaddr_storage dn_addr;
-        socklen_t len = sizeof(struct sockaddr_storage);
-        recvfrom(cs->ddatafd, NULL, 0, 0, (struct sockaddr*)&dn_addr, &len);
+        recvfrom(cs->ddatafd, NULL, 0, 0, NULL, NULL);
         return;
     }
 }
