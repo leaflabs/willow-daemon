@@ -279,6 +279,7 @@ static int client_start(struct control_session *cs)
 
 static void client_stop(struct control_session *cs)
 {
+    client_reset_state_locked(cs); /* worker thread isn't running */
     if (cs->cpriv) {
         client_free_priv(cs);
     }
