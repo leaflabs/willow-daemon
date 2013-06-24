@@ -437,13 +437,13 @@ struct control_session* control_new(struct event_base *base,
     }
     cs->daddr = dnode_addr;
     cs->dport = dnode_port;
-    int ddatafd = sockutil_get_tcp_connected_p(cs->daddr, cs->dport);
-    if (ddatafd == -1) {
+    int dcontrolfd = sockutil_get_tcp_connected_p(cs->daddr, cs->dport);
+    if (dcontrolfd == -1) {
         log_ERR("can't connect to data node at %s, port %u",
                 dnode_addr, dnode_port);
         goto nodsock;
     }
-    if (evutil_make_socket_nonblocking(ddatafd)) {
+    if (evutil_make_socket_nonblocking(dcontrolfd)) {
         log_ERR("data node control socket doesn't support nonblocking I/O");
         goto nodnonblock;
     }
@@ -469,7 +469,7 @@ struct control_session* control_new(struct event_base *base,
         log_ERR("can't start data node side of control session");
         goto nodnode;
     }
-    control_conn_open(cs, &cs->dbev, ddatafd, control_dnode_bev_read,
+    control_conn_open(cs, &cs->dbev, dcontrolfd, control_dnode_bev_read,
                       NULL, control_dnode_event, control_dnode_open,
                       "data node");
     cs->ddatafd = sockutil_get_udp_socket(sample_port);
@@ -528,8 +528,8 @@ struct control_session* control_new(struct event_base *base,
     }
  nomtx:
  nodnonblock:
-    if (evutil_closesocket(ddatafd) == -1) {
-        log_ERR("can't close data node socket: %m");
+    if (evutil_closesocket(dcontrolfd) == -1) {
+        log_ERR("can't close data node control socket: %m");
     }
  nodsock:
     evconnlistener_free(cecl);
