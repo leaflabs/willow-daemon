@@ -45,6 +45,7 @@ struct event_base;
  * @param client_port Port to listen on for client connections
  * @param dnode_addr Address to connect to for data node control socket
  * @param dnode_c_port Port to connect to for data node control socket
+ * @param sample_iface Network interface number for sample data reception
  * @param sample_port UDP port to receive data node sample data on
  * @see control_free()
  */
@@ -52,6 +53,7 @@ struct control_session* control_new(struct event_base *base,
                                     uint16_t client_port,
                                     const char *dnode_addr,
                                     uint16_t dnode_c_port,
+                                    unsigned sample_iface,
                                     uint16_t sample_port);
 
 /**

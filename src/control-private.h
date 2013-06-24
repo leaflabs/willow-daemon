@@ -85,6 +85,7 @@ struct control_session {
     void               *dpriv;
 
     /* Board subsamples */
+    unsigned ddataif; /* Dnode data socket interface number; see <net/if.h> */
     evutil_socket_t  ddatafd;   /* Daemon data socket, open entire session */
 
     /* Worker thread */

@@ -23,6 +23,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <net/if.h>
 #include <netinet/in.h>
 #include <sys/types.h>
 #include <sys/select.h>
@@ -63,8 +64,9 @@
 /* main() initializes this before doing anything else. */
 static const char* program_name;
 
-/* Default addresses and ports. */
+/* Default network configuration. */
 #define DAEMON_CLIENT_PORT 1371 /* client control sockets connect to here */
+#define DAEMON_SAMPLE_IFACE "eth0"
 #define DAEMON_SAMPLE_PORT 1370 /* daemon receive board subsamples here */
 #define DNODE_ADDRESS "127.0.0.1" /* for dummy-datanode debugging */
 #define DNODE_LISTEN_PORT  1369 /* data node listens for connections here */
@@ -103,12 +105,14 @@ static void usage(int exit_status)
            "\tConnect to data node on this port, default %d\n"
            "  -h, --help"
            "\t\tPrint this message and quit\n"
+           "  -I, --sample-iface"
+           "\tNetwork interface to receive samples on, default %s\n"
            "  -N, --dont-daemonize"
            "\tSkip daemonization; logs also go to stderr\n"
            "  -s, --sample-port"
            "\tCreate data node data socket here, default %d\n",
            program_name, DNODE_ADDRESS, DAEMON_CLIENT_PORT, DNODE_LISTEN_PORT,
-           DAEMON_SAMPLE_PORT);
+           DAEMON_SAMPLE_IFACE, DAEMON_SAMPLE_PORT);
     exit(exit_status);
 }
 
@@ -116,6 +120,7 @@ static void usage(int exit_status)
         { .client_port = DAEMON_CLIENT_PORT,                    \
           .dnode_addr = "127.0.0.1", /* dummy-datanode */       \
           .dnode_port = DNODE_LISTEN_PORT,                      \
+          .sample_iface = DAEMON_SAMPLE_IFACE,                  \
           .sample_port = DAEMON_SAMPLE_PORT,                    \
           .dont_daemonize = 0,                                  \
         }
@@ -124,6 +129,7 @@ struct arguments {
     uint16_t  client_port;      /* Listen for clients here */
     char     *dnode_addr;       /* Connect to dnode at this address */
     uint16_t  dnode_port;       /* Connect to dnode at this port */
+    char     *sample_iface;     /* Use this interface to receive samples */
     uint16_t  sample_port;      /* Receive dnode samples here */
     int       dont_daemonize;   /* Skip daemonization. */
 };
@@ -131,7 +137,7 @@ struct arguments {
 static void parse_args(struct arguments* args, int argc, char *const argv[])
 {
     int print_usage = 0;
-    const char shortopts[] = "A:c:d:hNs:";
+    const char shortopts[] = "A:c:d:hI:Ns:";
     struct option longopts[] = {
         /* Keep these sorted with shortopts. */
         { .name = "dnode-address", /* -A */
@@ -150,6 +156,10 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
           .has_arg = no_argument,
           .flag = &print_usage,
           .val = 1 },
+        { .name = "sample-iface",   /* -I */
+          .has_arg = required_argument,
+          .flag = NULL,
+          .val = 'I' },
         { .name = "dont-daemonize", /* -N */
           .has_arg = no_argument,
           .flag = &args->dont_daemonize,
@@ -187,6 +197,9 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
             break;
         case 'h':
             usage(EXIT_SUCCESS);
+        case 'I':
+            args->sample_iface = optarg;
+            break;
         case 'N':
             args->dont_daemonize = 1;
             break;
@@ -262,9 +275,14 @@ run_event_loop(struct arguments *args,
         log_EMERG("can't install signal handlers");
         goto nosiginstall;
     }
+    unsigned iface = if_nametoindex(args->sample_iface);
+    if (iface == 0) {
+        log_EMERG("unknown network interface %s", args->sample_iface);
+    }
     struct control_session *control = control_new(base, args->client_port,
                                                   args->dnode_addr,
                                                   args->dnode_port,
+                                                  iface,
                                                   args->sample_port);
     if (!control) {
         log_EMERG("can't create control session");
@@ -387,9 +405,9 @@ int main(int argc, char *argv[])
 
     /* Go! */
     log_DEBUG("pid: %d, client port: %u, dnodeaddr: %s, dnode port: %u, "
-              "sample port: %u",
+              "sample iface=%s, sample port: %u",
               getpid(), args.client_port, args.dnode_addr, args.dnode_port,
-              args.sample_port);
+              args.sample_iface, args.sample_port);
     ret = daemon_main(&args);
  bail:
     logging_fini();

@@ -399,6 +399,7 @@ struct control_session* control_new(struct event_base *base,
                                     uint16_t client_port,
                                     const char* dnode_addr,
                                     uint16_t dnode_port,
+                                    unsigned sample_iface,
                                     uint16_t sample_port)
 {
     int en;
@@ -408,6 +409,7 @@ struct control_session* control_new(struct event_base *base,
         goto nocs;
     }
     cs->base = base;
+    cs->ddataif = sample_iface;
     struct evconnlistener *cecl =
         control_new_listener(cs, base, client_port, client_ecl,
                              client_ecl_err);
