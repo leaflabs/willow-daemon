@@ -541,6 +541,10 @@ struct control_session* control_new(struct event_base *base,
 
 void control_free(struct control_session *cs)
 {
+    /* NB: cs->cbev and cs->dbev had BEV_OPT_CLOSE_ON_FREE set on
+     * creation, so there's no need to close the control sockets
+     * here. */
+
     /* Acquired in control_new() */
     control_must_wake(cs, CONTROL_WHY_EXIT);
     control_must_join(cs, NULL);
