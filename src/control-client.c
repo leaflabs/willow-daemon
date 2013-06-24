@@ -151,6 +151,9 @@ static inline void drain_evbuf(struct evbuffer *evb)
 static void client_reset_state_locked(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
+    if (!cpriv) {
+        return;
+    }
     if (cpriv->c_cmd) {
         control_command__free_unpacked(cpriv->c_cmd, NULL);
     }
