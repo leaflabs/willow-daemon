@@ -25,6 +25,7 @@
 #include <event2/util.h>
 #include <pthread.h>
 #include <sys/socket.h>
+#include <stdint.h>
 
 #include "raw_packets.h"
 #include "proto/control.pb-c.h"
