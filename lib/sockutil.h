@@ -22,6 +22,8 @@
 #define _LIB_SOCKUTIL_H_
 
 #include <stdint.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 
 /**
  * @brief Convenience for creating UDP sockets.
@@ -50,7 +52,7 @@ int sockutil_get_udp_connected_p(const char *host, uint16_t port);
  *@param addr Address to connect to
  *@return Socket file descriptor on success, -1 on failure.
  */
-int sockutil_get_udp_connected(struct sockaddr *addr);
+int sockutil_get_udp_connected(struct sockaddr *addr, socklen_t addrlen);
 
 /**
  * @brief Convenience for creating passive TCP sockets.
@@ -90,7 +92,7 @@ int sockutil_get_sock_iface(int sockfd, int *iface);
  *            truncation.
  * @return 0 on success, -1 on failure.
  */
-int sockutil_get_iface_addr(int iface, int family,
+int sockutil_get_iface_addr(unsigned iface, int family,
                             struct sockaddr *addr, socklen_t *len);
 
 /**
@@ -104,7 +106,7 @@ int sockutil_get_iface_addr(int iface, int family,
  *            entry if truncation occurred).
  * @return 0 on success, -1 on failure.
  */
-int sockutil_get_iface_hwaddr(int iface, uint8_t *hwaddr, size_t *len);
+int sockutil_get_iface_hwaddr(unsigned iface, uint8_t *hwaddr, size_t *len);
 
 /**
  * @brief Convenience for a pair of calls to sockutil_get_sock_iface()

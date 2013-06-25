@@ -13,6 +13,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "sockutil.h"
+
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -257,7 +259,7 @@ int sockutil_get_iface_addr(unsigned iface, int family,
 /* MASSIVE HACK ALERT (but thanks, sysfs!) */
 #define SYSFS_PREFIX "/sys/class/net/"
 #define SYSFS_POSTFIX "/address"
-ssize_t sockutil_get_iface_hwaddr(int iface, uint8_t *hwaddr, size_t *len)
+int sockutil_get_iface_hwaddr(unsigned iface, uint8_t *hwaddr, size_t *len)
 {
     /* sysfs tells us HW addresses for each <iface> in
      * "aa:bb:cc:ee:ff" ASCII format in the files
