@@ -24,10 +24,12 @@
 
 #include <event2/util.h>
 #include <pthread.h>
+#include <sys/socket.h>
 
 #include "raw_packets.h"
 #include "proto/control.pb-c.h"
 
+struct event;
 struct event_base;
 struct evconnlistener;
 struct bufferevent;
@@ -94,13 +96,27 @@ struct control_session {
     void               *dpriv;
 
     /* Board subsamples */
-    unsigned ddataif; /* Dnode data socket interface number; see <net/if.h> */
-    evutil_socket_t  ddatafd;   /* Daemon data socket, open entire session */
+    unsigned ddataif; /* Daemon data socket interface number; see
+                       * <net/if.h>.  Set during control_new(); treat
+                       * as constant. */
+    evutil_socket_t ddatafd; /* Daemon data socket, open entire session;
+                              * main thread only */
+    struct event *ddataevt;  /* Data socket event */
+    struct sockaddr_storage dnaddr; /* Data node address; receive
+                                     * sample data only from here. If
+                                     * unset, .ss_family==AF_UNSPEC.
+                                     * Shared with worker thread. */
+    struct sockaddr_storage caddr; /* Data node address; forward live
+                                    * sample data to here. If unset,
+                                    * .ss_family==AF_UNSPEC. Shared
+                                    * with worker thread. */
+    struct iovec dpbuf; /* Data socket protocol buffer; main thread
+                         * only. */
 
     /* Worker thread */
     pthread_t thread;
     pthread_cond_t cv; /* Wakes up ->thread */
-    pthread_mutex_t mtx; /* For ->cv and main thread critical sections  */
+    pthread_mutex_t mtx; /* For ->cv and other main thread critical sections */
     unsigned wake_why; /* OR of control_worker_why flags describing
                         * why ->thread needs to wake up */
 
@@ -142,7 +158,7 @@ struct control_ops {
     int (*cs_open)(struct control_session *cs, evutil_socket_t control_sockfd);
     void (*cs_close)(struct control_session *cs);
 
-    /* On-receive callback.
+    /* On-receive control socket callback.
      *
      * Pull data out of your bufferevent. If that's not enough data,
      * return CONTROL_WHY_NONE. If you've got something to wake up the
@@ -151,6 +167,11 @@ struct control_ops {
 
     /* Worker thread callback. */
     void (*cs_thread)(struct control_session *cs);
+
+    /* Data socket callbacks.
+     *
+     * Return 0 on success, -1 on failure. */
+    int (*cs_data)(struct control_session *cs, struct sockaddr *saddr);
 };
 
 /*

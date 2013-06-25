@@ -64,6 +64,9 @@ static int control_client_start(struct control_session *cs)
 
 static void control_client_stop(struct control_session *cs)
 {
+    control_must_lock(cs);
+    cs->caddr.ss_family = AF_UNSPEC;
+    control_must_unlock(cs);
     if (!control_client_ops->cs_stop) {
         return;
     }
@@ -112,6 +115,15 @@ static void control_client_thread(struct control_session *cs)
     control_client_ops->cs_thread(cs);
 }
 
+static int control_client_data(struct control_session *cs,
+                               struct sockaddr *saddr)
+{
+    if (!control_client_ops->cs_data) {
+        return -1;
+    }
+    return control_client_ops->cs_data(cs, saddr);
+}
+
 static int control_dnode_start(struct control_session *cs)
 {
     if (!control_dnode_ops->cs_start) {
@@ -122,6 +134,9 @@ static int control_dnode_start(struct control_session *cs)
 
 static void control_dnode_stop(struct control_session *cs)
 {
+    control_must_lock(cs);
+    cs->dnaddr.ss_family = AF_UNSPEC;
+    control_must_unlock(cs);
     if (!control_dnode_ops->cs_stop) {
         return;
     }
@@ -171,6 +186,15 @@ static void control_dnode_thread(struct control_session *cs)
         return;
     }
     control_dnode_ops->cs_thread(cs);
+}
+
+static int control_dnode_data(struct control_session *cs,
+                              struct sockaddr *saddr)
+{
+    if (!control_dnode_ops->cs_data) {
+        return -1;
+    }
+    return control_dnode_ops->cs_data(cs, saddr);
 }
 
 /*
@@ -391,6 +415,44 @@ static void client_ecl_err(__unused struct evconnlistener *ecl,
     log_ERR("client accept() failed: %m");
 }
 
+/* TODO break this functionality out into its own files; this isn't
+ * part of the control session. */
+static void control_data(evutil_socket_t ddatafd, short events, void *csessvp)
+{
+    struct control_session *cs = csessvp;
+    assert(cs->ddatafd == ddatafd);
+    if (!(events & EV_READ)) {
+        log_DEBUG("%s: spurious call (EV_READ unset)", __func__);
+        return;
+    }
+
+    /* Get the data node and client data socket addresses */
+    struct sockaddr *dnaddr = NULL;
+    struct sockaddr *caddr = NULL;
+    control_must_lock(cs);
+    dnaddr = (struct sockaddr*)&cs->dnaddr;
+    caddr = (struct sockaddr*)&cs->caddr;
+    control_must_unlock(cs);
+    if (dnaddr->sa_family == AF_UNSPEC || caddr->sa_family == AF_UNSPEC) {
+        log_DEBUG("%s: spurious call (dnaddr or caddr unset)", __func__);
+        recv(cs->ddatafd, NULL, 0, 0);
+        return;
+    }
+
+    /* Fill the buffer with the data node callback */
+    if (control_dnode_data(cs, dnaddr)) {
+        log_DEBUG("%s: data node callback failed", __func__);
+        recv(cs->ddatafd, NULL, 0, 0);
+        return;
+    }
+
+    /* Convert and ship the buffer with the client callback */
+    if (control_client_data(cs, caddr)) {
+        log_DEBUG("%s: client callback failed", __func__);
+        return;
+    }
+}
+
 /*
  * Public API
  */
@@ -410,6 +472,10 @@ struct control_session* control_new(struct event_base *base,
     }
     cs->base = base;
     cs->ddataif = sample_iface;
+    cs->dnaddr.ss_family = AF_UNSPEC;
+    cs->caddr.ss_family = AF_UNSPEC;
+    cs->dpbuf.iov_base = NULL;
+    cs->dpbuf.iov_len = 0;
     struct evconnlistener *cecl =
         control_new_listener(cs, base, client_port, client_ecl,
                              client_ecl_err);
@@ -463,6 +529,13 @@ struct control_session* control_new(struct event_base *base,
         log_ERR("nobnonblock");
         goto nobnonblock;
     }
+    cs->ddataevt = event_new(base, cs->ddatafd, EV_READ | EV_PERSIST,
+                             control_data, cs);
+    if (!cs->ddataevt) {
+        log_ERR("noddataevt");
+        goto noddataevt;
+    }
+    event_add(cs->ddataevt, NULL);
     cs->ctl_txns = NULL;
     cs->ctl_n_txns = 0;
     cs->ctl_cur_txn = -1;
@@ -477,6 +550,8 @@ struct control_session* control_new(struct event_base *base,
     return cs;
 
  noworker:
+    event_free(cs->ddataevt);
+ noddataevt:
  nobnonblock:
     if (evutil_closesocket(cs->ddatafd) == -1) {
         log_ERR("can't close sample socket: %m");
@@ -531,6 +606,7 @@ void control_free(struct control_session *cs)
         bufferevent_free(cs->dbev);
     }
     evconnlistener_free(cs->cecl);
+    event_free(cs->ddataevt);
 
     /* Possibly acquired elsewhere */
     if (cs->cbev) {
@@ -538,6 +614,9 @@ void control_free(struct control_session *cs)
     }
     if (cs->ctl_txns) {
         free(cs->ctl_txns);
+    }
+    if (cs->dpbuf.iov_base) {
+        free(cs->dpbuf.iov_base);
     }
 
     free(cs);
