@@ -68,6 +68,15 @@ enum control_worker_why {
     CONTROL_WHY_DNODE_TXN  = 0x10, /* Transaction must be performed */
 };
 
+/* Google says individual protocol buffers should be < 1 MB each:
+ *
+ * https://developers.google.com/protocol-buffers/docs/techniques#large-data
+ *
+ * So we might as well try to enforce reasonably good behavior. It's a
+ * protocol error to send messages that are too long; client code is
+ * and free to close such connections. */
+#define CONTROL_CMD_MAX_SIZE (2 * 1024 * 1024)
+
 /** Control session. */
 struct control_session {
     /* control_new() caller owns this; we own the rest */

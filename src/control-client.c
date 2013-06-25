@@ -44,15 +44,6 @@
  * - drop ongoing transaction on client closure
  */
 
-/* Google says individual protocol buffers should be < 1 MB each:
- *
- * https://developers.google.com/protocol-buffers/docs/techniques#large-data
- *
- * So we might as well try to enforce reasonably good
- * behavior. Clients that send messages which are too long cause
- * protocol errors. */
-#define CLIENT_CMD_MAX_SIZE (2 * 1024 * 1024)
-
 /* Client message length prefix type. Signed so -1 can mean "still
  * waiting to read length" */
 typedef int32_t client_cmd_len_t;
@@ -73,8 +64,8 @@ struct client_priv {
     /* Allocate a command and response's worth of contiguous space at
      * client_start() time, rather than using e.g. evbuffer_pullup()
      * at each read(). */
-    uint8_t c_cmd_arr[CLIENT_CMD_MAX_SIZE];
-    uint8_t c_rsp_arr[CLIENT_CMD_MAX_SIZE];
+    uint8_t c_cmd_arr[CONTROL_CMD_MAX_SIZE];
+    uint8_t c_rsp_arr[CONTROL_CMD_MAX_SIZE];
 };
 
 /********************************************************************
@@ -195,7 +186,7 @@ static void client_send_response(struct control_session *cs,
 {
     struct client_priv *cpriv = cs->cpriv;
     size_t len = control_response__get_packed_size(cr);
-    assert(len < CLIENT_CMD_MAX_SIZE); /* or WTF; honestly */
+    assert(len < CONTROL_CMD_MAX_SIZE); /* or WTF; honestly */
     size_t packed = control_response__pack(cr, cpriv->c_rsp_arr);
     client_cmd_len_t clen = cmd_hton((client_cmd_len_t)packed);
     bufferevent_write(cs->cbev, &clen, CMDLEN_SIZE);
@@ -340,7 +331,7 @@ static int client_got_entire_pbuf(struct control_session *cs)
     }
 
     /* Sanity-check the received protocol buffer length. */
-    if (cpriv->c_cmdlen > CLIENT_CMD_MAX_SIZE) {
+    if (cpriv->c_cmdlen > CONTROL_CMD_MAX_SIZE) {
         client_fatal_protocol_error(cs, CLIENT_EPROTO_CMDLEN);
     }
 
