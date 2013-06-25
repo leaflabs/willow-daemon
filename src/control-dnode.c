@@ -194,9 +194,6 @@ static enum control_worker_why dnode_read(struct control_session *cs)
     case RAW_MTYPE_RES:
         if (raw_pkt_is_err(&pkt)) {
             log_INFO("received error response packet from data node");
-        } else {
-            log_DEBUG("%s: got response packet, r_id %u",
-                      __func__, pkt.p.res.r_id);
         }
         ret = CONTROL_WHY_CLIENT_RES;
         break;
@@ -228,8 +225,6 @@ static void dnode_thread(struct control_session *cs)
     struct raw_pkt_cmd req_copy;
     memcpy(&req_copy, cur_req, sizeof(req_copy));
     if (raw_pkt_hton(&req_copy) == 0) {
-        log_DEBUG("%s: writing request packet, r_id %u",
-                  __func__, raw_req(cur_req)->r_id);
         bufferevent_write(cs->dbev, &req_copy, sizeof(req_copy));
     } else {
         log_ERR("ignoring attempt to send malformed request packet");
