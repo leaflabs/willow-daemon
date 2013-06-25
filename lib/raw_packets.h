@@ -472,10 +472,8 @@ size_t raw_pkt_size(const void *pkt);
  * They return 0 on success, or -1 if the packet had garbage or
  * unrecognizable fields. */
 ///@{
-int raw_pkt_hton(struct raw_pkt_cmd *pkt);
-int raw_pkt_ntoh(struct raw_pkt_cmd *pkt);
-int raw_bsub_hton(struct raw_pkt_bsub *bsub);
-int raw_bsub_ntoh(struct raw_pkt_bsub *bsub);
+int raw_pkt_hton(void *pkt);
+int raw_pkt_ntoh(void *pkt);
 ///@}
 
 /* Send a command packet.

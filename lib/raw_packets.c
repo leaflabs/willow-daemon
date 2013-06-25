@@ -135,9 +135,34 @@ static void raw_res_hton(struct raw_pkt_cmd *res)
     rcmd->r_val = htonl(raw_r_val(res));
 }
 
-int raw_pkt_hton(struct raw_pkt_cmd *pkt)
+static void raw_bsub_hton(struct raw_pkt_bsub *bsub)
 {
-    struct raw_pkt_header *ph = &pkt->ph;
+    bsub->b_cookie_h = htonl(bsub->b_cookie_h);
+    bsub->b_cookie_l = htonl(bsub->b_cookie_l);
+    bsub->b_id = htonl(bsub->b_id);
+    bsub->b_sidx = htonl(bsub->b_sidx);
+    bsub->b_chip_live = htonl(bsub->b_chip_live);
+    for (size_t i = 0; i < RAW_BSUB_NSAMP; i++) {
+        bsub->b_samps[i] = raw_samp_hton(bsub->b_samps[i]);
+    }
+    bsub->b_gpio = htons(bsub->b_gpio);
+}
+
+static void raw_bsmp_hton(struct raw_pkt_bsmp *bsmp)
+{
+    bsmp->b_cookie_h = htonl(bsmp->b_cookie_h);
+    bsmp->b_cookie_l = htonl(bsmp->b_cookie_l);
+    bsmp->b_id = htonl(bsmp->b_id);
+    bsmp->b_sidx = htonl(bsmp->b_sidx);
+    bsmp->b_chip_live = htonl(bsmp->b_chip_live);
+    for (size_t i = 0; i < _RAW_BSMP_NSAMP; i++) {
+        bsmp->b_samps[i] = raw_samp_hton(bsmp->b_samps[i]);
+    }
+}
+
+int raw_pkt_hton(void *pkt)
+{
+    struct raw_pkt_header *ph = pkt;
     if ((ph->_p_magic != RAW_PKT_HEADER_MAGIC ||
          ph->p_proto_vers > RAW_PKT_HEADER_PROTO_VERS)) {
         return -1;
@@ -145,13 +170,19 @@ int raw_pkt_hton(struct raw_pkt_cmd *pkt)
     raw_ph_hton(pkt);
     switch (raw_mtype(pkt)) {
     case RAW_MTYPE_REQ:
-        raw_req_hton(pkt);
+        raw_req_hton((struct raw_pkt_cmd*)pkt);
         return 0;
     case RAW_MTYPE_RES:
-        raw_res_hton(pkt);
+        raw_res_hton((struct raw_pkt_cmd*)pkt);
         return 0;
     case RAW_MTYPE_ERR:
-        raw_err_hton(pkt);
+        raw_err_hton((struct raw_pkt_cmd*)pkt);
+        return 0;
+    case RAW_MTYPE_BSUB:
+        raw_bsub_hton((struct raw_pkt_bsub*)pkt);
+        return 0;
+    case RAW_MTYPE_BSMP:
+        raw_bsmp_hton((struct raw_pkt_bsmp*)pkt);
         return 0;
     default:
         return -1;
@@ -174,57 +205,8 @@ static void raw_res_ntoh(struct raw_pkt_cmd *res)
     rcmd->r_val = ntohl(raw_r_val(res));
 }
 
-int raw_pkt_ntoh(struct raw_pkt_cmd *pkt)
+static int raw_bsub_ntoh(struct raw_pkt_bsub *bsub)
 {
-    raw_ph_ntoh(pkt);
-    struct raw_pkt_header *ph = &pkt->ph;
-    if ((ph->_p_magic != RAW_PKT_HEADER_MAGIC ||
-         ph->p_proto_vers > RAW_PKT_HEADER_PROTO_VERS)) {
-        return -1;
-    }
-    switch (raw_mtype(pkt)) {
-    case RAW_MTYPE_REQ:
-        raw_req_ntoh(pkt);
-        return 0;
-    case RAW_MTYPE_RES:
-        raw_res_ntoh(pkt);
-        return 0;
-    case RAW_MTYPE_ERR:
-        raw_err_ntoh(pkt);
-        return 0;
-    default:
-        return -1;
-    }
-}
-
-int raw_bsub_hton(struct raw_pkt_bsub *bsub)
-{
-    struct raw_pkt_header *ph = &bsub->ph;
-    if ((ph->_p_magic != RAW_PKT_HEADER_MAGIC ||
-         ph->p_proto_vers > RAW_PKT_HEADER_PROTO_VERS)) {
-        return -1;
-    }
-    raw_ph_hton(&bsub->ph);
-    bsub->b_cookie_h = htonl(bsub->b_cookie_h);
-    bsub->b_cookie_l = htonl(bsub->b_cookie_l);
-    bsub->b_id = htonl(bsub->b_id);
-    bsub->b_sidx = htonl(bsub->b_sidx);
-    bsub->b_chip_live = htonl(bsub->b_chip_live);
-    for (size_t i = 0; i < RAW_BSUB_NSAMP; i++) {
-        bsub->b_samps[i] = raw_samp_hton(bsub->b_samps[i]);
-    }
-    bsub->b_gpio = htons(bsub->b_gpio);
-    return 0;
-}
-
-int raw_bsub_ntoh(struct raw_pkt_bsub *bsub)
-{
-    raw_ph_ntoh(&bsub->ph);
-    struct raw_pkt_header *ph = &bsub->ph;
-    if ((ph->_p_magic != RAW_PKT_HEADER_MAGIC ||
-         ph->p_proto_vers > RAW_PKT_HEADER_PROTO_VERS)) {
-        return -1;
-    }
     bsub->b_cookie_h = ntohl(bsub->b_cookie_h);
     bsub->b_cookie_l = ntohl(bsub->b_cookie_l);
     bsub->b_id = ntohl(bsub->b_id);
@@ -237,29 +219,44 @@ int raw_bsub_ntoh(struct raw_pkt_bsub *bsub)
     return 0;
 }
 
-static void raw_bsmp_hton(struct raw_pkt_bsmp *bsmp)
-{
-    raw_ph_hton(&bsmp->ph);
-    bsmp->b_cookie_h = htonl(bsmp->b_cookie_h);
-    bsmp->b_cookie_l = htonl(bsmp->b_cookie_l);
-    bsmp->b_id = htonl(bsmp->b_id);
-    bsmp->b_sidx = htonl(bsmp->b_sidx);
-    bsmp->b_chip_live = htonl(bsmp->b_chip_live);
-    for (size_t i = 0; i < raw_bsmp_nsamp(bsmp); i++) {
-        bsmp->b_samps[i] = raw_samp_hton(bsmp->b_samps[i]);
-    }
-}
-
 static void raw_bsmp_ntoh(struct raw_pkt_bsmp *bsmp)
 {
-    raw_ph_ntoh(&bsmp->ph);
     bsmp->b_cookie_h = ntohl(bsmp->b_cookie_h);
     bsmp->b_cookie_l = ntohl(bsmp->b_cookie_l);
     bsmp->b_id = ntohl(bsmp->b_id);
     bsmp->b_sidx = ntohl(bsmp->b_sidx);
     bsmp->b_chip_live = ntohl(bsmp->b_chip_live);
-    for (size_t i = 0; i < raw_bsmp_nsamp(bsmp); i++) {
+    for (size_t i = 0; i < _RAW_BSMP_NSAMP; i++) {
         bsmp->b_samps[i] = raw_samp_ntoh(bsmp->b_samps[i]);
+    }
+}
+
+int raw_pkt_ntoh(void *pkt)
+{
+    struct raw_pkt_header *ph = pkt;
+    raw_ph_ntoh(ph);
+    if ((ph->_p_magic != RAW_PKT_HEADER_MAGIC ||
+         ph->p_proto_vers > RAW_PKT_HEADER_PROTO_VERS)) {
+        return -1;
+    }
+    switch (raw_mtype(pkt)) {
+    case RAW_MTYPE_REQ:
+        raw_req_ntoh((struct raw_pkt_cmd*)pkt);
+        return 0;
+    case RAW_MTYPE_RES:
+        raw_res_ntoh((struct raw_pkt_cmd*)pkt);
+        return 0;
+    case RAW_MTYPE_ERR:
+        raw_err_ntoh((struct raw_pkt_cmd*)pkt);
+        return 0;
+    case RAW_MTYPE_BSUB:
+        raw_bsub_hton((struct raw_pkt_bsub*)pkt);
+        return 0;
+    case RAW_MTYPE_BSMP:
+        raw_bsmp_hton((struct raw_pkt_bsmp*)pkt);
+        return 0;
+    default:
+        return -1;
     }
 }
 
@@ -323,7 +320,7 @@ ssize_t raw_bsub_recv(int sockfd, struct raw_pkt_bsub *bsub, int flags)
 
 ssize_t raw_bsub_send(int sockfd, struct raw_pkt_bsub *bsub, int flags)
 {
-    if (raw_bsub_hton(bsub)) {
+    if (raw_pkt_hton(bsub)) {
         return -1;
     }
     return send(sockfd, bsub, sizeof(*bsub), flags);
