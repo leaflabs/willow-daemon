@@ -4,6 +4,7 @@
  * Dummy datanode, used for system testing the daemon.
  */
 
+#include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
 #include <getopt.h>
@@ -425,6 +426,12 @@ static void init_default_reg_vals(reg_map_t reg_map)
             if (rtype == RAW_RTYPE_DAQ && reg == RAW_RADDR_DAQ_CHIP_ALIVE) {
                 /* TODO add some chaos support here for chips going down */
                 mod_regs[reg] = 0xFFFFFFFF;
+            } else if (rtype == RAW_RTYPE_UDP) {
+                if (reg == RAW_RADDR_UDP_SRC_IP4) {
+                    mod_regs[reg] = 0x7f000001; /* 127.0.0.1 */
+                } else if (reg == RAW_RADDR_UDP_SRC_IP4_PORT) {
+                    mod_regs[reg] = 5678;
+                }
             } else {
                 mod_regs[reg] = REG_DEFAULT;
             }
