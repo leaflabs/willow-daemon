@@ -68,7 +68,7 @@ static const char* program_name;
 #define DAEMON_CLIENT_PORT 1371 /* client control sockets connect to here */
 #define DAEMON_SAMPLE_IFACE "eth0"
 #define DAEMON_SAMPLE_PORT 1370 /* daemon receive board subsamples here */
-#define DNODE_ADDRESS "127.0.0.1" /* for dummy-datanode debugging */
+#define DUMMY_DNODE_ADDRESS "127.0.0.1" /* for dummy-datanode debugging */
 #define DNODE_LISTEN_PORT  1369 /* data node listens for connections here */
 
 /* Whether to store data into HDF5 (==1) or just do raw write() (==0;
@@ -111,14 +111,14 @@ static void usage(int exit_status)
            "\tSkip daemonization; logs also go to stderr\n"
            "  -s, --sample-port"
            "\tCreate data node data socket here, default %d\n",
-           program_name, DNODE_ADDRESS, DAEMON_CLIENT_PORT, DNODE_LISTEN_PORT,
-           DAEMON_SAMPLE_IFACE, DAEMON_SAMPLE_PORT);
+           program_name, DUMMY_DNODE_ADDRESS, DAEMON_CLIENT_PORT,
+           DNODE_LISTEN_PORT, DAEMON_SAMPLE_IFACE, DAEMON_SAMPLE_PORT);
     exit(exit_status);
 }
 
 #define DEFAULT_ARGUMENTS                                       \
         { .client_port = DAEMON_CLIENT_PORT,                    \
-          .dnode_addr = "127.0.0.1", /* dummy-datanode */       \
+          .dnode_addr = DUMMY_DNODE_ADDRESS,                    \
           .dnode_port = DNODE_LISTEN_PORT,                      \
           .sample_iface = DAEMON_SAMPLE_IFACE,                  \
           .sample_port = DAEMON_SAMPLE_PORT,                    \
