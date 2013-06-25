@@ -161,16 +161,21 @@ message RegisterIO {
 
 // Configure a live stream.
 //
+// If you set one of dest_udp_addr4 and dest_udp_port, you must set
+// the other as well.
+//
 // If "enable" is present and true, you'll start to get BoardSubsample
 // (see data.proto) messages via UDP at IPv4 address "dest_udp_addr4",
-// on port "dest_udp_port". You can omit either/both of the
-// address/port if you've previously configured them and just want to
-// turn the stream back on again.
+// on port "dest_udp_port". You can omit the address/port if you've
+// previously configured them and just want to turn the stream back on
+// again. Results are unspecified if you enable the stream without
+// having previously configured its destination.
 //
 // If "enable" is present and false, any existing stream will stop
-// being sent. If either/both of dest_udp_addr4 and dest_udp_port are
-// present in this case, the stream will be reconfigured after it is
-// disabled.
+// being sent. If dest_udp_addr4 and dest_udp_port are present in this
+// case, the order between the events "stream is disabled" and "stream
+// is reconfigured" is undefined. Send two messages if you need a
+// reliable order.
 message ControlCmdStream {
     optional fixed32 dest_udp_addr4 = 1;
     optional uint32 dest_udp_port = 2;
