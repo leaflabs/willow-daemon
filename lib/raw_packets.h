@@ -42,20 +42,25 @@
  * Common packet header
  */
 
-/* Message Types */
+/** @name Message Types */
+///@{
 #define RAW_MTYPE_REQ   0x01 /* Request */
 #define RAW_MTYPE_RES   0x02 /* Response */
 #define RAW_MTYPE_ERR   0x7F /* Error */
 #define RAW_MTYPE_BSUB  0x80 /* Board sub-sample */
 #define RAW_MTYPE_BSMP  0x81 /* Board sample */
+///@}
 
 /* Error flag for raw_packet.p_flags. */
 #define RAW_PFLAG_ERR   0x80
 
+/** @name Packet header */
+///@{
 #define RAW_PKT_HEADER_MAGIC      0x5A
 #define RAW_PKT_HEADER_PROTO_VERS 0x00
+///@}
 
-/* Packet header. */
+/** Common packet header. */
 struct raw_pkt_header {
     /* These are set by raw_packet_init(). */
     uint8_t _p_magic;
@@ -64,14 +69,6 @@ struct raw_pkt_header {
     uint8_t p_mtype;            /* Message Type */
     uint8_t p_flags;            /* Status Flags */
 };
-
-/* Don't touch. */
-#define _RAW_PKT_HEADER_INITIALIZER(mtype)              \
-    { ._p_magic = RAW_PKT_HEADER_MAGIC,                 \
-      .p_proto_vers = RAW_PKT_HEADER_PROTO_VERS,        \
-      .p_mtype = (mtype),                               \
-      .p_flags = 0,                                     \
-    }
 
 /*********************************************************************
  * Command packets
@@ -94,18 +91,14 @@ struct raw_pkt_header {
     uint8_t r_type;                             \
     uint8_t r_addr;                             \
     uint32_t r_val;
+/** Request packet message data */
 struct raw_cmd_req { _RAW_C_REQ_RES };
+/** Response packet message data */
 struct raw_cmd_res { _RAW_C_REQ_RES };
 #undef _RAW_C_REQ_RES
 
-/* Don't touch; use RAW_PKT_REQ_INITIALIZER, below. */
-#define _RAW_REQ_INITIALIZER \
-    { .r_id = 0, .r_type = 0xFF, .r_addr = 0xFF, .r_val = 0xdeadbeef }
-/* Don't touch; use RAW_PKT_RES_INITIALIZER, below. */
-#define _RAW_RES_INITIALIZER \
-    { .r_id = 0, .r_type = 0xFF, .r_addr = 0xFF, .r_val = 0xdeadbeef }
-
-/* Request types */
+/** @name Request Types  */
+///@{
 #define RAW_RTYPE_ERR     0x00  /* Error */
 #define RAW_RTYPE_CENTRAL 0x01  /* Central module */
 #define RAW_RTYPE_SATA    0x02  /* SATA storage */
@@ -113,6 +106,7 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RTYPE_UDP     0x04  /* UDP module config */
 #define RAW_RTYPE_GPIO    0x05  /* GPIO config for expansion pins */
 #define RAW_RTYPE_NTYPES  (RAW_RTYPE_GPIO + 1)
+///@}
 
 /* I/O direction flag */
 #define RAW_PFLAG_RIOD   (0x1)
@@ -123,21 +117,21 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
  * Per-r_type registers and values
  */
 
+/**
+ * @name Per-rtype Registers
+ *
+ * Names are prefixed by the request type the register pertains to. */
+///@{
 /* RAW_RTYPE_ERR */
-
 #define RAW_RADDR_ERR_ERR0 0x00 /* global error register 0 (r/w) */
 #define RAW_RADDR_ERR_NREGS (RAW_RADDR_ERR_ERR0 + 1)
-
 /* RAW_RTYPE_CENTRAL */
-
 #define RAW_RADDR_CENTRAL_ERR         0x00 /* Module error flags */
 #define RAW_RADDR_CENTRAL_STATE       0x01 /* Module state */
 #define RAW_RADDR_CENTRAL_EXP_CK_H    0x02 /* Experiment cookie, high word */
 #define RAW_RADDR_CENTRAL_EXP_CK_L    0x03 /* Experiment cookie, low word */
 #define RAW_RADDR_CENTRAL_NREGS (RAW_RADDR_CENTRAL_EXP_CK_L + 1)
-
 /* RAW_RTYPE_SATA */
-
 #define RAW_RADDR_SATA_ERR      0x00 /* Module error flags */
 #define RAW_RADDR_SATA_STATE    0x01 /* Module state */
 #define RAW_RADDR_SATA_DISK_ID  0x02 /* Disk identifier (TBD) */
@@ -146,9 +140,7 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_SATA_R_LEN    0x05 /* Read length */
 #define RAW_RADDR_SATA_W_IDX    0x06 /* Last write index */
 #define RAW_RADDR_SATA_NREGS (RAW_RADDR_SATA_W_IDX + 1)
-
 /* RAW_RTYPE_DAQ */
-
 #define RAW_RADDR_DAQ_ERR        0x00 /* Module error flags */
 #define RAW_RADDR_DAQ_STATE      0x01 /* Module state */
 #define RAW_RADDR_DAQ_BSMP_START 0x02 /* Desired board sample index */
@@ -159,12 +151,10 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_DAQ_FIFO_COUNT 0x07 /* FIFO read count ("byte in FIFO") */
 #define RAW_RADDR_DAQ_FIFO_FLAGS 0x08 /* TBD */
 #define RAW_RADDR_DAQ_BSUB0_CFG  0x80 /* subsample #0 configuration */
-/* ... */
+    /* ... */
 #define RAW_RADDR_DAQ_BSUB31_CFG  0x80 /* subsample #31 configuration */
 #define RAW_RADDR_DAQ_NREGS (RAW_RADDR_DAQ_BSUB31_CFG + 1)
-
 /* RAW_RTYPE_UDP */
-
 #define RAW_RADDR_UDP_ERR          0x00 /* Module error flags */
 #define RAW_RADDR_UDP_STATE        0x01 /* Module state */
 #define RAW_RADDR_UDP_SRC_MAC_H    0x02 /* Source MAC-48 address, high word */
@@ -179,15 +169,14 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_UDP_ETH_PKT_LEN  0x0B /* Ethernet packet length */
 #define RAW_RADDR_UDP_PAYLOAD_LEN  0x0C /* Payload length */
 #define RAW_RADDR_UDP_NREGS (RAW_RADDR_UDP_PAYLOAD_LEN + 1)
-
 /* RAW_RTYPE_GPIO */
-
 #define RAW_RADDR_GPIO_ERR   0x00 /* Module error flags */
 /* (No state machine for GPIO) */
 #define RAW_RADDR_GPIO_READ  0x02 /* GPIO read mask */
 #define RAW_RADDR_GPIO_WRITE 0x03 /* GPIO write mask */
 #define RAW_RADDR_GPIO_STATE 0x04 /* GPIO state */
 #define RAW_RADDR_GPIO_NREGS (RAW_RADDR_GPIO_STATE + 1)
+///@}
 
 /*
  * Error packet (RAW_MTYPE_ERR) data
@@ -197,9 +186,6 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 struct raw_cmd_err {
     uint8_t pad_must_be_zero[_RAW_CSIZE];
 };
-
-/* Don't touch; use RAW_PKT_ERR_INITIALIZER, below. */
-#define _RAW_ERR_INITIALIZER { .pad_must_be_zero = { [_RAW_CSIZE - 1] = 0 } }
 
 /*
  * Command packet structure
@@ -214,27 +200,56 @@ struct raw_pkt_cmd {
     } p;
 };
 
-/* Static initializers for command socket packets.
+/**
+ * @name Packet static initializer macros
  *
  * If you use one of these on a request or response, you still need to
- * initialize .r_type, .r_addr, and .r_val yourself later.
+ * initialize .r_type, .r_addr, and .r_val later, somehow.
+ *
+ * @see raw_req_init(), raw_res_init()
  */
+///@{
+/** DO NOT USE */
+#define _RAW_PKT_HEADER_INITIALIZER(mtype)              \
+    { ._p_magic = RAW_PKT_HEADER_MAGIC,                 \
+      .p_proto_vers = RAW_PKT_HEADER_PROTO_VERS,        \
+      .p_mtype = (mtype),                               \
+      .p_flags = 0,                                     \
+    }
+/** DO NOT USE; you want RAW_PKT_ERR_INITIALIZER */
+#define _RAW_ERR_INITIALIZER \
+    { .pad_must_be_zero = { [_RAW_CSIZE - 1] = 0 } }
+/** DO NOT USE; you want RAW_PKT_REQ_INITIALIZER */
+#define _RAW_REQ_INITIALIZER \
+    { .r_id = 0, .r_type = 0xFF, .r_addr = 0xFF, .r_val = 0xdeadbeef }
+/** DO NOT USE; you want RAW_PKT_RES_INITIALIZER */
+#define _RAW_RES_INITIALIZER \
+    { .r_id = 0, .r_type = 0xFF, .r_addr = 0xFF, .r_val = 0xdeadbeef }
+
+/** Initializer macro for a raw_pkt_cmd of request mtype, RAW_MTYPE_REQ. */
 #define RAW_PKT_REQ_INITIALIZER                         \
     { .ph = _RAW_PKT_HEADER_INITIALIZER(RAW_MTYPE_REQ), \
       .p = { .req = _RAW_REQ_INITIALIZER },             \
     }
+/** Initializer macro for a raw_pkt_cmd of response mtype, RAW_MTYPE_RES. */
 #define RAW_PKT_RES_INITIALIZER                         \
     { .ph = _RAW_PKT_HEADER_INITIALIZER(RAW_MTYPE_RES), \
       .p = { .res = _RAW_REQ_INITIALIZER },             \
     }
+/** Initializer macro for a raw_pkt_cmd of error mtype, RAW_MTYPE_ERR. */
 #define RAW_PKT_ERR_INITIALIZER                         \
     { .ph = _RAW_PKT_HEADER_INITIALIZER(RAW_MTYPE_ERR), \
       .p = { .err = _RAW_ERR_INITIALIZER },             \
     }
+///@}
 
 /*********************************************************************
  * Data packets
  */
+
+/** @name Data packet types */
+
+///@{
 
 /* Flags */
 #define RAW_PFLAG_B_LIVE  0x01  /* streaming live recording */
@@ -253,20 +268,21 @@ struct raw_bsub_cfg {
 
 #define RAW_BSUB_NSAMP 32
 
+/** Board subsample wire format struct */
 struct raw_pkt_bsub {
-    struct raw_pkt_header ph;
-    uint32_t b_cookie_h;        /* experiment cookie high word */
-    uint32_t b_cookie_l;        /* experiment cookie low word */
-    uint32_t b_id;              /* board id */
-    uint32_t b_sidx;            /* sample index */
-    uint32_t b_chip_live;       /* live chip mask */
+    struct raw_pkt_header ph;   /**< Packet header */
+    uint32_t b_cookie_h;        /**< experiment cookie high word */
+    uint32_t b_cookie_l;        /**< experiment cookie low word */
+    uint32_t b_id;              /**< board id */
+    uint32_t b_sidx;            /**< sample index */
+    uint32_t b_chip_live;       /**< live chip mask */
 
-    struct raw_bsub_cfg b_cfg[RAW_BSUB_NSAMP]; /* chip/channel config */
-    raw_samp_t b_samps[RAW_BSUB_NSAMP]; /* the samples themselves */
+    struct raw_bsub_cfg b_cfg[RAW_BSUB_NSAMP]; /**< chip/channel config */
+    raw_samp_t b_samps[RAW_BSUB_NSAMP]; /**< the samples themselves */
 
-    uint16_t b_gpio;            /* GPIO data */
-    uint8_t b_dac_cfg;          /* DAC enable/channel */
-    uint8_t b_dac;              /* DAC value */
+    uint16_t b_gpio;            /**< GPIO data */
+    uint8_t b_dac_cfg;          /**< DAC enable/channel */
+    uint8_t b_dac;              /**< DAC value */
 };
 
 /*
@@ -275,38 +291,42 @@ struct raw_pkt_bsub {
 
 #define _RAW_BSMP_NSAMP (32*35) /* TODO (eventually) configurability */
 
+/** Board sample wire format struct */
 struct raw_pkt_bsmp {
-    struct raw_pkt_header ph;
-    uint32_t b_cookie_h;        /* experiment cookie high word */
-    uint32_t b_cookie_l;        /* experiment cookie low word */
-    uint32_t b_id;              /* board id */
-    uint32_t b_sidx;            /* sample index */
-    uint32_t b_chip_live;       /* chip live status */
-    raw_samp_t b_samps[_RAW_BSMP_NSAMP]; /* samples */
+    struct raw_pkt_header ph;   /**< Packet header */
+    uint32_t b_cookie_h;        /**< experiment cookie high word */
+    uint32_t b_cookie_l;        /**< experiment cookie low word */
+    uint32_t b_id;              /**< board id */
+    uint32_t b_sidx;            /**< sample index */
+    uint32_t b_chip_live;       /**< chip live status */
+    raw_samp_t b_samps[_RAW_BSMP_NSAMP]; /**< samples */
 };
+
+///@}
 
 /*********************************************************************
  * Packet initialization
  */
 
-/* Initialize a packet.
+/**
+ * Initialize a packet.
  *
- * packet: Pointer to a packet structure (i.e. a struct raw_pkt_cmd,
- *         struct raw_pkt_bsub, or struct raw_pkt_bsmp).
- * mtype: Type of packet to initialize in `packet' (RAW_MTYPE_*).
- * flags: Initial packet->ph.p_flags.
+ * @param packet Pointer to a packet structure (i.e. a struct raw_pkt_cmd,
+ *               struct raw_pkt_bsub, or struct raw_pkt_bsmp).
+ * @param mtype  Type of packet to initialize in `packet' (RAW_MTYPE_*).
+ * @param flags  Initial packet->ph.p_flags.
  */
 void raw_packet_init(void *packet, uint8_t mtype, uint8_t flags);
 
-/* Initialize a request packet */
+/** Initialize a request packet */
 void raw_req_init(struct raw_pkt_cmd *req, uint8_t flags, uint16_t r_id,
                   uint8_t r_type, uint8_t r_addr, uint32_t r_val);
 
-/* Initialize a response packet */
+/** Initialize a response packet */
 void raw_res_init(struct raw_pkt_cmd *res, uint8_t flags, uint16_t r_id,
                   uint8_t r_type, uint8_t r_addr, uint32_t r_val);
 
-/* Type-generic packet copy. */
+/** Type-generic packet copy. */
 void raw_pkt_copy(void *dst, const void *src);
 
 /*********************************************************************
@@ -315,62 +335,98 @@ void raw_pkt_copy(void *dst, const void *src);
 
 /* These assume offsetof(typeof(*pktp), ph) == 0, which we check in
  * the unit tests */
+
+/** @name Packet header accessors */
+
+///@{
+
+/** @brief Packet protocol version
+ * pktp may point to a struct raw_pkt_cmd, raw_pkt_bsub, or raw_pkt_bsmp. */
 #define raw_proto_vers(pktp) (((struct raw_pkt_header*)(pktp))->p_proto_vers)
+
+/** @brief Packet message type.
+ * pktp may point to a struct raw_pkt_cmd, raw_pkt_bsub, or raw_pkt_bsmp. */
 #define raw_mtype(pktp)      (((struct raw_pkt_header*)(pktp))->p_mtype)
+
+/** @brief Packet flags.
+ * pktp may point to a struct raw_pkt_cmd, raw_pkt_bsub, or raw_pkt_bsmp. */
 #define raw_pflags(pktp)     (((struct raw_pkt_header*)(pktp))->p_flags)
-/* Is this an error packet? */
+
+/** @brief Is this an error packet?
+ * pktp may point to a struct raw_pkt_cmd, raw_pkt_bsub, or raw_pkt_bsmp. */
 #define raw_pkt_is_err(pktp) ({                                     \
     struct raw_pkt_header *__pkt_ph = (struct raw_pkt_header*)pktp; \
     (raw_pflags(__pkt_ph) & RAW_PFLAG_ERR ||                        \
      raw_mtype(__pkt_ph) == RAW_MTYPE_ERR); })
 
+/** Clear all packet flags in `flags'. */
 static inline void raw_clear_flags(struct raw_pkt_cmd *pkt, uint8_t flags)
 {
     pkt->ph.p_flags &= ~flags;
 }
 
+/** Set all packet flags in `flags'. */
 static inline void raw_set_flags(struct raw_pkt_cmd *pkt, uint8_t flags)
 {
     pkt->ph.p_flags |= flags;
 }
 
-/* TODO rename to raw_c_req() */
+///@}
+
+/** @name Request/response message data */
+
+///@{
+
+/** Get pointer to request message data from a request packet */
 static inline struct raw_cmd_req* raw_req(struct raw_pkt_cmd *pkt)
 {
     return &pkt->p.req;
 }
 
-/* TODO rename to raw_c_res() */
+/** Get pointer to response message data from a response packet */
 static inline struct raw_cmd_res* raw_res(struct raw_pkt_cmd *pkt)
 {
     return &pkt->p.res;
 }
 
-/* Number of registers corresponding to an r_type, or -1 on invalid
- * argument. */
-int raw_num_regs(uint8_t r_type);
-
+/** Get a request/response packet's r_id value */
 static inline uint16_t raw_r_id(const struct raw_pkt_cmd *pkt)
 {
     return raw_req((struct raw_pkt_cmd*)pkt)->r_id;
 }
 
+/** Get a request/response packet's r_type value */
 static inline uint8_t raw_r_type(const struct raw_pkt_cmd *pkt)
 {
     return raw_req((struct raw_pkt_cmd*)pkt)->r_type;
 }
 
+/** Get a request/response packet's r_addr value */
 static inline uint8_t raw_r_addr(const struct raw_pkt_cmd *pkt)
 {
     return raw_req((struct raw_pkt_cmd*)pkt)->r_addr;
 }
 
+/** Get a request/response packet's r_val value */
 static inline uint32_t raw_r_val(const struct raw_pkt_cmd *pkt)
 {
     return raw_req((struct raw_pkt_cmd*)pkt)->r_val;
 }
 
-/* Full uint64_t experiment cookie */
+///@}
+
+/**
+ * Get the number of registers for a request/response r_type.
+ *
+ * Returns -1 on invalid argument. */
+int raw_num_regs(uint8_t r_type);
+
+/** @name Board samples and subsamples */
+
+///@{
+
+/** @brief Get a packet's full uint64_t experiment cookie
+ * pktp may point to a struct raw_pkt_bsub or raw_pkt_bsmp. */
 #define raw_exp_cookie(pktp) ({                                 \
     __typeof__(pktp) __pktp = pktp;                             \
     ((uint64_t)__pktp->b_cookie_h << 32) | (uint64_t)__pktp->b_cookie_l; })
@@ -393,10 +449,10 @@ static inline size_t raw_bsmp_size(__unused const struct raw_pkt_bsmp *bsmp)
     return sizeof(struct raw_pkt_bsmp);
 }
 
-/* Type-generic packet size
- *
- * pkt: pointer to struct raw_pkt_cmd, raw_pkt_bsub, or
- *      raw_pkt_bsmp. */
+///@}
+
+/** @brief Type-generic packet size
+ * pktp may point to a struct raw_pkt_cmd, raw_pkt_bsub, or raw_pkt_bsmp. */
 size_t raw_pkt_size(const void *pkt);
 
 /*********************************************************************
@@ -407,14 +463,20 @@ size_t raw_pkt_size(const void *pkt);
  * success and -1 on failure, with errno set.
  */
 
-/* Convert multibyte fields to and from network byte order in place.
+/**
+ * @name Packet byte reordering
  *
- * Return 0 on success, or -1 if the packet had garbage or
+ * These convert multibyte fields to and from network byte order in
+ * place.
+ *
+ * They return 0 on success, or -1 if the packet had garbage or
  * unrecognizable fields. */
+///@{
 int raw_pkt_hton(struct raw_pkt_cmd *pkt);
 int raw_pkt_ntoh(struct raw_pkt_cmd *pkt);
 int raw_bsub_hton(struct raw_pkt_bsub *bsub);
 int raw_bsub_ntoh(struct raw_pkt_bsub *bsub);
+///@}
 
 /* Send a command packet.
  *
