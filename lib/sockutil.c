@@ -32,6 +32,55 @@
 
 #include "logging.h"
 
+static int sockutil_a4_eq(struct sockaddr_in *a, struct sockaddr_in *b,
+                          unsigned ignore)
+{
+    if (!(ignore & SOCKUTIL_IGN_PORT) && (a->sin_port != b->sin_port)) {
+        return 0;
+    }
+    if (!(ignore & SOCKUTIL_IGN_ADDR) && (a->sin_addr.s_addr !=
+                                          b->sin_addr.s_addr)) {
+        return 0;
+    }
+    return 1;
+}
+
+static int sockutil_a6_eq(struct sockaddr_in6 *a, struct sockaddr_in6 *b,
+                          unsigned ignore)
+{
+    if (!(ignore & SOCKUTIL_IGN_PORT) && (a->sin6_port != b->sin6_port)) {
+        return 0;
+    }
+    if (!(ignore & SOCKUTIL_IGN_ADDR) && memcmp(&a->sin6_addr,
+                                                &b->sin6_addr,
+                                                sizeof(struct in6_addr))) {
+        return 0;
+    }
+    if (!(ignore & SOCKUTIL_IGN_FLOW) && (a->sin6_flowinfo !=
+                                          b->sin6_flowinfo)) {
+        return 0;
+    }
+    if (!(ignore & SOCKUTIL_IGN_SCOPE) && (a->sin6_scope_id !=
+                                           b->sin6_scope_id)) {
+        return 0;
+    }
+    return 1;
+}
+
+int sockutil_addr_eq(struct sockaddr *a, struct sockaddr *b, unsigned ignore)
+{
+    assert(a->sa_family == AF_INET || a->sa_family == AF_INET6);
+    assert(b->sa_family == AF_INET || b->sa_family == AF_INET6);
+    if (a->sa_family != b->sa_family) {
+        return 0;
+    }
+    return (a->sa_family == AF_INET) ?
+        sockutil_a4_eq((struct sockaddr_in*)a, (struct sockaddr_in*)b,
+                       ignore) :
+        sockutil_a6_eq((struct sockaddr_in6*)a, (struct sockaddr_in6*)b,
+                       ignore);
+}
+
 /* Socket configuration function, for sockutil_get_socket(). Takes a
  * socket and the struct addrinfo used to create it as arguments;
  * returns 0 if socket is successfully configured, or -1 on error. */

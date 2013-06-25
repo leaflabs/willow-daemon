@@ -25,6 +25,24 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+#define SOCKUTIL_IGN_PORT 0x2   /* Port */
+#define SOCKUTIL_IGN_ADDR 0x4   /* Address */
+#define SOCKUTIL_IGN_FLOW 0x8   /* IPv6 flow information */
+#define SOCKUTIL_IGN_SCOPE 0x10 /* IPv6 scope ID */
+/**
+ * @brief Test if two socket addresses are equal.
+ *
+ * The socket addresses must have families that are either AF_INET or
+ * AF_INET6.
+ *
+ * @param a First socket address
+ * @param b Second socket address
+ * @param ignore SOCKUTIL_IGN_* fields to ignore when testing for equality
+ *
+ * @return Zero if unequal, nonzero otherwise
+ */
+int sockutil_addr_eq(struct sockaddr *a, struct sockaddr *b, unsigned ignore);
+
 /**
  * @brief Convenience for creating UDP sockets.
  *
