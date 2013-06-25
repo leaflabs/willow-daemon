@@ -24,6 +24,7 @@
 #include "type_attrs.h"
 #include "logging.h"
 #include "raw_packets.h"
+#include "sockutil.h"
 
 #include "proto/control.pb-c.h"
 
@@ -38,7 +39,6 @@
 /* FIXME:
  *
  * - add timeouts when processing commands
- * - check responses request IDs and drop unexpected non-error responses
  * - send error to client on timeout?
  * - allow client to configure timeout?
  * - drop ongoing transaction on client closure
@@ -209,6 +209,14 @@ static void client_send_err(struct control_session *cs,
     client_send_response(cs, &cr);
 }
 
+static void client_send_success(struct control_session *cs)
+{
+    ControlResponse cr = CONTROL_RESPONSE__INIT;
+    cr.has_type = 1;
+    cr.type = CONTROL_RESPONSE__TYPE__SUCCESS;
+    client_send_response(cs, &cr);
+}
+
 #define CLIENT_RES_ERR_NO_DNODE(cs) do {                                \
         client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__NO_DNODE,        \
                         "not connected to data node");                  \
@@ -226,6 +234,10 @@ static void client_send_err(struct control_session *cs,
 #define CLIENT_RES_ERR_D_PROTO(cs, msg) do {                           \
         client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__D_PROTO,        \
                         "data node protocol error: " msg); } while (0)
+
+#define CLIENT_RES_ERR_DNODE(cs, msg) do {                           \
+        client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__DNODE,        \
+                        "data node error: " msg); } while (0)
 
 /********************************************************************
  * Main thread control_ops callbacks
@@ -506,6 +518,45 @@ static inline void client_gpio_w(struct control_txn *txn,
                  0, RAW_RTYPE_GPIO, r_addr, r_val);
 }
 
+static int client_last_txn_succeeded(struct control_session *cs)
+{
+    if (!cs->ctl_txns) {
+        log_WARNING("attempt to check success of nonexistent control_txn");
+        return -1;
+    }
+    assert(cs->ctl_cur_txn != -1);
+    struct control_txn *txn = &cs->ctl_txns[cs->ctl_cur_txn];
+    struct raw_pkt_cmd *req_pkt = &txn->req_pkt;
+    struct raw_cmd_req *req = raw_req(req_pkt);
+    struct raw_pkt_cmd *res_pkt = &txn->res_pkt;
+    struct raw_cmd_res *res = raw_res(res_pkt);
+    /* Check for explicit error response */
+    if (raw_pkt_is_err(res_pkt)) {
+        LOCAL_DEBUG("got error result");
+        return 0;
+    }
+    /* On a write, check that result matches the request exactly
+     * (i.e., that the resulting r_id, r_type, r_addr, and r_val match
+     * requested ones).  */
+    if ((raw_pflags(req_pkt) & RAW_PFLAG_RIOD) == RAW_PFLAG_RIOD_W &&
+        (memcmp(req, res, sizeof(req)) != 0)) {
+        LOCAL_DEBUG("write raw_cmd_req doesn't match raw_cmd_res");
+        return 0;
+    }
+    /* On a read, just check r_id, r_type, and r_addr */
+    if ((raw_pflags(req_pkt) & RAW_PFLAG_RIOD) == RAW_PFLAG_RIOD_R &&
+        (req->r_id != res->r_id || req->r_type != res->r_type ||
+         req->r_addr != res->r_addr)) {
+        LOCAL_DEBUG("read raw_cmd_req doesn't match enough of raw_cmd_res");
+        return 0;
+    }
+    return 1;
+}
+
+/*
+ * Request processing
+ */
+
 /* Handle a client command with embedded RegisterIO */
 static void client_process_cmd_regio(struct control_session *cs)
 {
@@ -560,6 +611,139 @@ static void client_process_cmd_regio(struct control_session *cs)
     cs->wake_why |= CONTROL_WHY_DNODE_TXN;
 }
 
+static uint32_t client_get_data_addr4(struct control_session *cs,
+                                      uint32_t *s_addr)
+{
+    struct sockaddr_storage sas;
+    struct sockaddr_in *saddr = (struct sockaddr_in*)&sas;
+    socklen_t sas_len = sizeof(sas);
+    if (sockutil_get_iface_addr(cs->ddataif, AF_INET,
+                                (struct sockaddr*)&sas, &sas_len)) {
+        log_WARNING("can't read dnode data socket address");
+        return -1;
+    }
+    assert(sas.ss_family == AF_INET);
+    *s_addr = htonl(saddr->sin_addr.s_addr);
+    return 0;
+}
+
+static int client_get_data_mac48(struct control_session *cs,
+                                 uint8_t mac48[6])
+{
+    size_t len = 6;
+    int ret = sockutil_get_iface_hwaddr(cs->ddataif, mac48, &len);
+    assert(len == 6);
+    return ret;
+}
+
+static void client_process_cmd_stream(struct control_session *cs)
+{
+    struct client_priv *cpriv = cs->cpriv;
+    ControlCmdStream *stream = cpriv->c_cmd->stream;
+    struct sockaddr_in *caddr = (struct sockaddr_in*)&cs->caddr;
+    struct sockaddr_in *dnaddr = (struct sockaddr_in*)&cs->dnaddr;
+
+    if (!stream) {
+        CLIENT_RES_ERR_C_PROTO(cs, "missing stream field");
+        return;
+    }
+    int has_addr = stream->has_dest_udp_addr4;
+    int has_port = stream->has_dest_udp_port;
+    if (has_addr ^ has_port) {
+        CLIENT_RES_ERR_C_PROTO(cs,
+                               "neither or both of UDP address/port "
+                               "must be set");
+        return;
+    }
+    if (has_port && (stream->dest_udp_port > UINT16_MAX)) {
+        CLIENT_RES_ERR_C_PROTO(cs, "specified port is out of range");
+        return;
+    }
+
+    /*
+     * Prepare client side of main thread conversion callback
+     */
+    memset(&caddr->sin_zero, 0, sizeof(caddr->sin_zero));
+    /* Reconfigure address/port if necessary */
+    if (has_addr) {
+        caddr->sin_port = htons((uint16_t)stream->dest_udp_port);
+    }
+    if (has_port) {
+        caddr->sin_addr.s_addr = htonl(stream->dest_udp_addr4);
+    }
+    /* If this is just a reconfigure command, then we're done here;
+     * the main thread will pick up the change at next callback. */
+    if (!stream->has_enable) {
+        client_send_success(cs);
+        return;
+    }
+
+    /*
+     * Prepare transactions
+     */
+    const size_t max_txns = 11;
+    struct control_txn *txns = malloc(max_txns * sizeof(struct control_txn));
+    size_t txno = 0;
+    if (!txns) {
+        CLIENT_RES_ERR_DAEMON(cs, "out of memory");
+        return;
+    }
+    if (stream->enable) {
+        /* Get the daemon data socket's IPv4 and MAC48 addresses, which we
+         * need to initialize dnode registers. */
+        uint32_t dsock_ipv4;
+        uint8_t dsock_m48[6];
+        if ((client_get_data_addr4(cs, &dsock_ipv4) ||
+             client_get_data_mac48(cs, dsock_m48))) {
+            CLIENT_RES_ERR_DAEMON(cs, "internal network error");
+            return;
+        }
+        uint32_t m48h = (((uint32_t)dsock_m48[5] << 8) |
+                         (uint32_t)dsock_m48[4]);
+        uint32_t m48l = (((uint32_t)dsock_m48[3] << 24) |
+                         ((uint32_t)dsock_m48[2] << 16) |
+                         ((uint32_t)dsock_m48[1] << 8) |
+                         (uint32_t)dsock_m48[0]);
+        /* Read the data node's UDP IPv4 address and port. */
+        client_udp_r(txns + txno++, RAW_RADDR_UDP_SRC_IP4);
+        client_udp_r(txns + txno++, RAW_RADDR_UDP_SRC_IP4_PORT);
+        /* Set UDP IPv4 destination register. */
+        client_udp_w(txns + txno++, RAW_RADDR_UDP_DST_IP4, dsock_ipv4);
+        /* Set UDP MAC destination registers */
+        client_udp_w(txns + txno++, RAW_RADDR_UDP_DST_MAC_H, m48h);
+        client_udp_w(txns + txno++, RAW_RADDR_UDP_DST_MAC_L, m48l);
+        /* Write 0 (STOP) to UDP and DAQ state registers */
+        client_udp_w(txns + txno++, RAW_RADDR_UDP_STATE, 0);
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_STATE, 0);
+        /* Toggle reset line by writing 1/0 to DAQ FIFO flags register
+         * (bring reset line high/low) */
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 1);
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 0);
+        /* Voodoo that bnewbold says is a good idea. */
+        client_udp_w(txns + txno++, RAW_RADDR_UDP_STATE, 0x00000001);
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_STATE, 0x00000005);
+    } else {
+        /* We only enable on success, from the result callback handler. */
+        caddr->sin_family = AF_UNSPEC;
+        dnaddr->sin_family = AF_UNSPEC;
+
+        /* Write 0 (STOP) to DAQ and UDP state registers */
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_STATE, 0);
+        client_udp_w(txns + txno++, RAW_RADDR_UDP_STATE, 0);
+        /* Toggle reset line by writing 1/0 to DAQ FIFO flags register
+         * (bring reset line high/low) */
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 1);
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 0);
+    }
+
+    /*
+     * Get data node side to start running the transactions
+     */
+    assert(txno <= max_txns);
+    control_set_transactions(cs, txns, txno, 1);
+    cs->wake_why |= CONTROL_WHY_DNODE_TXN;
+}
+
 static void client_process_cmd(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
@@ -575,12 +759,18 @@ static void client_process_cmd(struct control_session *cs)
     case CONTROL_COMMAND__TYPE__REG_IO:
         client_process_cmd_regio(cs);
         break;
-    /* FIXME add smarts for other types of commands */
+    case CONTROL_COMMAND__TYPE__STREAM:
+        client_process_cmd_stream(cs);
+        break;
     default:
         CLIENT_RES_ERR_C_PROTO(cs, "unknown command type");
         break;
     }
 }
+
+/*
+ * Result processing
+ */
 
 static void client_process_res_regio(struct control_session *cs)
 {
@@ -641,6 +831,74 @@ static void client_process_res_regio(struct control_session *cs)
     client_send_response(cs, &cr);
 }
 
+static void client_process_res_stream(struct control_session *cs)
+{
+    struct client_priv *cpriv = cs->cpriv;
+    ControlCmdStream *stream = cpriv->c_cmd->stream;
+    struct sockaddr_in *caddr = (struct sockaddr_in*)&cs->caddr;
+    struct sockaddr_in *dnaddr = (struct sockaddr_in*)&cs->dnaddr;
+
+    /*
+     * On failure, report error to client; they'll need to clean up
+     */
+    if (!client_last_txn_succeeded(cs)) {
+        log_WARNING("transaction %zd/%zu failed processing ControlCmdStream",
+                    cs->ctl_cur_txn, cs->ctl_n_txns);
+        CLIENT_RES_ERR_DNODE(cs, "failed I/O transaction");
+        return;
+    }
+
+    /*
+     * Deal with any register values we needed to read.
+     */
+    if (stream->has_enable && stream->enable) {
+        /* When enabling, we read the UDP IPv4 address and port registers. */
+        struct raw_cmd_res *res = ctxn_res(cs->ctl_txns + cs->ctl_cur_txn);
+        if (res->r_type == RAW_RTYPE_UDP) {
+            if (res->r_addr == RAW_RADDR_UDP_SRC_IP4) {
+                log_DEBUG("data node UDP source IPv4 address is %u.%u.%u.%u",
+                          (res->r_val >> 24) & 0xFF,
+                          (res->r_val >> 16) & 0xFF,
+                          (res->r_val >> 8) & 0xFF,
+                          res->r_val & 0xFF);
+                dnaddr->sin_addr.s_addr = htonl(res->r_val);
+                memset(&dnaddr->sin_zero, 0, sizeof(dnaddr->sin_zero));
+            }
+            if (res->r_addr == RAW_RADDR_UDP_SRC_IP4_PORT) {
+                if (res->r_val > UINT16_MAX) {
+                    log_WARNING("data node source IPv4 port %u is invalid",
+                                res->r_val);
+                    CLIENT_RES_ERR_DNODE(cs, "invalid data port specified");
+                    return;
+                }
+                log_DEBUG("data node source UDP port is %u",
+                          (uint16_t)res->r_val);
+                dnaddr->sin_port = htons((uint16_t)res->r_val);
+            }
+        }
+    }
+
+    /*
+     * OK, that last transaction was a success. If there are more to
+     * come, keep going.
+     */
+    cs->ctl_cur_txn++;
+    if ((size_t)cs->ctl_cur_txn != cs->ctl_n_txns) {
+        cs->wake_why |= CONTROL_WHY_DNODE_TXN;
+        return;
+    }
+
+    /*
+     * That's the last transaction. Finish up and send the success
+     * result.
+     */
+    if (stream->has_enable && stream->enable) {
+        caddr->sin_family = AF_INET;
+        dnaddr->sin_family = AF_INET;
+    }
+    client_send_success(cs);
+}
+
 static void client_process_res(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
@@ -654,7 +912,9 @@ static void client_process_res(struct control_session *cs)
     case CONTROL_COMMAND__TYPE__REG_IO:
         client_process_res_regio(cs);
         break;
-    /* FIXME support new ControlCommand types here */
+    case CONTROL_COMMAND__TYPE__STREAM:
+        client_process_res_stream(cs);
+        break;
     default:
         log_ERR("got result for unhandled command type; ignoring it");
         break;
