@@ -625,6 +625,20 @@ static int client_last_txn_succeeded(struct control_session *cs)
     if ((raw_pflags(req_pkt) & RAW_PFLAG_RIOD) == RAW_PFLAG_RIOD_W &&
         (memcmp(req, res, sizeof(req)) != 0)) {
         LOCAL_DEBUG("write raw_cmd_req doesn't match raw_cmd_res");
+        if (req->r_id != res->r_id) {
+            LOCAL_DEBUG("req->r_id=%u, res->r_id=%u", req->r_id, res->r_id);
+        } else if (req->r_type != res->r_type) {
+            LOCAL_DEBUG("req->r_type=%u, res->r_type=%u", req->r_type,
+                        res->r_type);
+        } else if (req->r_addr != res->r_addr) {
+            LOCAL_DEBUG("req->r_addr=%u, res->r_addr=%u", req->r_addr,
+                        res->r_addr);
+        } else if (req->r_val != res->r_val) {
+            LOCAL_DEBUG("req->r_val=%u, res->r_val=%u", req->r_val,
+                        res->r_val);
+        } else {
+            LOCAL_DEBUG("nvm, it's marti's fault");
+        }
         return 0;
     }
     /* On a read, just check r_id, r_type, and r_addr */
