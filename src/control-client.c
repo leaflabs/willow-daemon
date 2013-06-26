@@ -622,8 +622,7 @@ static int client_last_txn_succeeded(struct control_session *cs)
     /* On a write, check that result matches the request exactly
      * (i.e., that the resulting r_id, r_type, r_addr, and r_val match
      * requested ones).  */
-    if ((raw_pflags(req_pkt) & RAW_PFLAG_RIOD) == RAW_PFLAG_RIOD_W &&
-        (memcmp(req, res, sizeof(*req)) != 0)) {
+    if (raw_req_is_write(req_pkt) && (memcmp(req, res, sizeof(*req)) != 0)) {
         LOCAL_DEBUG("write raw_cmd_req doesn't match raw_cmd_res");
         if (req->r_id != res->r_id) {
             LOCAL_DEBUG("req->r_id=%u, res->r_id=%u", req->r_id, res->r_id);
@@ -642,7 +641,7 @@ static int client_last_txn_succeeded(struct control_session *cs)
         return 0;
     }
     /* On a read, just check r_id, r_type, and r_addr */
-    if ((raw_pflags(req_pkt) & RAW_PFLAG_RIOD) == RAW_PFLAG_RIOD_R &&
+    if (raw_req_is_read(req_pkt) &&
         (req->r_id != res->r_id || req->r_type != res->r_type ||
          req->r_addr != res->r_addr)) {
         LOCAL_DEBUG("read raw_cmd_req doesn't match enough of raw_cmd_res");
