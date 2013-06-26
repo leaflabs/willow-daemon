@@ -795,12 +795,12 @@ static void client_process_cmd_stream(struct control_session *cs)
             CLIENT_RES_ERR_DAEMON(cs, "internal network error");
             return;
         }
-        uint32_t m48h = (((uint32_t)dsock_m48[5] << 8) |
-                         (uint32_t)dsock_m48[4]);
-        uint32_t m48l = (((uint32_t)dsock_m48[3] << 24) |
-                         ((uint32_t)dsock_m48[2] << 16) |
-                         ((uint32_t)dsock_m48[1] << 8) |
-                         (uint32_t)dsock_m48[0]);
+        uint32_t m48h = (((uint32_t)dsock_m48[0] << 8) |
+                         (uint32_t)dsock_m48[1]);
+        uint32_t m48l = (((uint32_t)dsock_m48[2] << 24) |
+                         ((uint32_t)dsock_m48[3] << 16) |
+                         ((uint32_t)dsock_m48[4] << 8) |
+                         (uint32_t)dsock_m48[5]);
         /* Read the data node's UDP IPv4 address and port. */
         client_udp_r(txns + txno++, RAW_RADDR_UDP_SRC_IP4);
         client_udp_r(txns + txno++, RAW_RADDR_UDP_SRC_IP4_PORT);
