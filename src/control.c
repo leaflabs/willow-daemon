@@ -457,6 +457,30 @@ static void control_data(evutil_socket_t ddatafd, short events, void *csessvp)
  * Public API
  */
 
+static void control_init_cs(struct control_session *cs)
+{
+    cs->base = NULL;
+    cs->cecl = NULL;
+    cs->cbev = NULL;
+    cs->cpriv = NULL;
+    cs->daddr = NULL;
+    cs->dport= 0;
+    cs->dbev = NULL;
+    cs->dpriv = NULL;
+    cs->ddataif = 0;
+    cs->ddatafd = -1;
+    cs->ddataevt = NULL;
+    cs->dnaddr.ss_family = AF_UNSPEC;
+    cs->caddr.ss_family = AF_UNSPEC;
+    cs->dpbuf.iov_base = NULL;
+    cs->dpbuf.iov_len = 0;
+    cs->wake_why = CONTROL_WHY_NONE;
+    cs->ctl_txns = NULL;
+    cs->ctl_n_txns = 0;
+    cs->ctl_cur_txn = -1;
+    cs->ctl_cur_rid = 0;
+}
+
 struct control_session* control_new(struct event_base *base,
                                     uint16_t client_port,
                                     const char* dnode_addr,
@@ -464,125 +488,138 @@ struct control_session* control_new(struct event_base *base,
                                     unsigned sample_iface,
                                     uint16_t sample_port)
 {
-    int en;
+    int started_client = 0, started_dnode = 0;
+    int mtx_en = 0, cv_en = 0, t_en = 0;
     struct control_session *cs = malloc(sizeof(struct control_session));
     if (!cs) {
         log_ERR("out of memory");
-        goto nocs;
+        return NULL;
     }
+    control_init_cs(cs);
+
     cs->base = base;
-    cs->ddataif = sample_iface;
-    cs->dnaddr.ss_family = AF_UNSPEC;
-    cs->caddr.ss_family = AF_UNSPEC;
-    cs->dpbuf.iov_base = NULL;
-    cs->dpbuf.iov_len = 0;
-    struct evconnlistener *cecl =
-        control_new_listener(cs, base, client_port, client_ecl,
-                             client_ecl_err);
-    if (!cecl) {
+
+    /* Client control fields */
+    if (control_client_start(cs)) {
+        log_ERR("can't start client side of control session");
+        goto bail;
+    }
+    started_client = 1;
+    cs->cecl = control_new_listener(cs, base, client_port, client_ecl,
+                                    client_ecl_err);
+    if (!cs->cecl) {
         log_ERR("can't listen for client connections");
-        goto nocecl;
+        goto bail;
+    }
+
+    /* Data node control fields */
+    if (control_dnode_start(cs)) {
+        log_ERR("can't start data node side of control session");
+        goto bail;
     }
     cs->daddr = dnode_addr;
     cs->dport = dnode_port;
     int dcontrolfd = sockutil_get_tcp_connected_p(cs->daddr, cs->dport);
+    started_dnode = 1;
     if (dcontrolfd == -1) {
         log_ERR("can't connect to data node at %s, port %u",
                 dnode_addr, dnode_port);
-        goto nodsock;
+        goto bail;
     }
     if (evutil_make_socket_nonblocking(dcontrolfd)) {
         log_ERR("data node control socket doesn't support nonblocking I/O");
-        goto nodnonblock;
-    }
-    en = pthread_mutex_init(&cs->mtx, NULL);
-    if (en) {
-        log_ERR("threading error while initializing control session");
-        goto nomtx;
-    }
-    en = pthread_cond_init(&cs->cv, NULL);
-    if (en) {
-        log_ERR("threading error while initializing control session");
-        goto nocv;
-    }
-    cs->wake_why = CONTROL_WHY_NONE;
-    cs->cecl = cecl;
-    cs->cbev = NULL;
-    if (control_client_start(cs)) {
-        log_ERR("can't start client side of control session");
-        goto noclient;
-    }
-    cs->dbev = NULL;
-    if (control_dnode_start(cs)) {
-        log_ERR("can't start data node side of control session");
-        goto nodnode;
+        goto bail;
     }
     control_conn_open(cs, &cs->dbev, dcontrolfd, control_dnode_bev_read,
                       NULL, control_dnode_event, control_dnode_open,
                       "data node");
+
+    /* Initialize data socket */
+    cs->ddataif = sample_iface;
     cs->ddatafd = sockutil_get_udp_socket(sample_port);
     if (cs->ddatafd == -1) {
-        log_ERR("can't create daemon data socket");
-        goto nobsock;
+        log_ERR("can't create data socket");
+        goto bail;
     }
     if (evutil_make_socket_nonblocking(cs->ddatafd) == -1) {
-        log_ERR("nobnonblock");
-        goto nobnonblock;
+        log_ERR("data socket doesn't support nonblocking I/O");
+        goto bail;
     }
     cs->ddataevt = event_new(base, cs->ddatafd, EV_READ | EV_PERSIST,
                              control_data, cs);
     if (!cs->ddataevt) {
-        log_ERR("noddataevt");
-        goto noddataevt;
+        log_ERR("can't create data socket event");
+        goto bail;
     }
     event_add(cs->ddataevt, NULL);
-    cs->ctl_txns = NULL;
-    cs->ctl_n_txns = 0;
-    cs->ctl_cur_txn = -1;
-    cs->ctl_cur_rid = 0;
-    control_must_lock(cs);
-    en = pthread_create(&cs->thread, NULL, control_worker_main, cs);
-    control_must_unlock(cs);
-    if (en) {
-        log_ERR("noworker");
-        goto noworker;
+
+    /* Start the worker thread */
+    mtx_en = pthread_mutex_init(&cs->mtx, NULL);
+    if (mtx_en) {
+        log_ERR("threading error while initializing control session");
+        goto bail;
     }
+    cv_en = pthread_cond_init(&cs->cv, NULL);
+    if (cv_en) {
+        log_ERR("threading error while initializing control session");
+        goto bail;
+    }
+    control_must_lock(cs);
+    t_en = pthread_create(&cs->thread, NULL, control_worker_main, cs);
+    control_must_unlock(cs);
+    if (t_en) {
+        log_ERR("can't start worker thread");
+        goto bail;
+    }
+
     return cs;
 
- noworker:
-    event_free(cs->ddataevt);
- noddataevt:
- nobnonblock:
-    if (evutil_closesocket(cs->ddatafd) == -1) {
-        log_ERR("can't close sample socket: %m");
+ bail:
+    /* Tear down worker thread */
+    if (t_en) {
+        assert(0);              /* can't happen */
     }
- nobsock:
+    if (cv_en) {
+        pthread_cond_destroy(&cs->cv);
+    }
+    if (mtx_en) {
+        pthread_mutex_init(&cs->mtx, NULL);
+    }
+
+    /* Tear down data socket */
+    if (cs->ddataevt) {
+        event_free(cs->ddataevt);
+    }
+    if (cs->ddatafd != -1 && evutil_closesocket(cs->ddatafd)) {
+        log_ERR("can't close data socket");
+    }
+    free(cs->dpbuf.iov_base);
+
+    /* Tear down data node control */
+    if (started_dnode) {
+        control_dnode_stop(cs);
+    }
     if (cs->dbev) {
         bufferevent_free(cs->dbev);
     }
-    control_dnode_stop(cs);
- nodnode:
-    control_client_stop(cs);
- noclient:
-    en = pthread_cond_destroy(&cs->cv);
-    if (en) {
-        control_fatal_err("can't destroy cvar", en);
+    if (cs->ddataevt) {
+        event_free(cs->ddataevt);
     }
- nocv:
-    en = pthread_mutex_destroy(&cs->mtx);
-    if (en) {
-        control_fatal_err("can't destroy cs mutex", en);
+    if (cs->ddatafd != -1 && evutil_closesocket(cs->ddatafd) == -1) {
+        log_ERR("can't close sample socket: %m");
     }
- nomtx:
- nodnonblock:
-    if (evutil_closesocket(dcontrolfd) == -1) {
-        log_ERR("can't close data node control socket: %m");
+
+    /* Tear down client control */
+    if (started_client) {
+        control_client_stop(cs);
     }
- nodsock:
-    evconnlistener_free(cecl);
- nocecl:
-    free(cs);
- nocs:
+    if (cs->cecl) {
+        evconnlistener_free(cs->cecl);
+    }
+    if (cs->cbev) {
+        bufferevent_free(cs->cbev);
+    }
+
     return NULL;
 }
 
