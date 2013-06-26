@@ -141,16 +141,19 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_SATA_W_IDX    0x06 /* Last write index */
 #define RAW_RADDR_SATA_NREGS (RAW_RADDR_SATA_W_IDX + 1)
 /* RAW_RTYPE_DAQ */
-#define RAW_RADDR_DAQ_ERR        0x00 /* Module error flags */
-#define RAW_RADDR_DAQ_STATE      0x01 /* Module state */
-#define RAW_RADDR_DAQ_BSMP_START 0x02 /* Desired board sample index */
-#define RAW_RADDR_DAQ_BSMP_CURR  0x03 /* Current board sample index */
-#define RAW_RADDR_DAQ_CHIP_ALIVE 0x04 /* Chip alive bitmask */
-#define RAW_RADDR_DAQ_CHIP_CMD   0x05 /* CMD config */
-#define RAW_RADDR_DAQ_CHIP_SYNCH 0x06 /* Synchronous sampling mode (TBD) */
-#define RAW_RADDR_DAQ_FIFO_COUNT 0x07 /* FIFO read count ("byte in FIFO") */
-#define RAW_RADDR_DAQ_FIFO_FLAGS 0x08 /* TBD */
-#define RAW_RADDR_DAQ_BSUB0_CFG  0x80 /* subsample #0 configuration */
+#define RAW_RADDR_DAQ_ERR          0x00 /* Module error flags */
+#define RAW_RADDR_DAQ_STATE        0x01 /* Module state */
+#define RAW_RADDR_DAQ_BSMP_START   0x02 /* Desired board sample index */
+#define RAW_RADDR_DAQ_BSMP_CURR    0x03 /* Current board sample index */
+#define RAW_RADDR_DAQ_CHIP_ALIVE   0x04 /* Chip alive bitmask */
+#define RAW_RADDR_DAQ_CHIP_CMD     0x05 /* CMD config */
+#define RAW_RADDR_DAQ_CHIP_SYNCH   0x06 /* Synchronous sampling mode (TBD) */
+#define RAW_RADDR_DAQ_FIFO_COUNT   0x07 /* FIFO read count ("byte in FIFO") */
+#define RAW_RADDR_DAQ_FIFO_FLAGS   0x08 /* TBD */
+#define RAW_RADDR_DAQ_UDP_ENABLE   0x09 /* UDP Output Enable */
+#define RAW_RADDR_DAQ_UDP_MODE     0x0A /* UDP Output Mode */
+#define RAW_RADDR_DAQ_SATA_ENABLE  0x0B /* DAQ SATA Output Enable */
+#define RAW_RADDR_DAQ_BSUB0_CFG    0x80 /* subsample #0 configuration */
     /* ... */
 #define RAW_RADDR_DAQ_BSUB31_CFG  0x80 /* subsample #31 configuration */
 #define RAW_RADDR_DAQ_NREGS (RAW_RADDR_DAQ_BSUB31_CFG + 1)
@@ -168,6 +171,8 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_UDP_PKT_TX_COUNT 0x0A /* Packet TX count */
 #define RAW_RADDR_UDP_ETH_PKT_LEN  0x0B /* Ethernet packet length */
 #define RAW_RADDR_UDP_PAYLOAD_LEN  0x0C /* Payload length */
+#define RAW_RADDR_UDP_MODE         0x0D /* UDP Module Mode */
+#define RAW_RADDR_GIGE_STATUS      0x0E /* GigE Status */
 #define RAW_RADDR_UDP_NREGS (RAW_RADDR_UDP_PAYLOAD_LEN + 1)
 /* RAW_RTYPE_GPIO */
 #define RAW_RADDR_GPIO_ERR   0x00 /* Module error flags */
