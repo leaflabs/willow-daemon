@@ -176,29 +176,6 @@ struct control_ops {
 };
 
 /*
- * Deferred work helpers
- */
-
-/* Sets up data node transactions to be performed as deferred work.
- *
- * Doesn't start the deferred work; you'll need to do that from a read
- * callback's return value.
- *
- * have_lock: set to 0 if you already have the control session mutex
- *            locked, 1 otherwise.
- */
-void control_set_transactions(struct control_session *cs,
-                              struct control_txn *txns, size_t n_txns,
-                              int have_lock);
-
-/* Clear any pending transactions. */
-static inline void control_clear_transactions(struct control_session *cs,
-                                              int have_lock)
-{
-    control_set_transactions(cs, NULL, 0, have_lock);
-}
-
-/*
  * Threading helpers
  */
 
@@ -241,5 +218,35 @@ void __control_must_signal(struct control_session *cs);
 void __control_must_lock(struct control_session *cs);
 void __control_must_unlock(struct control_session *cs);
 void __control_must_join(struct control_session *cs, void **retval);
+
+/*
+ * Deferred work helpers
+ */
+
+/* Sets up data node transactions to be performed as deferred work.
+ *
+ * Doesn't start the deferred work; you'll need to do that from a read
+ * callback's return value.
+ *
+ * have_lock: set to 0 if you already have the control session mutex
+ *            locked, 1 otherwise.
+ */
+void control_set_transactions(struct control_session *cs,
+                              struct control_txn *txns, size_t n_txns,
+                              int have_lock);
+
+/* Clear any pending transactions. */
+static inline void control_clear_transactions(struct control_session *cs,
+                                              int have_lock)
+{
+    if (!have_lock) {
+        control_must_lock(cs);
+    }
+    control_set_transactions(cs, NULL, 0, 1);
+    cs->wake_why &= ~(CONTROL_WHY_DNODE_TXN | CONTROL_WHY_CLIENT_RES);
+    if (!have_lock) {
+        control_must_unlock(cs);
+    }
+}
 
 #endif
