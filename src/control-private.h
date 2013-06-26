@@ -107,7 +107,7 @@ struct control_session {
                                      * sample data only from here. If
                                      * unset, .ss_family==AF_UNSPEC.
                                      * Shared with worker thread. */
-    struct sockaddr_storage caddr; /* Data node address; forward live
+    struct sockaddr_storage caddr; /* Client address; forward live
                                     * sample data to here. If unset,
                                     * .ss_family==AF_UNSPEC. Shared
                                     * with worker thread. */
