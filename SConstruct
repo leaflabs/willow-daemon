@@ -3,6 +3,7 @@ import os.path
 
 Help("""
 Build arguments:
+\tCC=<compiler>: set C compiler (default: gcc)
 \tV=1: verbose build output (default: V=0, quiet output)
 \tSKIP_TESTS=[y/n]: don't build tests (default: SKIP_TESTS=n, build tests)
 """)
@@ -33,6 +34,7 @@ lib_deps = [
 test_lib_deps = ['check'] # External dependencies for tests
 verbosity_level = int(ARGUMENTS.get('V', 0))
 skip_test_build = str_to_bool(ARGUMENTS.get('SKIP_TESTS', 'n'))
+build_cc = ARGUMENTS.get('CC', 'gcc')
 
 # Put all generated files underneath the build directory. protoc-c is
 # configured to do this as well, to prevent anyone from carelessly
@@ -42,7 +44,8 @@ VariantDir(build_src_dir, src_dir, duplicate=0)
 VariantDir(build_test_dir, test_dir, duplicate=0)
 
 # Build environment. Note we don't copy os.environ here.
-env = Environment(CCFLAGS=('-pthread -std=c99 '
+env = Environment(CC=build_cc,
+                  CCFLAGS=('-pthread -std=c99 '
                            '-g -Wall -Wextra -Wpointer-arith -Werror'),
                   CPPDEFINES={'_GNU_SOURCE': 1}, # we need Linux extensions
                   LIBS=lib_deps,
