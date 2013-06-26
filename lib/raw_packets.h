@@ -133,7 +133,7 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_CENTRAL_NREGS (RAW_RADDR_CENTRAL_EXP_CK_L + 1)
 /* RAW_RTYPE_SATA */
 #define RAW_RADDR_SATA_ERR      0x00 /* Module error flags */
-#define RAW_RADDR_SATA_STATE    0x01 /* Module state */
+#define RAW_RADDR_SATA_ENABLE   0x01 /* Module enable */
 #define RAW_RADDR_SATA_DISK_ID  0x02 /* Disk identifier (TBD) */
 #define RAW_RADDR_SATA_IO_PARAM 0x03 /* Disk I/O parameters (TBD) */
 #define RAW_RADDR_SATA_R_IDX    0x04 /* Next read index */
@@ -142,7 +142,7 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_SATA_NREGS (RAW_RADDR_SATA_W_IDX + 1)
 /* RAW_RTYPE_DAQ */
 #define RAW_RADDR_DAQ_ERR          0x00 /* Module error flags */
-#define RAW_RADDR_DAQ_STATE        0x01 /* Module state */
+#define RAW_RADDR_DAQ_ENABLE       0x01 /* Module enable */
 #define RAW_RADDR_DAQ_BSMP_START   0x02 /* Desired board sample index */
 #define RAW_RADDR_DAQ_BSMP_CURR    0x03 /* Current board sample index */
 #define RAW_RADDR_DAQ_CHIP_ALIVE   0x04 /* Chip alive bitmask */
@@ -159,7 +159,7 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_DAQ_NREGS (RAW_RADDR_DAQ_BSUB31_CFG + 1)
 /* RAW_RTYPE_UDP */
 #define RAW_RADDR_UDP_ERR          0x00 /* Module error flags */
-#define RAW_RADDR_UDP_STATE        0x01 /* Module state */
+#define RAW_RADDR_UDP_ENABLE       0x01 /* Module enable */
 #define RAW_RADDR_UDP_SRC_MAC_H    0x02 /* Source MAC-48 address, high word */
 #define RAW_RADDR_UDP_SRC_MAC_L    0x03 /* Source MAC-48 address, low word  */
 #define RAW_RADDR_UDP_DST_MAC_H    0x04 /* Destination MAC-48, high word */

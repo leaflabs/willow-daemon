@@ -809,10 +809,10 @@ static void client_process_cmd_stream(struct control_session *cs)
         /* Set UDP MAC destination registers */
         client_udp_w(txns + txno++, RAW_RADDR_UDP_DST_MAC_H, m48h);
         client_udp_w(txns + txno++, RAW_RADDR_UDP_DST_MAC_L, m48l);
-        /* Write 0 (STOP) to UDP and DAQ state registers */
+        /* Write 0 (STOP) to UDP and DAQ enable registers */
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 0);
-        client_daq_w(txns + txno++, RAW_RADDR_DAQ_STATE, 0);
-        client_udp_w(txns + txno++, RAW_RADDR_UDP_STATE, 0);
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 0);
+        client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 0);
         /* Toggle reset line by writing 1/0 to DAQ FIFO flags register
          * (bring reset line high/low) */
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 1);
@@ -823,19 +823,19 @@ static void client_process_cmd_stream(struct control_session *cs)
         /* Set UDP module to stream from DAQ (not SATA) */
         client_udp_w(txns + txno++, RAW_RADDR_UDP_MODE, 0); // 0x0D==13; 0
         /* Enable UDP module */
-        client_udp_w(txns + txno++, RAW_RADDR_UDP_STATE, 1);
+        client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 1);
         /* Enable DAQ module */
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 1);
-        client_daq_w(txns + txno++, RAW_RADDR_DAQ_STATE, 1);
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 1);
     } else {
         /* We only enable on success, from the result callback handler. */
         caddr->sin_family = AF_UNSPEC;
         dnaddr->sin_family = AF_UNSPEC;
 
-        /* Write 0 (STOP) to DAQ and UDP state registers */
-        client_daq_w(txns + txno++, RAW_RADDR_DAQ_STATE, 0);
+        /* Write 0 (STOP) to DAQ and UDP enable registers */
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 0);
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 0);
-        client_udp_w(txns + txno++, RAW_RADDR_UDP_STATE, 0);
+        client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 0);
         /* Toggle reset line by writing 1/0 to DAQ FIFO flags register
          * (bring reset line high/low) */
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 1);

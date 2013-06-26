@@ -384,7 +384,7 @@ const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr)
     case RAW_RTYPE_SATA:
         switch (r_addr) {
         case CASE_STRINGIFY(RAW_RADDR_SATA_ERR);
-        case CASE_STRINGIFY(RAW_RADDR_SATA_STATE);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_ENABLE);
         case CASE_STRINGIFY(RAW_RADDR_SATA_DISK_ID);
         case CASE_STRINGIFY(RAW_RADDR_SATA_IO_PARAM);
         case CASE_STRINGIFY(RAW_RADDR_SATA_R_IDX);
@@ -395,7 +395,7 @@ const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr)
     case RAW_RTYPE_DAQ:
         switch (r_addr) {
         case CASE_STRINGIFY(RAW_RADDR_DAQ_ERR);
-        case CASE_STRINGIFY(RAW_RADDR_DAQ_STATE);
+        case CASE_STRINGIFY(RAW_RADDR_DAQ_ENABLE);
         case CASE_STRINGIFY(RAW_RADDR_DAQ_BSMP_START);
         case CASE_STRINGIFY(RAW_RADDR_DAQ_BSMP_CURR);
         case CASE_STRINGIFY(RAW_RADDR_DAQ_CHIP_ALIVE);
@@ -415,7 +415,7 @@ const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr)
     case RAW_RTYPE_UDP:
         switch (r_addr) {
         case CASE_STRINGIFY(RAW_RADDR_UDP_ERR);
-        case CASE_STRINGIFY(RAW_RADDR_UDP_STATE);
+        case CASE_STRINGIFY(RAW_RADDR_UDP_ENABLE);
         case CASE_STRINGIFY(RAW_RADDR_UDP_SRC_MAC_H);
         case CASE_STRINGIFY(RAW_RADDR_UDP_SRC_MAC_L);
         case CASE_STRINGIFY(RAW_RADDR_UDP_DST_MAC_H);
