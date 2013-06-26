@@ -403,9 +403,13 @@ const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr)
         case CASE_STRINGIFY(RAW_RADDR_DAQ_CHIP_SYNCH);
         case CASE_STRINGIFY(RAW_RADDR_DAQ_FIFO_COUNT);
         case CASE_STRINGIFY(RAW_RADDR_DAQ_FIFO_FLAGS);
+        case CASE_STRINGIFY(RAW_RADDR_DAQ_UDP_ENABLE);
+        case CASE_STRINGIFY(RAW_RADDR_DAQ_UDP_MODE);
+        case CASE_STRINGIFY(RAW_RADDR_DAQ_SATA_ENABLE);
         case RAW_RADDR_DAQ_BSUB0_CFG...RAW_RADDR_DAQ_BSUB31_CFG:
             /* TODO be smarter */
             return "RAW_RADDR_DAQ_BSUBx_CFG";
+
         default: return "<UNKNOWN_DAQ_R_ADDR>";
         }
     case RAW_RTYPE_UDP:
@@ -423,6 +427,8 @@ const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr)
         case CASE_STRINGIFY(RAW_RADDR_UDP_PKT_TX_COUNT);
         case CASE_STRINGIFY(RAW_RADDR_UDP_ETH_PKT_LEN);
         case CASE_STRINGIFY(RAW_RADDR_UDP_PAYLOAD_LEN);
+        case CASE_STRINGIFY(RAW_RADDR_UDP_MODE);
+        case CASE_STRINGIFY(RAW_RADDR_UDP_GIGE_STATUS);
         default: return "<UNKNOWN_UDP_R_ADDR>";
         }
     case RAW_RTYPE_GPIO:
