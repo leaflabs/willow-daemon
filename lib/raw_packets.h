@@ -371,9 +371,21 @@ static inline void raw_set_flags(struct raw_pkt_cmd *pkt, uint8_t flags)
 
 ///@}
 
-/** @name Request/response message data */
+/** @name Requests/responses */
 
 ///@{
+
+/** Test if a request packet is a write */
+static inline int raw_req_is_write(struct raw_pkt_cmd *pkt)
+{
+    return (raw_pflags(pkt) & RAW_PFLAG_RIOD) == RAW_PFLAG_RIOD_W;
+}
+
+/** Test if a request packet is a read */
+static inline int raw_req_is_read(struct raw_pkt_cmd *pkt)
+{
+    return (raw_pflags(pkt) & RAW_PFLAG_RIOD) == RAW_PFLAG_RIOD_R;
+}
 
 /** Get pointer to request message data from a request packet */
 static inline struct raw_cmd_req* raw_req(struct raw_pkt_cmd *pkt)
