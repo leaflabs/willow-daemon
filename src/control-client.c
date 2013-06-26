@@ -623,7 +623,7 @@ static int client_last_txn_succeeded(struct control_session *cs)
      * (i.e., that the resulting r_id, r_type, r_addr, and r_val match
      * requested ones).  */
     if ((raw_pflags(req_pkt) & RAW_PFLAG_RIOD) == RAW_PFLAG_RIOD_W &&
-        (memcmp(req, res, sizeof(req)) != 0)) {
+        (memcmp(req, res, sizeof(*req)) != 0)) {
         LOCAL_DEBUG("write raw_cmd_req doesn't match raw_cmd_res");
         if (req->r_id != res->r_id) {
             LOCAL_DEBUG("req->r_id=%u, res->r_id=%u", req->r_id, res->r_id);
