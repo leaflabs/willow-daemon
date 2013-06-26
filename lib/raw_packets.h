@@ -221,30 +221,23 @@ struct raw_pkt_cmd {
       .p_mtype = (mtype),                               \
       .p_flags = 0,                                     \
     }
-/** DO NOT USE; you want RAW_PKT_ERR_INITIALIZER */
-#define _RAW_ERR_INITIALIZER \
-    { .pad_must_be_zero = { [_RAW_CSIZE - 1] = 0 } }
-/** DO NOT USE; you want RAW_PKT_REQ_INITIALIZER */
-#define _RAW_REQ_INITIALIZER \
-    { .r_id = 0, .r_type = 0xFF, .r_addr = 0xFF, .r_val = 0xdeadbeef }
-/** DO NOT USE; you want RAW_PKT_RES_INITIALIZER */
-#define _RAW_RES_INITIALIZER \
-    { .r_id = 0, .r_type = 0xFF, .r_addr = 0xFF, .r_val = 0xdeadbeef }
 
 /** Initializer macro for a raw_pkt_cmd of request mtype, RAW_MTYPE_REQ. */
-#define RAW_PKT_REQ_INITIALIZER                         \
-    { .ph = _RAW_PKT_HEADER_INITIALIZER(RAW_MTYPE_REQ), \
-      .p = { .req = _RAW_REQ_INITIALIZER },             \
+#define RAW_PKT_REQ_INITIALIZER                                 \
+    { .ph = _RAW_PKT_HEADER_INITIALIZER(RAW_MTYPE_REQ),         \
+      .p = { .req = { .r_id = 0, .r_type = 0xFF,                \
+                      .r_addr = 0xFF, .r_val = 0xdeadbeef } },  \
     }
 /** Initializer macro for a raw_pkt_cmd of response mtype, RAW_MTYPE_RES. */
-#define RAW_PKT_RES_INITIALIZER                         \
-    { .ph = _RAW_PKT_HEADER_INITIALIZER(RAW_MTYPE_RES), \
-      .p = { .res = _RAW_REQ_INITIALIZER },             \
+#define RAW_PKT_RES_INITIALIZER                             \
+    { .ph = _RAW_PKT_HEADER_INITIALIZER(RAW_MTYPE_RES),     \
+      .p = { .res = { .r_id = 0, .r_type = 0xFF,            \
+                      .r_addr = 0xFF, .r_val = 0xdeadbeef } \
     }
 /** Initializer macro for a raw_pkt_cmd of error mtype, RAW_MTYPE_ERR. */
-#define RAW_PKT_ERR_INITIALIZER                         \
-    { .ph = _RAW_PKT_HEADER_INITIALIZER(RAW_MTYPE_ERR), \
-      .p = { .err = _RAW_ERR_INITIALIZER },             \
+#define RAW_PKT_ERR_INITIALIZER                                         \
+    { .ph = _RAW_PKT_HEADER_INITIALIZER(RAW_MTYPE_ERR),                 \
+      .p = { .err = { .pad_must_be_zero = { [_RAW_CSIZE - 1] = 0 } } }, \
     }
 ///@}
 
