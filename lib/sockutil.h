@@ -21,9 +21,23 @@
 #ifndef _LIB_SOCKUTIL_H_
 #define _LIB_SOCKUTIL_H_
 
+#include <assert.h>
 #include <stdint.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <netinet/in.h>
+
+static inline socklen_t sockutil_addrlen(struct sockaddr *a) {
+    switch (a->sa_family) {
+    case AF_INET:
+        return sizeof(struct sockaddr_in);
+    case AF_INET6:
+        return sizeof(struct sockaddr_in6);
+    default:
+        assert(0);
+        return 0;
+    }
+}
 
 #define SOCKUTIL_IGN_PORT 0x2   /* Port */
 #define SOCKUTIL_IGN_ADDR 0x4   /* Address */
