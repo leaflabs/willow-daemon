@@ -317,7 +317,7 @@ static int serve_request(struct daemon_session *dsess)
         log_WARNING("request r_type %u has r_addr %u, but max is %u",
                     rcmd->r_type, rcmd->r_addr, module_n_regs);
         serve = serve_request_error;
-    } else if (raw_pflags(dsess->req) & RAW_PFLAG_RIOD_R) {
+    } else if (raw_req_is_read(dsess->req)) {
         /* Register read; nothing special required at the moment. */
         if (rcmd->r_val != 0) {
             serve = serve_request_error; /* Reads must set r_val=0 */
