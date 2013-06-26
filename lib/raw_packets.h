@@ -110,8 +110,8 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 
 /* I/O direction flag */
 #define RAW_PFLAG_RIOD   (0x1)
-#define RAW_PFLAG_RIOD_W (0U << 0)
-#define RAW_PFLAG_RIOD_R (1U << 0)
+#define RAW_PFLAG_RIOD_W (1U << 0)
+#define RAW_PFLAG_RIOD_R (0U << 0)
 
 /*
  * Per-r_type registers and values
