@@ -27,6 +27,7 @@
 #include "sockutil.h"
 
 #include "proto/control.pb-c.h"
+#include "proto/data.pb-c.h"
 
 #define LOCAL_DEBUG_LOGV 0
 
@@ -66,6 +67,14 @@ struct client_priv {
      * at each read(). */
     uint8_t c_cmd_arr[CONTROL_CMD_MAX_SIZE];
     uint8_t c_rsp_arr[CONTROL_CMD_MAX_SIZE];
+
+    /* Similarly, keep buffers around for initializing and packing
+     * data protocol messages. Touch these from the main thread
+     * only. */
+    uint32_t c_bsub_chips[RAW_BSUB_NSAMP];
+    uint32_t c_bsub_chans[RAW_BSUB_NSAMP];
+    uint32_t c_bsub_samps[RAW_BSUB_NSAMP];
+    uint8_t c_data_pbuf_arr[CONTROL_CMD_MAX_SIZE];
 };
 
 /********************************************************************
@@ -427,6 +436,81 @@ static enum control_worker_why client_read(struct control_session *cs)
  done:
     control_must_unlock(cs);
     return ret;
+}
+
+static int client_data(struct control_session *cs, struct sockaddr *addr)
+{
+    struct client_priv *cpriv = cs->cpriv;
+    uint8_t *pkt_buf = cs->dpbuf.iov_base;
+    if (raw_pkt_ntoh(pkt_buf)) {
+        log_INFO("dropping malformed data node packet");
+        return -1;
+    }
+    uint8_t mtype = raw_mtype(pkt_buf);
+    uint8_t pflags = raw_pflags(pkt_buf);
+    if (mtype == RAW_MTYPE_BSUB) {
+        struct raw_pkt_bsub *bsub = (struct raw_pkt_bsub*)pkt_buf;
+        DnodeSample dnsample = DNODE_SAMPLE__INIT;
+        BoardSubsample msg_bsub = BOARD_SUBSAMPLE__INIT;
+        msg_bsub.has_is_live = 1;
+        msg_bsub.is_live = !!(pflags & RAW_PFLAG_B_LIVE);
+        msg_bsub.has_is_last = 1;
+        msg_bsub.is_last = !!(pflags & RAW_PFLAG_B_LAST);
+        msg_bsub.has_exp_cookie = 1;
+        msg_bsub.exp_cookie = raw_exp_cookie(bsub);
+        msg_bsub.has_board_id = 1;
+        msg_bsub.board_id = bsub->b_id;
+        msg_bsub.has_samp_idx = 1;
+        msg_bsub.samp_idx = bsub->b_sidx;
+        msg_bsub.has_chip_live = 1;
+        msg_bsub.chip_live = bsub->b_chip_live;
+        msg_bsub.n_chips = RAW_BSUB_NSAMP;
+        msg_bsub.chips = cpriv->c_bsub_chips;
+        msg_bsub.n_channels = RAW_BSUB_NSAMP;
+        msg_bsub.channels = cpriv->c_bsub_chans;
+        msg_bsub.n_samples = RAW_BSUB_NSAMP;
+        msg_bsub.samples = cpriv->c_bsub_samps;
+        for (size_t i = 0; i < RAW_BSUB_NSAMP; i++) {
+            msg_bsub.chips[i] = bsub->b_cfg[i].bs_chip;
+            msg_bsub.channels[i] = bsub->b_cfg[i].bs_chan;
+            msg_bsub.samples[i] = bsub->b_samps[i];
+        }
+        msg_bsub.has_gpio = 1;
+        msg_bsub.gpio = bsub->b_gpio;
+        msg_bsub.has_dac_channel = 1;
+        msg_bsub.dac_channel = bsub->b_dac_cfg;
+        msg_bsub.has_dac_value = 1;
+        msg_bsub.dac_value = bsub->b_dac;
+        dnsample.has_type = 1;
+        dnsample.type = DNODE_SAMPLE__TYPE__SUBSAMPLE;
+        dnsample.subsample = &msg_bsub;
+        size_t dnsample_psize = dnode_sample__get_packed_size(&dnsample);
+        if (dnsample_psize > CONTROL_CMD_MAX_SIZE) {
+            log_WARNING("packed subsample buffer size %zu exceeds "
+                        "preallocated buffer size %d; "
+                        "falling back on malloc().",
+                        dnsample_psize, CONTROL_CMD_MAX_SIZE);
+            uint8_t *out = malloc(dnsample_psize);
+            if (!out) {
+                log_ERR("out of memory");
+                return -1;
+            }
+            dnode_sample__pack(&dnsample, out);
+            int ret = sendto(cs->ddatafd, out, dnsample_psize, 0,
+                            addr, sockutil_addrlen(addr));
+            free(out);
+            return ret;
+        }
+        dnode_sample__pack(&dnsample, cpriv->c_data_pbuf_arr);
+        ssize_t s = sendto(cs->ddatafd, cpriv->c_data_pbuf_arr, dnsample_psize,
+                           0, addr, sockutil_addrlen(addr));
+        return s == (ssize_t)dnsample_psize ? 0 : -1;
+    } else if (mtype == RAW_MTYPE_BSMP) {
+        log_WARNING("%s: board sample handling is unimplemented", __func__);
+        return -1;
+    }
+    assert(0);
+    return -1;
 }
 
 /********************************************************************
@@ -967,6 +1051,7 @@ static const struct control_ops client_control_operations = {
     .cs_close = client_close,
     .cs_read = client_read,
     .cs_thread = client_thread,
+    .cs_data = client_data,
 };
 
 const struct control_ops *control_client_ops = &client_control_operations;
