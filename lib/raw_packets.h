@@ -172,8 +172,8 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_UDP_ETH_PKT_LEN  0x0B /* Ethernet packet length */
 #define RAW_RADDR_UDP_PAYLOAD_LEN  0x0C /* Payload length */
 #define RAW_RADDR_UDP_MODE         0x0D /* UDP Module Mode */
-#define RAW_RADDR_GIGE_STATUS      0x0E /* GigE Status */
-#define RAW_RADDR_UDP_NREGS (RAW_RADDR_UDP_PAYLOAD_LEN + 1)
+#define RAW_RADDR_UDP_GIGE_STATUS  0x0E /* GigE Status */
+#define RAW_RADDR_UDP_NREGS (RAW_RADDR_UDP_GIGE_STATUS + 1)
 /* RAW_RTYPE_GPIO */
 #define RAW_RADDR_GPIO_ERR   0x00 /* Module error flags */
 /* (No state machine for GPIO) */
