@@ -31,7 +31,7 @@
 #define IS_LITTLE_ENDIAN (1 == *(unsigned char *)&(const int){1})
 #define HOST_H5_ORDER (IS_LITTLE_ENDIAN ? H5T_ORDER_LE : H5T_ORDER_BE)
 
-static int hdf5_cs_open(struct ch_storage *chns);
+static int hdf5_cs_open(struct ch_storage *chns, unsigned flags);
 static int hdf5_cs_close(struct ch_storage *chns);
 static int hdf5_cs_datasync(struct ch_storage *chns);
 static ssize_t hdf5_cs_write(struct ch_storage *chns, struct raw_pkt_bsmp*);
@@ -109,21 +109,20 @@ void hdf5_ch_storage_free(struct ch_storage *chns)
 
 #define O_LOG_ERR(failure, chns)                                \
     log_ERR("can't open %s: error on %s", chns->cs_path, failure);
-static int hdf5_cs_open(struct ch_storage *chns)
+static int hdf5_cs_open(struct ch_storage *chns, unsigned flags)
 {
 #if 1
     log_WARNING("XXXXXXXXX "
-                "%s skipping open of %s (not implemented) "
+                "%s skipping open of %s, flags %u (not implemented) "
                 "XXXXXXXXX",
-                __func__, chns->cs_path);
+                __func__, chns->cs_path, flags);
     errno = EIO;
     return -1;
 #else  /* FIXME finish this up */
     struct h5_cs_data tmp;
     h5_ch_data_init(&tmp, h5_data(chns)->dset_name);
 
-    tmp.h5_file = H5Fcreate(chns->cs_path, H5F_ACC_TRUNC, H5P_DEFAULT,
-                            H5P_DEFAULT);
+    tmp.h5_file = H5Fcreate(chns->cs_path, flags, H5P_DEFAULT, H5P_DEFAULT);
     if (tmp.h5_file < 0) {
         O_LOG_ERR("HDF5 file", chns);
         goto fail;

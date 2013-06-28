@@ -31,7 +31,7 @@ struct ch_storage;
 
 /* Create new channel storage object; returns NULL on error. */
 struct ch_storage *raw_ch_storage_alloc(const char *out_file_path,
-                                        int flags, mode_t mode);
+                                        mode_t mode);
 
 void raw_ch_storage_free(struct ch_storage *chns);
 

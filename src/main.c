@@ -235,8 +235,7 @@ static struct ch_storage* alloc_ch_storage(void)
     if (DO_HDF5_STORAGE) {
         chns = hdf5_ch_storage_alloc(DNODE_DATA_FILE, DNODE_DATASET_NAME);
     } else {
-        chns = raw_ch_storage_alloc(DNODE_DATA_FILE,
-                                    O_CREAT | O_RDWR | O_TRUNC, 0644);
+        chns = raw_ch_storage_alloc(DNODE_DATA_FILE, 0644);
     }
     return chns;
 }
@@ -322,7 +321,10 @@ static int daemon_main(struct arguments *args)
         log_CRIT("can't allocate channel storage object");
         goto nochstorage;
     }
-    if (ch_storage_open(chstorage) == -1) {
+    unsigned flags = DO_HDF5_STORAGE ?
+        H5F_ACC_TRUNC :
+        O_CREAT | O_RDWR | O_TRUNC;
+    if (ch_storage_open(chstorage, flags) == -1) {
         log_CRIT("can't open channel storage: %m");
         goto noopen;
     }

@@ -40,15 +40,15 @@ struct ch_storage {
 };
 
 struct ch_storage_ops {
-    int (*cs_open)(struct ch_storage*);
+    int (*cs_open)(struct ch_storage*, unsigned flags);
     int (*cs_close)(struct ch_storage*);
     int (*cs_datasync)(struct ch_storage*);
     ssize_t (*cs_write)(struct ch_storage*, struct raw_pkt_bsmp *bsamp);
 };
 
-static inline int ch_storage_open(struct ch_storage *chns)
+static inline int ch_storage_open(struct ch_storage *chns, unsigned flags)
 {
-    return chns->ops->cs_open(chns);
+    return chns->ops->cs_open(chns, flags);
 }
 
 static inline int ch_storage_close(struct ch_storage *chns)

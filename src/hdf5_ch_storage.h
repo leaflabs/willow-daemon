@@ -22,6 +22,8 @@
 #ifndef _SRC_HDF5_CHANNEL_STORAGE_H_
 #define _SRC_HDF5_CHANNEL_STORAGE_H_
 
+#include <hdf5.h>
+
 struct ch_storage;
 
 /* Create new channel storage object; returns NULL on error. */
