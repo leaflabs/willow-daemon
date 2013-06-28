@@ -632,6 +632,7 @@ void control_free(struct control_session *cs)
     /* Acquired in control_new() */
     control_must_wake(cs, CONTROL_WHY_EXIT);
     control_must_join(cs, NULL);
+    event_free(cs->ddataevt);
     if (cs->ddatafd != -1 && evutil_closesocket(cs->ddatafd) == -1) {
         log_ERR("can't close sample socket: %m");
     }
@@ -643,7 +644,6 @@ void control_free(struct control_session *cs)
         bufferevent_free(cs->dbev);
     }
     evconnlistener_free(cs->cecl);
-    event_free(cs->ddataevt);
 
     /* Possibly acquired elsewhere */
     if (cs->cbev) {
