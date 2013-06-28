@@ -509,7 +509,7 @@ static int client_data(struct control_session *cs, struct sockaddr *addr)
         ssize_t s = sendto(cs->ddatafd, cpriv->c_data_pbuf_arr, dnsample_psize,
                            0, addr, sockutil_addrlen(addr));
 
-        if (cpriv->debug_last_sub_idx != bsub->b_sidx - 1) {
+        if (cpriv->debug_last_sub_idx != msg_bsub.samp_idx - 1) {
             log_DEBUG("bsub GAP: %u",
                       bsub->b_sidx - 1 - cpriv->debug_last_sub_idx);
         }
