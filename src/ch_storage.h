@@ -31,6 +31,7 @@
 #include <stdlib.h>
 
 struct ch_storage_ops;
+struct raw_pkt_bsmp;
 
 struct ch_storage {
     const char *cs_path;
@@ -42,9 +43,7 @@ struct ch_storage_ops {
     int (*cs_open)(struct ch_storage*);
     int (*cs_close)(struct ch_storage*);
     int (*cs_datasync)(struct ch_storage*);
-
-    /* FIXME cs_write doesn't feel right for HDF5 */
-    ssize_t (*cs_write)(struct ch_storage*, uint16_t *ch_data, size_t len);
+    ssize_t (*cs_write)(struct ch_storage*, struct raw_pkt_bsmp *bsamp);
 };
 
 static inline int ch_storage_open(struct ch_storage *chns)
@@ -63,10 +62,9 @@ static inline int ch_storage_datasync(struct ch_storage *chns)
 }
 
 static inline ssize_t ch_storage_write(struct ch_storage *chns,
-                                       uint16_t *ch_data,
-                                       size_t len)
+                                       struct raw_pkt_bsmp *bsmp)
 {
-    return chns->ops->cs_write(chns, ch_data, len);
+    return chns->ops->cs_write(chns, bsmp);
 }
 
 #endif

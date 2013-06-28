@@ -22,6 +22,7 @@
 
 #include "type_attrs.h"
 #include "ch_storage.h"
+#include "raw_packets.h"
 
 struct raw_cs_data {
     int fd;
@@ -38,8 +39,7 @@ static inline struct raw_cs_data* raw_cs_data(struct ch_storage *chns)
 static int raw_cs_open(struct ch_storage *chns);
 static int raw_cs_close(struct ch_storage *chns);
 static int raw_cs_datasync(struct ch_storage *chns);
-static ssize_t raw_cs_write(struct ch_storage *chns, uint16_t *data,
-                            size_t len);
+static ssize_t raw_cs_write(struct ch_storage *chns, struct raw_pkt_bsmp*);
 
 static const struct ch_storage_ops raw_ch_storage_ops = {
     .cs_open = raw_cs_open,
@@ -90,8 +90,7 @@ static int raw_cs_datasync(struct ch_storage *chns)
     return fdatasync(raw_cs_data(chns)->fd);
 }
 
-static ssize_t raw_cs_write(struct ch_storage *chns, uint16_t *ch_data,
-                            size_t len)
+static ssize_t raw_cs_write(struct ch_storage *chns, struct raw_pkt_bsmp *bsmp)
 {
-    return write(raw_cs_data(chns)->fd, ch_data, len * sizeof(uint16_t));
+    return write(raw_cs_data(chns)->fd, bsmp, sizeof(*bsmp));
 }
