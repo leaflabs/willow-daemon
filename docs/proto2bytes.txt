@@ -1,0 +1,23 @@
+
+Play waveforms through speakers:
+
+        ./build/proto2bytes --dac | aplay -f U8 -r 30000
+        ./build/proto2bytes -c 7 | aplay -f U8 -r 30000
+
+Plot live with kst:
+
+        kst2 tail_data.kst & ./build/proto2bytes -s --dac > temp_file.dat
+        kst2 tail_data.kst & ./build/proto2bytes -s -c 0 > temp_file.dat
+
+Plot 1000 samples with kst:
+
+        ./build/proto2bytes -s --dac | head -n 1000 > temp_file.dat; kst2 temp_file.dat -y 1
+
+Monitor single channel throughput:
+
+        ./build/proto2bytes -c 15 | pv > /dev/null
+
+Visualize waveform with baudline:
+
+        ./build/proto2bytes --dac | ~/src/baudline_1.08_linux_x86_64/baudline -stdin -format u8
+
