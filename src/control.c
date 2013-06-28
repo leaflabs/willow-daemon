@@ -583,7 +583,7 @@ struct control_session* control_new(struct event_base *base,
         pthread_cond_destroy(&cs->cv);
     }
     if (mtx_en) {
-        pthread_mutex_init(&cs->mtx, NULL);
+        pthread_mutex_destroy(&cs->mtx);
     }
 
     /* Tear down data socket */
