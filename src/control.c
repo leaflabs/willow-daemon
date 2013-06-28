@@ -499,6 +499,18 @@ struct control_session* control_new(struct event_base *base,
 
     cs->base = base;
 
+    /* Set up locking */
+    mtx_en = pthread_mutex_init(&cs->mtx, NULL);
+    if (mtx_en) {
+        log_ERR("threading error while initializing control session");
+        goto bail;
+    }
+    cv_en = pthread_cond_init(&cs->cv, NULL);
+    if (cv_en) {
+        log_ERR("threading error while initializing control session");
+        goto bail;
+    }
+
     /* Client control fields */
     if (control_client_start(cs)) {
         log_ERR("can't start client side of control session");
@@ -554,16 +566,6 @@ struct control_session* control_new(struct event_base *base,
     event_add(cs->ddataevt, NULL);
 
     /* Start the worker thread */
-    mtx_en = pthread_mutex_init(&cs->mtx, NULL);
-    if (mtx_en) {
-        log_ERR("threading error while initializing control session");
-        goto bail;
-    }
-    cv_en = pthread_cond_init(&cs->cv, NULL);
-    if (cv_en) {
-        log_ERR("threading error while initializing control session");
-        goto bail;
-    }
     control_must_lock(cs);
     t_en = pthread_create(&cs->thread, NULL, control_worker_main, cs);
     control_must_unlock(cs);
