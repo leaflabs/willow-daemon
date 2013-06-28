@@ -274,6 +274,7 @@ static int client_start(struct control_session *cs)
     }
 
     priv->c_cmd = NULL;
+    priv->c_rsp = NULL;
     priv->c_pbuf = c_pbuf;
     priv->c_cmdlen_buf = c_cmdlen_buf;
     priv->debug_last_sub_idx = 0;
