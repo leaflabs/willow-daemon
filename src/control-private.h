@@ -30,6 +30,12 @@
 #include "raw_packets.h"
 #include "proto/control.pb-c.h"
 
+#define CONTROL_DEBUG_LOG 0 /* more verbose logging (helps with pthreads) */
+
+#if CONTROL_DEBUG_LOG
+#include "logging.h"
+#endif
+
 struct event;
 struct event_base;
 struct evconnlistener;
@@ -178,8 +184,6 @@ struct control_ops {
 /*
  * Threading helpers
  */
-
-#define CONTROL_DEBUG_LOG 0 /* more verbose logging (helps with pthreads) */
 
 #if CONTROL_DEBUG_LOG
 #define CONTROL_DEBUG log_DEBUG
