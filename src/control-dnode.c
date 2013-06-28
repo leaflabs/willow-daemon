@@ -212,6 +212,12 @@ static enum control_worker_why dnode_read(struct control_session *cs)
     case RAW_MTYPE_RES:
         if (raw_pkt_is_err(&pkt)) {
             log_INFO("received error response packet from data node");
+            log_DEBUG("flags 0x%x iserror=%d mod=%s add=%s",
+                raw_pflags(&pkt),
+                raw_mtype(&pkt)==RAW_MTYPE_ERR,
+                raw_r_type_str(raw_r_type(&pkt)),
+                raw_r_addr_str(raw_r_type(&pkt), raw_r_addr(&pkt))
+                );
         }
         ret = CONTROL_WHY_CLIENT_RES;
         break;
