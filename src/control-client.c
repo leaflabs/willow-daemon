@@ -75,6 +75,8 @@ struct client_priv {
     uint32_t c_bsub_chans[RAW_BSUB_NSAMP];
     uint32_t c_bsub_samps[RAW_BSUB_NSAMP];
     uint8_t c_data_pbuf_arr[CONTROL_CMD_MAX_SIZE];
+
+    uint32_t debug_last_sub_idx;
 };
 
 /********************************************************************
@@ -274,6 +276,7 @@ static int client_start(struct control_session *cs)
     priv->c_cmd = NULL;
     priv->c_pbuf = c_pbuf;
     priv->c_cmdlen_buf = c_cmdlen_buf;
+    priv->debug_last_sub_idx = 0;
     cs->cpriv = priv;
     client_reset_state_locked(cs); /* worker isn't started; don't
                                     * bother locking */
@@ -504,6 +507,13 @@ static int client_data(struct control_session *cs, struct sockaddr *addr)
         dnode_sample__pack(&dnsample, cpriv->c_data_pbuf_arr);
         ssize_t s = sendto(cs->ddatafd, cpriv->c_data_pbuf_arr, dnsample_psize,
                            0, addr, sockutil_addrlen(addr));
+
+        if (cpriv->debug_last_sub_idx != bsub->b_sidx - 1) {
+            log_DEBUG("bsub GAP: %u",
+                      bsub->b_sidx - 1 - cpriv->debug_last_sub_idx);
+        }
+        cpriv->debug_last_sub_idx = bsub->b_sidx;
+
         return s == (ssize_t)dnsample_psize ? 0 : -1;
     } else if (mtype == RAW_MTYPE_BSMP) {
         log_WARNING("%s: board sample handling is unimplemented", __func__);
