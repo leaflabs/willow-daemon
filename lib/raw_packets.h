@@ -287,7 +287,7 @@ struct raw_pkt_bsub {
  * Board sample packet (RAW_MTYPE_BSMP) data
  */
 
-#define _RAW_BSMP_NSAMP (32*35) /* TODO (eventually) configurability */
+#define RAW_BSMP_NSAMP (32*35)
 
 /** Board sample wire format struct */
 struct raw_pkt_bsmp {
@@ -297,7 +297,7 @@ struct raw_pkt_bsmp {
     uint32_t b_id;              /**< board id */
     uint32_t b_sidx;            /**< sample index */
     uint32_t b_chip_live;       /**< chip live status */
-    raw_samp_t b_samps[_RAW_BSMP_NSAMP]; /**< samples */
+    raw_samp_t b_samps[RAW_BSMP_NSAMP]; /**< samples */
 };
 
 ///@}
@@ -444,7 +444,7 @@ int raw_num_regs(uint8_t r_type);
 /* Number of samples in a board sample (for future-proofing). */
 static inline size_t raw_bsmp_nsamp(__unused const struct raw_pkt_bsmp *bsmp)
 {
-    return _RAW_BSMP_NSAMP;
+    return RAW_BSMP_NSAMP;
 }
 
 /* Size of samples array in a board sample. */

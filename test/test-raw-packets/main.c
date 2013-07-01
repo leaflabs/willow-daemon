@@ -150,7 +150,7 @@ START_TEST(test_sizes_packing)
     ck_assert_int_eq(raw_pkt_size(bsub1), bsub_size);
     ck_assert_int_eq(raw_pkt_size(bsmp1),
                      offsetof(struct raw_pkt_bsmp, b_samps) +
-                     _RAW_BSMP_NSAMP * sizeof(raw_samp_t));
+                     RAW_BSMP_NSAMP * sizeof(raw_samp_t));
 }
 END_TEST
 
