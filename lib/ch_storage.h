@@ -24,8 +24,8 @@
  * hides the fd from you behind a hid_t.
  */
 
-#ifndef _SRC_CHANNEL_STORAGE_H_
-#define _SRC_CHANNEL_STORAGE_H_
+#ifndef _LIB_CHANNEL_STORAGE_H_
+#define _LIB_CHANNEL_STORAGE_H_
 
 #include <stdint.h>
 #include <stdlib.h>

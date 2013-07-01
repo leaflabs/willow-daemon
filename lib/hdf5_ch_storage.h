@@ -14,25 +14,22 @@
  */
 
 /**
- * @file raw_ch_storage.h
- * @brief Raw (i.e. write()-based) channel storage backend
- *
- * This is just for benchmarking.
- *
+ * @file hdf5_ch_storage.h
+ * @brief HDF5 channel storage backend
  * @see ch_storage.h
  */
 
-#ifndef _SRC_RAW_CHANNEL_STORAGE_H_
-#define _SRC_RAW_CHANNEL_STORAGE_H_
+#ifndef _LIB_HDF5_CHANNEL_STORAGE_H_
+#define _LIB_HDF5_CHANNEL_STORAGE_H_
 
-#include <sys/types.h>
+#include <hdf5.h>
 
 struct ch_storage;
 
 /* Create new channel storage object; returns NULL on error. */
-struct ch_storage *raw_ch_storage_alloc(const char *out_file_path,
-                                        mode_t mode);
+struct ch_storage *hdf5_ch_storage_alloc(const char *out_file_path,
+                                         const char *dataset_name);
 
-void raw_ch_storage_free(struct ch_storage *chns);
+void hdf5_ch_storage_free(struct ch_storage *chns);
 
 #endif
