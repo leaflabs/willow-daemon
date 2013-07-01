@@ -19,6 +19,7 @@
 
 // The daemon sends DnodeSample (see below) messages to the client data socket.
 
+// BoardSubsample messages are sent during live streaming mode.
 message BoardSubsample {
     optional bool is_live = 1;
     optional bool is_last = 2;
@@ -41,6 +42,8 @@ message BoardSubsample {
     optional uint32 dac_value = 12;
 }
 
+// This is just for debugging; there's no need for the client to see
+// board samples in protobuf form during normal operation.
 message BoardSample {
     optional bool is_live = 1;
     optional bool is_last = 2;
@@ -55,6 +58,7 @@ message BoardSample {
     optional bytes samples = 7;
 }
 
+// Top-level union type for data socket datagram contents.
 message DnodeSample {
     enum Type {
         SAMPLE = 1;
