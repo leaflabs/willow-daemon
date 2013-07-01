@@ -21,6 +21,7 @@ src_dir = '#src/'     # Main daemon sources.
 proto_dir = '#proto/' # Don't change this; we #include "proto/foo.pb-c.h".
 lib_dir = '#lib/'     # Utility library (code shared between src/ and test/)
 test_dir = '#test/'
+test_include_dir ='#test/include'
 build_dir = '#build/' # Scons requires this to live in the source tree :(.
 build_src_dir = toplevel_join(build_dir, src_dir)
 build_lib_dir = toplevel_join(build_dir, lib_dir)
@@ -96,11 +97,13 @@ main = env.Program(out_program, src_sources + libutil,
 
 # Test programs, one per subdirectory of test_dir.
 for test_name, sources in test_sources_dict.iteritems():
+    if test_name == 'include':
+        continue
     test_out_dir = os.path.join(env.GetBuildPath(build_test_dir), test_name)
     test_prog = os.path.join(build_dir, test_name)
     test_defines = env['CPPDEFINES'].copy()
     test_defines.update({'TEST_DAEMON_PATH': str(out_program)})
     env.Program(test_prog, sources + libutil,
-                CPPPATH=[build_lib_dir, test_out_dir],
+                CPPPATH=[build_lib_dir, test_out_dir, test_include_dir],
                 CPPDEFINES=test_defines,
                 LIBS=lib_deps + test_lib_deps)

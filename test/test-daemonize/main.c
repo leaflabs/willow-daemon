@@ -1,7 +1,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-#include <check.h>
+#include "test.h"
 
 #include "daemon.h"
 #include "type_attrs.h"
