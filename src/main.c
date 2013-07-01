@@ -375,6 +375,50 @@ static int setup_libevent(void) /* Before daemonizing */
     return 0;
 }
 
+/* Per-stack-entry HDF5 logging callback. Prints a message for a
+ * single element of the error stack. */
+static herr_t hdf5_logger(unsigned n, const H5E_error2_t *ep,
+                          __unused void *ignored)
+{
+    herr_t ret = 0;
+    char class[LINE_MAX] = {[0] = '\0'};
+    char major[LINE_MAX] = {[0] = '\0'};
+    char minor[LINE_MAX] = {[0] = '\0'};
+
+    if (H5Eget_class_name(ep->cls_id, class, sizeof(class)) < 0) {
+        log_ERR("HDF5[%u]: can't get name for class %llu",
+                n, (long long unsigned)ep->cls_id);
+        ret = -1;
+    }
+    if (H5Eget_msg(ep->maj_num, NULL, major, sizeof(major)) < 0) {
+        log_ERR("HDF5[%u]: can't get string for major %llu",
+                n, (long long unsigned)ep->maj_num);
+        ret = -1;
+    }
+    if (H5Eget_msg(ep->min_num, NULL, minor, sizeof(minor)) < 0) {
+        log_ERR("HDF5[%u]: can't get string for minor %llu",
+                n, (long long unsigned)ep->min_num);
+        ret = -1;
+    }
+
+    log_ERR("HDF5[%u]: %s:%u:%s(): %s (class %s, major/minor %s/%s)",
+            n, ep->file_name, ep->line, ep->func_name, ep->desc,
+            class, major, minor);
+    return ret;
+}
+
+/* Top-level HDF5 callback. Walk the error stack, printing an error
+ * record at each level with hdf5_logger(). */
+static herr_t hdf5_log_cb(hid_t estack, void *arg)
+{
+    return H5Ewalk2(estack, H5E_WALK_DOWNWARD, hdf5_logger, arg);
+}
+
+static herr_t setup_hdf5(void)
+{
+    return H5Eset_auto2(H5E_DEFAULT, hdf5_log_cb, NULL);
+}
+
 int main(int argc, char *argv[])
 {
     struct arguments args = DEFAULT_ARGUMENTS;
@@ -394,6 +438,9 @@ int main(int argc, char *argv[])
     int log_to_stderr = args.dont_daemonize;
     logging_init(program_name, LOG_DEBUG, log_to_stderr);
     if (setup_libevent()) {
+        goto bail;
+    }
+    if (setup_hdf5() < 0) {
         goto bail;
     }
 
