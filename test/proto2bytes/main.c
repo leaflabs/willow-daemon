@@ -28,7 +28,7 @@ static const char* out_type_str(enum out_type type)
 
 static void usage(int exit_status)
 {
-    printf("Usage: %s\n"
+    printf("Usage: %s [-d|-c <ch>] [-p <port>] [-s]\n"
            "Options:\n"
            "  -c, --channel"
            "\t(16-bit) channel to output\n"
@@ -55,7 +55,7 @@ static void usage(int exit_status)
 struct arguments {
     uint16_t daemon_port;
     enum out_type output;
-    int channel;
+    unsigned channel;
     int enable_string;
 };
 
@@ -102,7 +102,12 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
             }
         case 'c':
             args->output = OUT_CHANNEL;
-            args->channel = strtol(optarg, (char**)0, 10);
+            int ch = strtol(optarg, (char**)0, 10);
+            if (ch < 0) {
+                fprintf(stderr, "channel %d must be positive\n", ch);
+                usage(EXIT_FAILURE);
+            }
+            args->channel = (unsigned)ch;
             break;
         case 'd':
             args->output = OUT_DAC;
@@ -121,6 +126,11 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
             usage(EXIT_FAILURE);
         }
     }
+    if (args->output == OUT_CHANNEL && (args->channel > RAW_BSUB_NSAMP)) {
+        fprintf(stderr, "channel %u is out of range (max is %u)\n",
+                args->channel, RAW_BSUB_NSAMP);
+        exit(EXIT_FAILURE);
+    }
 }
 
 int main(int argc, char *argv[])
@@ -136,12 +146,6 @@ int main(int argc, char *argv[])
             args.daemon_port, out_type_str(args.output),
             args.output == OUT_CHANNEL ? ", channel=" : "",
             args.output == OUT_CHANNEL ? chstr : "");
-
-    if (args.output == OUT_CHANNEL && (args.channel > RAW_BSUB_NSAMP)) {
-        fprintf(stderr, "channel %d is out of range (max is %u)\n",
-                args.channel, RAW_BSUB_NSAMP);
-        exit(EXIT_FAILURE);
-    }
 
     int sockfd = sockutil_get_udp_socket(args.daemon_port);
     if (sockfd == -1) {
