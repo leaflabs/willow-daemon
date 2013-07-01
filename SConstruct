@@ -96,11 +96,11 @@ main = env.Program(out_program, src_sources + libutil,
 
 # Test programs, one per subdirectory of test_dir.
 for test_name, sources in test_sources_dict.iteritems():
-    test_dir = os.path.join(env.GetBuildPath(build_test_dir), test_name)
-    test_prog = os.path.join(test_dir, test_name)
+    test_out_dir = os.path.join(env.GetBuildPath(build_test_dir), test_name)
+    test_prog = os.path.join(build_dir, test_name)
     test_defines = env['CPPDEFINES'].copy()
     test_defines.update({'TEST_DAEMON_PATH': str(out_program)})
     env.Program(test_prog, sources + libutil,
-                CPPPATH=[build_lib_dir, test_dir],
+                CPPPATH=[build_lib_dir, test_out_dir],
                 CPPDEFINES=test_defines,
                 LIBS=lib_deps + test_lib_deps)
