@@ -34,7 +34,8 @@
 static int hdf5_cs_open(struct ch_storage *chns, unsigned flags);
 static int hdf5_cs_close(struct ch_storage *chns);
 static int hdf5_cs_datasync(struct ch_storage *chns);
-static ssize_t hdf5_cs_write(struct ch_storage *chns, struct raw_pkt_bsmp*);
+static ssize_t hdf5_cs_write(struct ch_storage *chns,
+                             const struct raw_pkt_bsmp*);
 
 static const struct ch_storage_ops hdf5_ch_storage_ops = {
     .cs_open = hdf5_cs_open,
@@ -180,7 +181,7 @@ static int hdf5_cs_datasync(struct ch_storage *chns)
 }
 
 static ssize_t hdf5_cs_write(struct ch_storage *chns,
-                             struct raw_pkt_bsmp *bsmp)
+                             const struct raw_pkt_bsmp *bsmp)
 {
     /* TODO */
     log_WARNING("XXXXXXXXX "
