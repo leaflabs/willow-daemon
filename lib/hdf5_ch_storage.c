@@ -35,7 +35,8 @@ static int hdf5_cs_open(struct ch_storage *chns, unsigned flags);
 static int hdf5_cs_close(struct ch_storage *chns);
 static int hdf5_cs_datasync(struct ch_storage *chns);
 static ssize_t hdf5_cs_write(struct ch_storage *chns,
-                             const struct raw_pkt_bsmp*);
+                             const struct raw_pkt_bsmp*,
+                             size_t);
 
 static const struct ch_storage_ops hdf5_ch_storage_ops = {
     .cs_open = hdf5_cs_open,
@@ -181,14 +182,15 @@ static int hdf5_cs_datasync(struct ch_storage *chns)
 }
 
 static ssize_t hdf5_cs_write(struct ch_storage *chns,
-                             const struct raw_pkt_bsmp *bsmp)
+                             const struct raw_pkt_bsmp *bsamps,
+                             size_t nsamps)
 {
     /* TODO */
     log_WARNING("XXXXXXXXX "
-                "%s skipping write of board sample"
+                "%s skipping write of %zu board samples"
                 "from %p to %s (not implemented) "
                 "XXXXXXXXX",
-                __func__, (void*)bsmp, chns->cs_path);
+                __func__, nsamps, (void*)bsamps, chns->cs_path);
     errno = EIO;
     return -1;
 }

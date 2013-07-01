@@ -39,7 +39,8 @@ static int raw_cs_open(struct ch_storage *chns, unsigned flags);
 static int raw_cs_close(struct ch_storage *chns);
 static int raw_cs_datasync(struct ch_storage *chns);
 static ssize_t raw_cs_write(struct ch_storage *chns,
-                            const struct raw_pkt_bsmp*);
+                            const struct raw_pkt_bsmp*,
+                            size_t);
 
 static const struct ch_storage_ops raw_ch_storage_ops = {
     .cs_open = raw_cs_open,
@@ -89,7 +90,8 @@ static int raw_cs_datasync(struct ch_storage *chns)
 }
 
 static ssize_t raw_cs_write(struct ch_storage *chns,
-                            const struct raw_pkt_bsmp *bsmp)
+                            const struct raw_pkt_bsmp *bsamps,
+                            size_t n)
 {
-    return write(raw_cs_data(chns)->fd, bsmp, sizeof(*bsmp));
+    return write(raw_cs_data(chns)->fd, bsamps, n * sizeof(*bsamps));
 }
