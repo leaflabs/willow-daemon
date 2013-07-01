@@ -17,7 +17,7 @@
 // ************ ALWAYS USE [packed=true] IN REPEATED FIELDS. **************
 // ************************************************************************
 
-// The daemon sends Sample (see below) messages to the client data socket.
+// The daemon sends DnodeSample (see below) messages to the client data socket.
 
 message BoardSubsample {
     optional bool is_live = 1;
