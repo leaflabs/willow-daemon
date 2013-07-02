@@ -43,18 +43,18 @@
 #define HOST_H5_ORDER (IS_LITTLE_ENDIAN ? H5T_ORDER_LE : H5T_ORDER_BE)
 #define COOKIE_H5_TYPE H5T_NATIVE_UINT64
 
-static int hdf5_cs_open(struct ch_storage *chns, unsigned flags);
-static int hdf5_cs_close(struct ch_storage *chns);
-static int hdf5_cs_datasync(struct ch_storage *chns);
-static int hdf5_cs_write(struct ch_storage *chns,
+static int hdf5_ch_open(struct ch_storage *chns, unsigned flags);
+static int hdf5_ch_close(struct ch_storage *chns);
+static int hdf5_ch_datasync(struct ch_storage *chns);
+static int hdf5_ch_write(struct ch_storage *chns,
                          const struct raw_pkt_bsmp*,
                          size_t);
 
 static const struct ch_storage_ops hdf5_ch_storage_ops = {
-    .cs_open = hdf5_cs_open,
-    .cs_close = hdf5_cs_close,
-    .cs_datasync = hdf5_cs_datasync,
-    .cs_write = hdf5_cs_write,
+    .ch_open = hdf5_ch_open,
+    .ch_close = hdf5_ch_close,
+    .ch_datasync = hdf5_ch_datasync,
+    .ch_write = hdf5_ch_write,
 };
 
 /* Convert an unsigned integer (or unsigned type) to the corresponding
@@ -78,7 +78,7 @@ static const struct ch_storage_ops hdf5_ch_storage_ops = {
     })
 
 /* Dataset attributes and their names -- the numbers index into
- * h5_cs_data->h5_attrs, and aren't necessarily the same as their
+ * h5_ch_data->h5_attrs, and aren't necessarily the same as their
  * indices in an HDF5 file. */
 #define H5_ATTR_MTYPE 0         /* mtype (==RAW_MTYPE_BSMP) */
 #define H5_ATTR_BOARD_ID 1      /* board identifier */
@@ -90,7 +90,7 @@ static const struct ch_storage_ops hdf5_ch_storage_ops = {
 #define H5_ATTR_COOKIE_NAME "experiment_cookie"
 #define H5_NATTRS (H5_ATTR_COOKIE + 1)
 
-struct h5_cs_data {
+struct h5_ch_data {
     const char *dset_name;      /* dataset name */
     hid_t h5_file;              /* HDF5 file type */
     hid_t h5_dspace;            /* data space */
@@ -111,13 +111,13 @@ struct h5_cs_data {
     uint32_t h5_debug_board_id;
 };
 
-static inline struct h5_cs_data* h5_data(struct ch_storage *chns)
+static inline struct h5_ch_data* h5_data(struct ch_storage *chns)
 {
-    struct h5_cs_data *data = chns->priv;
+    struct h5_ch_data *data = chns->priv;
     return data;
 }
 
-static void h5_ch_data_init(struct h5_cs_data *data, const char *dset_name)
+static void h5_ch_data_init(struct h5_ch_data *data, const char *dset_name)
 {
     /*
      * These could be partitioned into init-only and
@@ -143,7 +143,7 @@ static void h5_ch_data_init(struct h5_cs_data *data, const char *dset_name)
     data->h5_debug_board_id = 0;
 }
 
-static int h5_ch_data_teardown(struct h5_cs_data *data)
+static int h5_ch_data_teardown(struct h5_ch_data *data)
 {
     int ret = 0;
     for (size_t i = 0; i < H5_NATTRS; i++) {
@@ -185,14 +185,14 @@ struct ch_storage *hdf5_ch_storage_alloc(const char *out_file_path,
                                          const char *dataset_name)
 {
     struct ch_storage *storage = malloc(sizeof(struct ch_storage));
-    struct h5_cs_data *data = malloc(sizeof(struct h5_cs_data));
+    struct h5_ch_data *data = malloc(sizeof(struct h5_ch_data));
     if (!storage || !data) {
         free(storage);
         free(data);
         return NULL;
     }
     h5_ch_data_init(data, dataset_name);
-    storage->cs_path = out_file_path;
+    storage->ch_path = out_file_path;
     storage->ops = &hdf5_ch_storage_ops;
     storage->priv = data;
     return storage;
@@ -205,7 +205,7 @@ void hdf5_ch_storage_free(struct ch_storage *chns)
 }
 
 /* Make the data space for storing board samples */
-static hid_t hdf5_create_dspace(struct h5_cs_data *data)
+static hid_t hdf5_create_dspace(struct h5_ch_data *data)
 {
     const hsize_t cur_dim = 0, max_dim = H5S_UNLIMITED;
     data->h5_dspace = H5Screate_simple(RANK, &cur_dim, &max_dim);
@@ -213,7 +213,7 @@ static hid_t hdf5_create_dspace(struct h5_cs_data *data)
 }
 
 /* Make the data types for storing board samples */
-static hid_t hdf5_create_dtypes(struct h5_cs_data *data)
+static hid_t hdf5_create_dtypes(struct h5_ch_data *data)
 {
     struct raw_pkt_bsmp bs;     /* just for type conversion/sizeof */
     hsize_t nsamps = RAW_BSMP_NSAMP;
@@ -240,7 +240,7 @@ static hid_t hdf5_create_dtypes(struct h5_cs_data *data)
 }
 
 /* Make the data set itself */
-static hid_t hdf5_create_dset(struct h5_cs_data *data)
+static hid_t hdf5_create_dset(struct h5_ch_data *data)
 {
     hid_t ret = -1;
     hid_t cprops = H5Pcreate(H5P_DATASET_CREATE);
@@ -260,7 +260,7 @@ static hid_t hdf5_create_dset(struct h5_cs_data *data)
 }
 
 /* Add attributes for experiment-wide packet fields */
-static hid_t hdf5_create_attrs(struct h5_cs_data *data)
+static hid_t hdf5_create_attrs(struct h5_ch_data *data)
 {
     struct raw_pkt_bsmp bs;
     raw_packet_init(&bs, RAW_MTYPE_BSMP, 0);
@@ -313,12 +313,12 @@ static hid_t hdf5_create_attrs(struct h5_cs_data *data)
     return 0;
 }
 
-static int hdf5_cs_open(struct ch_storage *chns, unsigned flags)
+static int hdf5_ch_open(struct ch_storage *chns, unsigned flags)
 {
-    struct h5_cs_data tmp;
+    struct h5_ch_data tmp;
     h5_ch_data_init(&tmp, h5_data(chns)->dset_name); /* initialize defaults */
 
-    tmp.h5_file = H5Fcreate(chns->cs_path, flags, H5P_DEFAULT, H5P_DEFAULT);
+    tmp.h5_file = H5Fcreate(chns->ch_path, flags, H5P_DEFAULT, H5P_DEFAULT);
     if (tmp.h5_file < 0) {
         goto fail;
     }
@@ -341,25 +341,25 @@ static int hdf5_cs_open(struct ch_storage *chns, unsigned flags)
     if (h5_ch_data_teardown(&tmp) == -1) {
         log_ERR("HDF5 teardown failed");
     }
-    if (H5Fis_hdf5(chns->cs_path) > 0 && unlink(chns->cs_path) == -1) {
-        log_ERR("can't unlink %s: %m", chns->cs_path);
+    if (H5Fis_hdf5(chns->ch_path) > 0 && unlink(chns->ch_path) == -1) {
+        log_ERR("can't unlink %s: %m", chns->ch_path);
     }
     return -1;
 }
 
-static int hdf5_cs_close(struct ch_storage *chns)
+static int hdf5_ch_close(struct ch_storage *chns)
 {
-    struct h5_cs_data *data = h5_data(chns);
+    struct h5_ch_data *data = h5_data(chns);
     if (H5Dset_extent(data->h5_dset, &data->h5_dset_off) < 0) {
         log_ERR("Can't clean up dataset on close; sample data in "
                 "%s, dataset %s after offset %llu will be garbage",
-                chns->cs_path, data->dset_name,
+                chns->ch_path, data->dset_name,
                 (long long unsigned)data->h5_dset_off);
     }
     return h5_ch_data_teardown(h5_data(chns));
 }
 
-static int hdf5_cs_datasync(struct ch_storage *chns)
+static int hdf5_ch_datasync(struct ch_storage *chns)
 {
     return H5Fflush(h5_data(chns)->h5_file, H5F_SCOPE_LOCAL);
 }
@@ -368,7 +368,7 @@ static int hdf5_cs_datasync(struct ch_storage *chns)
 static void hdf5_init_exp_attrs(struct ch_storage *chns,
                                 const struct raw_pkt_bsmp *bs)
 {
-    struct h5_cs_data *data = h5_data(chns);
+    struct h5_ch_data *data = h5_data(chns);
     raw_cookie_t cookie = raw_exp_cookie(bs);
     if (hdf5_write_close(data->h5_attrs + H5_ATTR_BOARD_ID,
                          TO_H5_UTYPE(bs->b_id), &bs->b_id) ||
@@ -383,7 +383,7 @@ static void hdf5_init_exp_attrs(struct ch_storage *chns,
 }
 
 /* Increase the size of the dataset to make room for more samples. */
-static herr_t hdf5_extend(struct h5_cs_data *data, hsize_t minsize)
+static herr_t hdf5_extend(struct h5_ch_data *data, hsize_t minsize)
 {
     hsize_t newsize;
     if (data->h5_dset_size) {
@@ -404,11 +404,11 @@ static herr_t hdf5_extend(struct h5_cs_data *data, hsize_t minsize)
     return ret;
 }
 
-static int hdf5_cs_write(struct ch_storage *chns,
+static int hdf5_ch_write(struct ch_storage *chns,
                          const struct raw_pkt_bsmp *bsamps,
                          size_t nsamps)
 {
-    struct h5_cs_data *data = h5_data(chns);
+    struct h5_ch_data *data = h5_data(chns);
     if (!nsamps) {
         return 0;
     }

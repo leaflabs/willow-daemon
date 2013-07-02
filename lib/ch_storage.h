@@ -34,39 +34,39 @@ struct ch_storage_ops;
 struct raw_pkt_bsmp;
 
 struct ch_storage {
-    const char *cs_path;
+    const char *ch_path;
     const struct ch_storage_ops *ops;
     void *priv;
 };
 
 struct ch_storage_ops {
-    int (*cs_open)(struct ch_storage*, unsigned flags);
-    int (*cs_close)(struct ch_storage*);
-    int (*cs_datasync)(struct ch_storage*);
-    int (*cs_write)(struct ch_storage*, const struct raw_pkt_bsmp *bsamps,
+    int (*ch_open)(struct ch_storage*, unsigned flags);
+    int (*ch_close)(struct ch_storage*);
+    int (*ch_datasync)(struct ch_storage*);
+    int (*ch_write)(struct ch_storage*, const struct raw_pkt_bsmp *bsamps,
                     size_t nsamps);
 };
 
 static inline int ch_storage_open(struct ch_storage *chns, unsigned flags)
 {
-    return chns->ops->cs_open(chns, flags);
+    return chns->ops->ch_open(chns, flags);
 }
 
 static inline int ch_storage_close(struct ch_storage *chns)
 {
-    return chns->ops->cs_close(chns);
+    return chns->ops->ch_close(chns);
 }
 
 static inline int ch_storage_datasync(struct ch_storage *chns)
 {
-    return chns->ops->cs_datasync(chns);
+    return chns->ops->ch_datasync(chns);
 }
 
 static inline int ch_storage_write(struct ch_storage *chns,
                                    const struct raw_pkt_bsmp *bsamps,
                                    size_t nsamps)
 {
-    return chns->ops->cs_write(chns, bsamps, nsamps);
+    return chns->ops->ch_write(chns, bsamps, nsamps);
 }
 
 #endif

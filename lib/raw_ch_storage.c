@@ -24,35 +24,35 @@
 #include "ch_storage.h"
 #include "raw_packets.h"
 
-struct raw_cs_data {
+struct raw_ch_data {
     int fd;
     mode_t mode;
 };
 
-static inline struct raw_cs_data* raw_cs_data(struct ch_storage *chns)
+static inline struct raw_ch_data* raw_ch_data(struct ch_storage *chns)
 {
-    struct raw_cs_data *data = chns->priv;
+    struct raw_ch_data *data = chns->priv;
     return data;
 }
 
-static int raw_cs_open(struct ch_storage *chns, unsigned flags);
-static int raw_cs_close(struct ch_storage *chns);
-static int raw_cs_datasync(struct ch_storage *chns);
-static int raw_cs_write(struct ch_storage *chns,
+static int raw_ch_open(struct ch_storage *chns, unsigned flags);
+static int raw_ch_close(struct ch_storage *chns);
+static int raw_ch_datasync(struct ch_storage *chns);
+static int raw_ch_write(struct ch_storage *chns,
                         const struct raw_pkt_bsmp*,
                         size_t);
 
 static const struct ch_storage_ops raw_ch_storage_ops = {
-    .cs_open = raw_cs_open,
-    .cs_close = raw_cs_close,
-    .cs_datasync = raw_cs_datasync,
-    .cs_write = raw_cs_write,
+    .ch_open = raw_ch_open,
+    .ch_close = raw_ch_close,
+    .ch_datasync = raw_ch_datasync,
+    .ch_write = raw_ch_write,
 };
 
 struct ch_storage *raw_ch_storage_alloc(const char *out_file_path, mode_t mode)
 {
     struct ch_storage *storage = malloc(sizeof(struct ch_storage));
-    struct raw_cs_data *data = malloc(sizeof(struct raw_cs_data));
+    struct raw_ch_data *data = malloc(sizeof(struct raw_ch_data));
     if (!storage || !data) {
         free(storage);
         free(data);
@@ -60,7 +60,7 @@ struct ch_storage *raw_ch_storage_alloc(const char *out_file_path, mode_t mode)
     }
     data->fd = -1;
     data->mode = mode;
-    storage->cs_path = out_file_path;
+    storage->ch_path = out_file_path;
     storage->ops = &raw_ch_storage_ops;
     storage->priv = data;
     return storage;
@@ -68,32 +68,32 @@ struct ch_storage *raw_ch_storage_alloc(const char *out_file_path, mode_t mode)
 
 void raw_ch_storage_free(struct ch_storage *chns)
 {
-    free(raw_cs_data(chns));
+    free(raw_ch_data(chns));
     free(chns);
 }
 
-static int raw_cs_open(struct ch_storage *chns, unsigned flags)
+static int raw_ch_open(struct ch_storage *chns, unsigned flags)
 {
-    struct raw_cs_data *data = chns->priv;
-    data->fd = open(chns->cs_path, flags, data->mode);
+    struct raw_ch_data *data = chns->priv;
+    data->fd = open(chns->ch_path, flags, data->mode);
     return data->fd;
 }
 
-static int raw_cs_close(struct ch_storage *chns)
+static int raw_ch_close(struct ch_storage *chns)
 {
-    return close(raw_cs_data(chns)->fd);
+    return close(raw_ch_data(chns)->fd);
 }
 
-static int raw_cs_datasync(struct ch_storage *chns)
+static int raw_ch_datasync(struct ch_storage *chns)
 {
-    return fdatasync(raw_cs_data(chns)->fd);
+    return fdatasync(raw_ch_data(chns)->fd);
 }
 
-static int raw_cs_write(struct ch_storage *chns,
+static int raw_ch_write(struct ch_storage *chns,
                         const struct raw_pkt_bsmp *bsamps,
                         size_t n)
 {
-    ssize_t status = write(raw_cs_data(chns)->fd, bsamps, n * sizeof(*bsamps));
+    ssize_t status = write(raw_ch_data(chns)->fd, bsamps, n * sizeof(*bsamps));
     return (status < 0 ? (int)status :
             status == (ssize_t)(n * sizeof(*bsamps)) ? 0 :
             -1);
