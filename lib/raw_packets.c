@@ -274,7 +274,6 @@ ssize_t raw_cmd_send(int sockfd, struct raw_pkt_cmd *pkt, int flags)
         /* We want raw_cmd_send() to work atomically on raw_pkt_cmds,
          * but we didn't send enough data. Eventually, we'll do
          * something smarter, but just fail for now. */
-        /* TODO be smarter */
         log_WARNING("not enough data sent (%zd/%zu B)", ret, len);
         errno = EIO;
         return -1;
@@ -291,7 +290,6 @@ ssize_t raw_cmd_recv(int sockfd, struct raw_pkt_cmd *pkt, int flags)
         return ret;
     } else if ((size_t)ret < len) {
         /* See comment in raw_cmd_send(). */
-        /* TODO be smarter */
         log_WARNING("%s: not enough data received (%zd/%zu B)",
                     __func__, ret, len);
         errno = EIO;
@@ -407,7 +405,6 @@ const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr)
         case CASE_STRINGIFY(RAW_RADDR_DAQ_UDP_MODE);
         case CASE_STRINGIFY(RAW_RADDR_DAQ_SATA_ENABLE);
         case RAW_RADDR_DAQ_BSUB0_CFG...RAW_RADDR_DAQ_BSUB31_CFG:
-            /* TODO be smarter */
             return "RAW_RADDR_DAQ_BSUBx_CFG";
 
         default: return "<UNKNOWN_DAQ_R_ADDR>";
