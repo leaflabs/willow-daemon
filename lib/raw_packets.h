@@ -435,6 +435,9 @@ int raw_num_regs(uint8_t r_type);
 
 ///@{
 
+/** Raw cookie type; use with raw_exp_cookie(). */
+typedef uint64_t raw_cookie_t;
+
 /** @brief Get a packet's full uint64_t experiment cookie
  * pktp may point to a struct raw_pkt_bsub or raw_pkt_bsmp. */
 #define raw_exp_cookie(pktp) ({                                 \
