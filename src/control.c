@@ -90,7 +90,7 @@ static void control_client_close(struct control_session *cs)
     cs->cbev = NULL;
     if (cs->ctl_txns) {
         /* Hope you weren't in the middle of anything important... */
-        log_INFO("halting data node I/O due to closed client connection");
+        log_DEBUG("client closing; clearing data node transactions");
         control_clear_transactions(cs, 1);
     }
     control_must_unlock(cs);

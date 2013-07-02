@@ -156,7 +156,7 @@ static int dnode_got_entire_pkt(struct control_session *cs,
     switch (raw_mtype(pkt)) {
     case RAW_MTYPE_RES:
         if (!cs->ctl_txns) {
-            log_WARNING("ignoring result received outside of a transaction");
+            log_DEBUG("ignoring result received outside transaction handling");
             ret = 0;
         }
         break;

@@ -840,6 +840,8 @@ static void client_process_cmd_stream(struct control_session *cs)
     cs->wake_why |= CONTROL_WHY_DNODE_TXN;
 }
 
+typedef void (*cmd_proc_fn)(struct control_session*);
+
 static void client_process_cmd(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
@@ -849,19 +851,25 @@ static void client_process_cmd(struct control_session *cs)
         return;
     }
 
-    log_DEBUG("%s: handling protocol message, type %d", __func__, cmd->type);
+    cmd_proc_fn proc;
+    const char *type;
 
     switch (cmd->type) {
     case CONTROL_COMMAND__TYPE__REG_IO:
-        client_process_cmd_regio(cs);
+        proc = client_process_cmd_regio;
+        type = "REG_IO";
         break;
     case CONTROL_COMMAND__TYPE__STREAM:
-        client_process_cmd_stream(cs);
+        proc = client_process_cmd_stream;
+        type = "STREAM";
         break;
     default:
         CLIENT_RES_ERR_C_PROTO(cs, "unknown command type");
-        break;
+        return;
     }
+    log_DEBUG("%s: handling protocol message, type %s (%d)", __func__,
+              type, cmd->type);
+    proc(cs);
 }
 
 /*
