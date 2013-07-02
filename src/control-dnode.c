@@ -155,10 +155,6 @@ static int dnode_got_entire_pkt(struct control_session *cs,
     }
     switch (raw_mtype(pkt)) {
     case RAW_MTYPE_RES:
-        if (!cs->ctl_txns) {
-            log_DEBUG("ignoring result received outside transaction handling");
-            ret = 0;
-        }
         break;
     case RAW_MTYPE_ERR:
         break;
@@ -231,7 +227,13 @@ static int dnode_read(struct control_session *cs)
         assert(0);
         return CONTROL_WHY_EXIT;
     }
-    memcpy(&cs->ctl_txns[cs->ctl_cur_txn].res_pkt, &pkt, sizeof(pkt));
+    if (ret == CONTROL_WHY_CLIENT_RES) {
+        if (!cs->ctl_txns) {
+            log_DEBUG("ignoring result received outside transaction handling");
+            return CONTROL_WHY_NONE;
+        }
+        memcpy(&cs->ctl_txns[cs->ctl_cur_txn].res_pkt, &pkt, sizeof(pkt));
+    }
     return dnode_HACK_ensure_no_more_packets(cs, ret);
 }
 
