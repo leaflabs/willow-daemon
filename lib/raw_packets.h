@@ -13,8 +13,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/* XXX this is just a sketch; don't take it too seriously. [mbolivar] */
-
 /**
  * @file raw_data_packets.h
  *
