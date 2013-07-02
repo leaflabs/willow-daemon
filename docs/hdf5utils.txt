@@ -1,0 +1,8 @@
+See the header information of an HDF5 file in human-readable ASCII
+(i.e. datasets, but not data):
+
+    h5dump --header foo.h5
+
+Entire contents of HDF5 file, in ASCII:
+
+    h5dump foo.h5
