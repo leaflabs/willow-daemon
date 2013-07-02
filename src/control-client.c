@@ -95,34 +95,6 @@ static inline client_cmd_len_t cmd_hton(client_cmd_len_t host)
     return htonl(host);
 }
 
-#define CLIENT_EPROTO_CMDLEN 0
-#define CLIENT_EPROTO_2CMDS  1
-#define CLIENT_EPROTO_PMSG   2
-#define CLIENT_EPROTO_MAX    3
-
-static const char *client_eproto_str(unsigned eproto)
-{
-    static const char* strings[] = {
-        [CLIENT_EPROTO_CMDLEN] = "command length too long",
-        [CLIENT_EPROTO_2CMDS] = "too many commands on the wire",
-        [CLIENT_EPROTO_PMSG] = "malformed protocol message",
-        [CLIENT_EPROTO_MAX] = "unknown error",
-    };
-    if (eproto >= CLIENT_EPROTO_MAX) {
-        eproto = CLIENT_EPROTO_MAX;
-    }
-    return strings[eproto];
-}
-
-static void client_fatal_protocol_error(__unused struct control_session *cs,
-                                        unsigned eproto)
-{
-    /* FIXME XXX shut down the connection instead, to prevent DoS
-     * attacks. */
-    log_CRIT("client protocol error: %s", client_eproto_str(eproto));
-    exit(EXIT_FAILURE);
-}
-
 /* NOT SYNCHRONIZED; do not call while worker thread is running.*/
 static void client_free_priv(struct control_session *cs)
 {
@@ -357,7 +329,7 @@ static int client_got_entire_pbuf(struct control_session *cs)
 
     /* Sanity-check the received protocol buffer length. */
     if (cpriv->c_cmdlen > CONTROL_CMD_MAX_SIZE) {
-        client_fatal_protocol_error(cs, CLIENT_EPROTO_CMDLEN);
+        return -1;              /* Too long; kill the connection. */
     }
 
     /* We've received a complete length prefix, so shove any
@@ -389,16 +361,27 @@ static int client_read(struct control_session *cs)
     /*
      * Try to pull an entire protocol buffer out of cs->dbev.
      */
-    if (!client_got_entire_pbuf(cs)) {
+    switch (client_got_entire_pbuf(cs)) {
+    case 1:
+        break; /* Success */
+    case 0:
+        goto done; /* Still waiting */
+    case -1:
+        ret = -1;        /* Oops, time to die */
+        goto done;
+    default:
+        assert(0);
+        log_ERR("%s: can't happen", __func__);
+        drain_evbuf(bufferevent_get_input(cs->cbev));
         goto done;
     }
 
     if (cpriv->c_cmd || cs->ctl_txns) {
         /* There's an existing command we're still dealing with; the
-         * client shouldn't have sent us a new one. */
-        CLIENT_RES_ERR_C_PROTO(cs,
-                               "command received while another "
-                               "is being processed");
+         * client shouldn't have sent us a new one. Kill the
+         * connection so we don't have to bother queueing
+         * responses. */
+        ret = -1;
         goto done;
     }
 
@@ -423,21 +406,16 @@ static int client_read(struct control_session *cs)
          * a time, so the fact that we just read another is a protocol
          * error.
          *
-         * Ensuring that there isn't another protocol buffer waiting
-         * in cs->cbev at this time implies that this callback will
-         * get invoked again when the next one finishes arriving. By
-         * sending an error now, we don't get stuck with a complete
-         * command sitting in an evbuffer and libevent having no
-         * reason to invoke a callback to process it. */
-        CLIENT_RES_ERR_C_PROTO(cs, "two commands sent at once; both dropped");
-        client_reset_for_next_pbuf(cs);
-        goto done;
-    } else {
-        ret = CONTROL_WHY_CLIENT_CMD;
+         * Kill the connection. We can queue commands later. */
+        ret = -1;
         goto done;
     }
+    ret = CONTROL_WHY_CLIENT_CMD;
 
  done:
+    if (ret == -1) {
+        client_reset_for_next_pbuf(cs);
+    }
     control_must_unlock(cs);
     return ret;
 }
