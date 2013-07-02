@@ -169,8 +169,9 @@ struct control_ops {
      *
      * Pull data out of your bufferevent. If that's not enough data,
      * return CONTROL_WHY_NONE. If you've got something to wake up the
-     * worker with, return an appropriate control_worker_why code. */
-    enum control_worker_why (*cs_read)(struct control_session *cs);
+     * worker with, return another appropriate control_worker_why
+     * code. If something went wrong and you need to die, return -1. */
+    int (*cs_read)(struct control_session *cs);
 
     /* Worker thread callback. */
     void (*cs_thread)(struct control_session *cs);

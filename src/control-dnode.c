@@ -173,7 +173,7 @@ static int dnode_got_entire_pkt(struct control_session *cs,
     return ret;
 }
 
-static enum control_worker_why
+static int
 dnode_HACK_ensure_no_more_packets(struct control_session *cs,
                                   enum control_worker_why desired)
 {
@@ -200,14 +200,14 @@ dnode_HACK_ensure_no_more_packets(struct control_session *cs,
     return desired;
 }
 
-static enum control_worker_why dnode_read(struct control_session *cs)
+static int dnode_read(struct control_session *cs)
 {
     struct raw_pkt_cmd pkt;
     if (!dnode_got_entire_pkt(cs, &pkt)) {
         return CONTROL_WHY_NONE;
     }
     uint8_t mtype = raw_mtype(&pkt);
-    enum control_worker_why ret;
+    int ret;
     switch (mtype) {
     case RAW_MTYPE_RES:
         if (raw_pkt_is_err(&pkt)) {

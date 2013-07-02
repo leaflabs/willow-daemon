@@ -379,9 +379,9 @@ static void client_reset_for_next_pbuf(struct control_session *cs)
     assert(evbuffer_get_length(cpriv->c_cmdlen_buf) == 0);
 }
 
-static enum control_worker_why client_read(struct control_session *cs)
+static int client_read(struct control_session *cs)
 {
-    enum control_worker_why ret = CONTROL_WHY_NONE;
+    int ret = CONTROL_WHY_NONE;
     struct client_priv *cpriv = cs->cpriv;
 
     control_must_lock(cs);

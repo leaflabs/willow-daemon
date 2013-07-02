@@ -99,7 +99,7 @@ static void control_client_close(struct control_session *cs)
     }
 }
 
-static enum control_worker_why control_client_read(struct control_session *cs)
+static int control_client_read(struct control_session *cs)
 {
     if (!control_client_ops->cs_read) {
         return CONTROL_WHY_NONE;
@@ -172,7 +172,7 @@ static void control_dnode_close(struct control_session *cs)
     }
 }
 
-static enum control_worker_why control_dnode_read(struct control_session *cs)
+static int control_dnode_read(struct control_session *cs)
 {
     if (!control_dnode_ops->cs_read) {
         return CONTROL_WHY_NONE;
@@ -369,11 +369,19 @@ control_conn_open(struct control_session *cs,
 
 static void
 control_bev_reader(struct control_session *cs,
-                   enum control_worker_why (*reader)(struct control_session*),
+                   int (*reader)(struct control_session*),
+                   void (*closer)(struct control_session*),
                    const char *log_who)
 {
-    enum control_worker_why read_why_wake = reader(cs);
+    int read_why_wake = reader(cs);
     switch (read_why_wake) {
+    case -1:
+        /*
+         * TODO: add mechanism for sending an error first
+         */
+        log_INFO("forcibly closing %s connection", log_who);
+        closer(cs);
+        break;
     case CONTROL_WHY_NONE:
         break;
     case CONTROL_WHY_EXIT:
@@ -381,7 +389,7 @@ control_bev_reader(struct control_session *cs,
         control_fatal_err("error reading from bufferevent", -1);
         break;
     default:
-        control_must_wake(cs, read_why_wake);
+        control_must_wake(cs, (enum control_worker_why)read_why_wake);
         break;
     }
 }
@@ -390,14 +398,16 @@ static void control_client_bev_read(__unused struct bufferevent *bev,
                                     void *csessvp)
 {
     struct control_session *cs = csessvp;
-    control_bev_reader(cs, control_client_read, "client");
+    control_bev_reader(cs, control_client_read, control_client_close,
+                       "client");
 }
 
 static void control_dnode_bev_read(__unused struct bufferevent *bev,
                                    void *csessvp)
 {
     struct control_session *cs = csessvp;
-    control_bev_reader(cs, control_dnode_read, "data node");
+    control_bev_reader(cs, control_dnode_read, control_dnode_close,
+                       "data node");
 }
 
 static void client_ecl(__unused struct evconnlistener *ecl, evutil_socket_t fd,
