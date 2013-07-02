@@ -161,8 +161,8 @@ static void control_dnode_close(struct control_session *cs)
     if (cs->ctl_txns) {
         /* FIXME if there are ongoing transactions, then the client
          * connection should also be open; we should get the
-         * client-side code to send an error response (how?), or naive
-         * client will block forever. */
+         * client-side code to send an error response (how?), or a
+         * naive client will block forever. */
         log_INFO("halting data node I/O due to closed dnode connection");
         control_clear_transactions(cs, 1);
     }
