@@ -35,6 +35,7 @@
 #include "ch_storage.h"
 #include "raw_packets.h"
 
+#define DSET_EXTEND_FACTOR 1.75 /* TODO tune this knob */
 #define RANK 1                  /* we store as an array of board samples */
 #define CHUNK_DIM0 50
 #define CHUNK_DIM1 1
@@ -97,8 +98,17 @@ struct h5_cs_data {
     hid_t h5_dtype;             /* board sample data type */
     hid_t h5_dset;              /* data set */
     hsize_t h5_chunk_dims[2];   /* data set chunk dimensions */
+    hsize_t h5_dset_off;        /* current dataset write offset */
+    hsize_t h5_dset_size;       /* current dataset size */
     hid_t h5_attr_dspace;       /* attribute data space */
     hid_t h5_attrs[H5_NATTRS];  /* dataset-wide attributes (see H5_ATTR_*) */
+
+    /* Some attributes can't be set until we get the first board
+     * sample (e.g. experiment cookie). This field indicates whether
+     * those fields have been set yet. */
+    int h5_need_attrs;
+
+    uint32_t h5_debug_board_id;
 };
 
 static inline struct h5_cs_data* h5_data(struct ch_storage *chns)
@@ -123,10 +133,14 @@ static void h5_ch_data_init(struct h5_cs_data *data, const char *dset_name)
     /* TODO tune the chunk dimensions and the chunk cache */
     data->h5_chunk_dims[0] = CHUNK_DIM0;
     data->h5_chunk_dims[1] = CHUNK_DIM1;
+    data->h5_dset_off = 0;
+    data->h5_dset_size = 0;
     data->h5_attr_dspace = -1;
     for (size_t i = 0; i < H5_NATTRS; i++) {
         data->h5_attrs[i] = -1;
     }
+    data->h5_need_attrs = 1;
+    data->h5_debug_board_id = 0;
 }
 
 static int h5_ch_data_teardown(struct h5_cs_data *data)
@@ -156,6 +170,15 @@ static int h5_ch_data_teardown(struct h5_cs_data *data)
         ret = -1;
     }
     return ret;
+}
+
+static int hdf5_write_close(hid_t *attr, hid_t mem_type_id, const void *buf)
+{
+    if (H5Awrite(*attr, mem_type_id, buf) < 0 || H5Aclose(*attr) < 0) {
+        return -1;
+    }
+    *attr = -1;
+    return 0;
 }
 
 struct ch_storage *hdf5_ch_storage_alloc(const char *out_file_path,
@@ -326,6 +349,13 @@ static int hdf5_cs_open(struct ch_storage *chns, unsigned flags)
 
 static int hdf5_cs_close(struct ch_storage *chns)
 {
+    struct h5_cs_data *data = h5_data(chns);
+    if (H5Dset_extent(data->h5_dset, &data->h5_dset_off) < 0) {
+        log_ERR("Can't clean up dataset on close; sample data in "
+                "%s, dataset %s after offset %llu will be garbage",
+                chns->cs_path, data->dset_name,
+                (long long unsigned)data->h5_dset_off);
+    }
     return h5_ch_data_teardown(h5_data(chns));
 }
 
@@ -334,18 +364,105 @@ static int hdf5_cs_datasync(struct ch_storage *chns)
     return H5Fflush(h5_data(chns)->h5_file, H5F_SCOPE_LOCAL);
 }
 
+/* Initialize dataset attributes that require a board sample to fill in. */
+static void hdf5_init_exp_attrs(struct ch_storage *chns,
+                                const struct raw_pkt_bsmp *bs)
+{
+    struct h5_cs_data *data = h5_data(chns);
+    raw_cookie_t cookie = raw_exp_cookie(bs);
+    if (hdf5_write_close(data->h5_attrs + H5_ATTR_BOARD_ID,
+                         TO_H5_UTYPE(bs->b_id), &bs->b_id) ||
+        hdf5_write_close(data->h5_attrs + H5_ATTR_COOKIE,
+                         COOKIE_H5_TYPE, &cookie)) {
+        log_ERR("Can't initialize some HDF5 attributes "
+                "(board_id=%llu, cookie=%llu), "
+                "some data will be missing",
+                (long long unsigned)bs->b_id,
+                (long long unsigned)raw_exp_cookie(bs));
+    }
+}
+
+/* Increase the size of the dataset to make room for more samples. */
+static herr_t hdf5_extend(struct h5_cs_data *data, hsize_t minsize)
+{
+    hsize_t newsize;
+    if (data->h5_dset_size) {
+        newsize = (double)data->h5_dset_size * DSET_EXTEND_FACTOR + 0.5;
+    } else {
+        newsize = 1;
+    }
+    if (newsize < minsize) {
+        newsize = minsize;
+    }
+#if RANK != 1
+#error "If RANK !=1, hdf5_extend is broken"
+#endif
+    herr_t ret = H5Dset_extent(data->h5_dset, &newsize);
+    if (ret >= 0) {
+        data->h5_dset_size = newsize;
+    }
+    return ret;
+}
+
 static int hdf5_cs_write(struct ch_storage *chns,
                          const struct raw_pkt_bsmp *bsamps,
                          size_t nsamps)
 {
-    /* TODO */
-    /* FIXME: on first attribute write,
-     *     7. Write the attribute data (optional) */
-    log_WARNING("XXXXXXXXX "
-                "%s skipping write of %zu board samples"
-                "from %p to %s (not implemented) "
-                "XXXXXXXXX",
-                __func__, nsamps, (void*)bsamps, chns->cs_path);
-    errno = EIO;
-    return -1;
+    struct h5_cs_data *data = h5_data(chns);
+    if (!nsamps) {
+        return 0;
+    }
+
+    /* Take care of "first write" bookkeeping. */
+    if (data->h5_need_attrs) {
+        data->h5_debug_board_id = bsamps[0].b_id;
+        hdf5_init_exp_attrs(chns, bsamps);
+        data->h5_need_attrs = 0;
+    }
+
+    /* Sanity-check that we're not getting packets from a different board. */
+    assert(bsamps[0].b_id == data->h5_debug_board_id);
+
+    /* If we're getting more board samples than will fit, we need to
+     * extend the dataset. */
+    hsize_t next_offset = data->h5_dset_off + nsamps;
+    if (next_offset >= data->h5_dset_size) {
+        if (hdf5_extend(data, next_offset) < 0) {
+            log_ERR("Can't increase space allocated for HDF5 dataset");
+            return -1;
+        }
+    }
+
+    /* Everything's set up; do the write. */
+    int ret = -1;
+    hsize_t slabdims[RANK] = {(hsize_t)nsamps};
+    hid_t filespace = -1;
+    hid_t memspace = -1;
+
+    filespace = H5Dget_space(data->h5_dset);
+    if (filespace < 0) {
+        goto fail;
+    }
+    memspace = H5Screate_simple(RANK, slabdims, NULL);
+    if (memspace < 0) {
+        goto fail;
+    }
+    if (H5Sselect_hyperslab(filespace, H5S_SELECT_SET, &data->h5_dset_off,
+                            NULL, slabdims, NULL) < 0) {
+        goto fail;
+    }
+    if (H5Dwrite(data->h5_dset, data->h5_dtype, memspace, filespace,
+                 H5P_DEFAULT, bsamps) < 0) {
+        goto fail;
+    }
+    data->h5_dset_off = next_offset;
+    ret = 0;
+ fail:
+    if (filespace != -1 && H5Sclose(filespace) < 0) {
+        log_ERR("can't free resources acquired while writing samples");
+    }
+    if (memspace != -1 && H5Sclose(memspace) < 0) {
+        log_ERR("can't free resources acquired while writing samples");
+    }
+    return ret;
 }
