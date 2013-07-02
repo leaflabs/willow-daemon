@@ -51,6 +51,10 @@ START_TEST(test_hdf5_end_to_end)
     bsmp.b_sidx++;
     ck_assert(ch_storage_write(chns, &bsmp, 1) == 0);
     ck_assert(ch_storage_close(chns) == 0);
+
+    /*
+     * FIXME write verification using just the HDF5 API
+     */
 }
 END_TEST
 
