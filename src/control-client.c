@@ -222,6 +222,10 @@ static void client_send_success(struct control_session *cs)
         client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__DNODE,        \
                         "data node error: " msg); } while (0)
 
+#define CLIENT_RES_ERR_DNODE_ASYNC(cs) do {                            \
+        client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__DNODE_ASYNC,    \
+                        "data node async error"); } while (0)
+
 /********************************************************************
  * Main thread control_ops callbacks
  */
@@ -1016,10 +1020,13 @@ static void client_process_res(struct control_session *cs)
     }
 }
 
-static void client_process_err(__unused struct control_session *cs)
+static void client_process_err(struct control_session *cs)
 {
-    log_ERR("%s: FIXME; unimplemented", __func__);
-    exit(EXIT_FAILURE);
+    if (!cs->cbev) {
+        log_INFO("dropping dnode error packet; no one is listening");
+    } else {
+        CLIENT_RES_ERR_DNODE_ASYNC(cs);
+    }
 }
 
 #define CLIENT_WHY_WAKE \

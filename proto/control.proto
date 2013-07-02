@@ -200,6 +200,10 @@ message ControlCommand {
 //
 // These are sent from daemon to client on the client control socket
 // to indicate the result of a ControlCommand.
+//
+// You may receive ControlResErr error packets when the data node
+// asynchronously signals an error. In this case, the ErrCode field
+// will be set to DNODE_ASYNC.
 
 // Error response
 message ControlResErr {
@@ -214,6 +218,8 @@ message ControlResErr {
         D_PROTO = 3;
         // Data node transaction failed
         DNODE = 4;
+        // Asynchronous data node error
+        DNODE_ASYNC = 5;
     }
     optional ErrCode code = 1;
     optional string msg = 2;

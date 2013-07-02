@@ -276,7 +276,9 @@ static void* control_worker_main(void *csessvp)
             control_must_unlock(cs);
             pthread_exit(NULL);
         }
-        if (cs->wake_why & (CONTROL_WHY_CLIENT_CMD | CONTROL_WHY_CLIENT_RES)) {
+        if (cs->wake_why & (CONTROL_WHY_CLIENT_CMD |
+                            CONTROL_WHY_CLIENT_RES |
+                            CONTROL_WHY_CLIENT_ERR)) {
             control_client_thread(cs);
         }
         if (cs->wake_why & CONTROL_WHY_DNODE_TXN) {
