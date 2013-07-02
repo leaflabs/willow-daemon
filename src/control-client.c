@@ -417,9 +417,6 @@ static int client_read(struct control_session *cs)
     ret = CONTROL_WHY_CLIENT_CMD;
 
  done:
-    if (ret == -1) {
-        client_reset_for_next_pbuf(cs);
-    }
     control_must_unlock(cs);
     return ret;
 }
