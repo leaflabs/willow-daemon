@@ -370,7 +370,7 @@ control_conn_open(struct control_session *cs,
 static void
 control_bev_reader(struct control_session *cs,
                    enum control_worker_why (*reader)(struct control_session*),
-                   __unused const char *log_who)
+                   const char *log_who)
 {
     enum control_worker_why read_why_wake = reader(cs);
     switch (read_why_wake) {
