@@ -43,8 +43,8 @@ struct ch_storage_ops {
     int (*cs_open)(struct ch_storage*, unsigned flags);
     int (*cs_close)(struct ch_storage*);
     int (*cs_datasync)(struct ch_storage*);
-    ssize_t (*cs_write)(struct ch_storage*, const struct raw_pkt_bsmp *bsamps,
-                        size_t nsamps);
+    int (*cs_write)(struct ch_storage*, const struct raw_pkt_bsmp *bsamps,
+                    size_t nsamps);
 };
 
 static inline int ch_storage_open(struct ch_storage *chns, unsigned flags)
@@ -62,9 +62,9 @@ static inline int ch_storage_datasync(struct ch_storage *chns)
     return chns->ops->cs_datasync(chns);
 }
 
-static inline ssize_t ch_storage_write(struct ch_storage *chns,
-                                       const struct raw_pkt_bsmp *bsamps,
-                                       size_t nsamps)
+static inline int ch_storage_write(struct ch_storage *chns,
+                                   const struct raw_pkt_bsmp *bsamps,
+                                   size_t nsamps)
 {
     return chns->ops->cs_write(chns, bsamps, nsamps);
 }
