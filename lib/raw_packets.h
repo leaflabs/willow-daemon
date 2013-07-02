@@ -214,8 +214,8 @@ struct raw_pkt_cmd {
  * @see raw_req_init(), raw_res_init()
  */
 ///@{
-/** DO NOT USE */
-#define _RAW_PKT_HEADER_INITIALIZER(mtype)              \
+/** Initializer macro for packet header for message type "mtype" */
+#define RAW_PKT_HEADER_INITIALIZER(mtype)               \
     { ._p_magic = RAW_PKT_HEADER_MAGIC,                 \
       .p_proto_vers = RAW_PKT_HEADER_PROTO_VERS,        \
       .p_mtype = (mtype),                               \
@@ -224,19 +224,19 @@ struct raw_pkt_cmd {
 
 /** Initializer macro for a raw_pkt_cmd of request mtype, RAW_MTYPE_REQ. */
 #define RAW_PKT_REQ_INITIALIZER                                 \
-    { .ph = _RAW_PKT_HEADER_INITIALIZER(RAW_MTYPE_REQ),         \
+    { .ph = RAW_PKT_HEADER_INITIALIZER(RAW_MTYPE_REQ),         \
       .p = { .req = { .r_id = 0, .r_type = 0xFF,                \
                       .r_addr = 0xFF, .r_val = 0xdeadbeef } },  \
     }
 /** Initializer macro for a raw_pkt_cmd of response mtype, RAW_MTYPE_RES. */
 #define RAW_PKT_RES_INITIALIZER                             \
-    { .ph = _RAW_PKT_HEADER_INITIALIZER(RAW_MTYPE_RES),     \
+    { .ph = RAW_PKT_HEADER_INITIALIZER(RAW_MTYPE_RES),     \
       .p = { .res = { .r_id = 0, .r_type = 0xFF,            \
                       .r_addr = 0xFF, .r_val = 0xdeadbeef } \
     }
 /** Initializer macro for a raw_pkt_cmd of error mtype, RAW_MTYPE_ERR. */
 #define RAW_PKT_ERR_INITIALIZER                                         \
-    { .ph = _RAW_PKT_HEADER_INITIALIZER(RAW_MTYPE_ERR),                 \
+    { .ph = RAW_PKT_HEADER_INITIALIZER(RAW_MTYPE_ERR),                 \
       .p = { .err = { .pad_must_be_zero = { [_RAW_CSIZE - 1] = 0 } } }, \
     }
 ///@}
