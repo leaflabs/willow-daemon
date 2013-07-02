@@ -70,7 +70,7 @@ enum control_worker_why {
     CONTROL_WHY_CLIENT_CMD = 0x02, /* Unpacked new client command message */
     CONTROL_WHY_CLIENT_RES = 0x04, /* raw_pkt_cmd containing a response
                                     * needs to be processed */
-    CONTROL_WHY_CLIENT_ERR = 0x08, /* raw_pkt_cmd contianing an error
+    CONTROL_WHY_CLIENT_ERR = 0x08, /* raw_pkt_cmd containing an error
                                     * needs to be processed */
 
     /* These are processed by dnode-side code: */
