@@ -350,6 +350,18 @@ ssize_t raw_bsmp_send(int sockfd, struct raw_pkt_bsmp *bsmp, int flags)
 
 #define CASE_STRINGIFY(c) c: return #c
 
+const char* raw_mtype_str(uint8_t mtype)
+{
+    switch (mtype) {
+    case CASE_STRINGIFY(RAW_MTYPE_REQ);
+    case CASE_STRINGIFY(RAW_MTYPE_RES);
+    case CASE_STRINGIFY(RAW_MTYPE_ERR);
+    case CASE_STRINGIFY(RAW_MTYPE_BSUB);
+    case CASE_STRINGIFY(RAW_MTYPE_BSMP);
+    default: return "<UNKNOWN_MTYPE>";
+    }
+}
+
 const char* raw_r_type_str(uint8_t r_type)
 {
     switch (r_type) {

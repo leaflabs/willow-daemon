@@ -522,6 +522,7 @@ ssize_t raw_bsmp_recv(int sockfd, struct raw_pkt_bsmp *bsmp, int flags);
  * Stringification
  */
 
+const char* raw_mtype_str(uint8_t mtype);
 const char* raw_r_type_str(uint8_t r_type);
 const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr);
 
