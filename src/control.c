@@ -427,26 +427,25 @@ static void client_ecl_err(__unused struct evconnlistener *ecl,
     log_ERR("client accept() failed: %m");
 }
 
-/* TODO break this functionality out into its own files; this isn't
- * part of the control session. */
+/*
+ * Data socket handling. TODO: move this to new files.
+ */
+
 static void control_data(evutil_socket_t ddatafd, short events, void *csessvp)
 {
     struct control_session *cs = csessvp;
-    assert(cs->ddatafd == ddatafd);
-    if (!(events & EV_READ)) {
-        log_DEBUG("%s: spurious call (EV_READ unset)", __func__);
-        return;
-    }
-
-    /* Get the data node and client data socket addresses */
-    struct sockaddr *dnaddr = NULL;
-    struct sockaddr *caddr = NULL;
     control_must_lock(cs);
-    dnaddr = (struct sockaddr*)&cs->dnaddr;
-    caddr = (struct sockaddr*)&cs->caddr;
+    struct sockaddr *dnaddr = (struct sockaddr*)&cs->dnaddr;
+    struct sockaddr *caddr = (struct sockaddr*)&cs->caddr;
     control_must_unlock(cs);
-    if (dnaddr->sa_family == AF_UNSPEC || caddr->sa_family == AF_UNSPEC) {
-        log_DEBUG("%s: spurious call (dnaddr or caddr unset)", __func__);
+    assert(cs->ddatafd == ddatafd);
+
+    /* Throw away unwanted data. */
+    int handling_data = (events & EV_READ &&
+                         dnaddr->sa_family != AF_UNSPEC &&
+                         caddr->sa_family != AF_UNSPEC);
+    if (!handling_data) {
+        log_DEBUG("ignoring unwanted activity on data socket");
         recv(cs->ddatafd, NULL, 0, 0);
         return;
     }
