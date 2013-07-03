@@ -159,9 +159,10 @@ static void client_done_with_cmd(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
     control_clear_transactions(cs, 1);
-    assert(cpriv->c_cmd);
-    control_command__free_unpacked(cpriv->c_cmd, NULL);
-    cpriv->c_cmd = NULL;
+    if (cpriv->c_cmd) {
+        control_command__free_unpacked(cpriv->c_cmd, NULL);
+        cpriv->c_cmd = NULL;
+    }
 }
 
 static void client_send_response(struct control_session *cs,
@@ -1028,7 +1029,7 @@ static void client_process_res(struct control_session *cs)
 static void client_process_err(struct control_session *cs)
 {
     if (!cs->cbev) {
-        log_INFO("dropping dnode error packet; no one is listening");
+        log_WARNING("swallowing dnode error packet; no one is listening");
     } else {
         CLIENT_RES_ERR_DNODE_ASYNC(cs);
     }

@@ -169,72 +169,54 @@ static int dnode_got_entire_pkt(struct control_session *cs,
     return ret;
 }
 
-static int
-dnode_HACK_ensure_no_more_packets(struct control_session *cs,
-                                  enum control_worker_why desired)
-{
-    /*
-     * FIXME XXX: handle arrival of (possibly many) asynchronous errors.
-     *
-     * We should:
-     *
-     * - ignore unexpected responses (any after the first, or any
-     *   received while no transaction is ongoing)
-     * - read through everything looking for errors, and propagate up
-     * - do error rate-limiting (eventually) to guard against a hosed
-     *   data node
-     *
-     * Make sure to return CONTROL_WHY_CLIENT_ERR here if appropriate.
-     */
-    struct raw_pkt_cmd pkt;
-    if (dnode_got_entire_pkt(cs, &pkt)) {
-        log_CRIT("%s: oops, there were two dnode packets on the wire, but "
-                 "we only know how to handle one. we're toast :(",
-                 __func__);
-        return CONTROL_WHY_EXIT;
-    }
-    return desired;
-}
-
 static int dnode_read(struct control_session *cs)
 {
+    int ret = CONTROL_WHY_NONE;
     struct raw_pkt_cmd pkt;
-    if (!dnode_got_entire_pkt(cs, &pkt)) {
-        return CONTROL_WHY_NONE;
-    }
-    uint8_t mtype = raw_mtype(&pkt);
-    int ret;
-    switch (mtype) {
-    case RAW_MTYPE_RES:
-        if (raw_pkt_is_err(&pkt)) {
-            log_INFO("received error response packet from data node");
-            log_DEBUG("flags 0x%x iserror=%d mod=%s add=%s",
-                raw_pflags(&pkt),
-                raw_mtype(&pkt)==RAW_MTYPE_ERR,
-                raw_r_type_str(raw_r_type(&pkt)),
-                raw_r_addr_str(raw_r_type(&pkt), raw_r_addr(&pkt))
-                );
+    while (dnode_got_entire_pkt(cs, &pkt)) {
+        uint8_t mtype = raw_mtype(&pkt);
+        switch (mtype) {
+        case RAW_MTYPE_RES:
+            if (ret & CONTROL_WHY_CLIENT_RES) {
+                log_DEBUG("ignoring second result packet");
+                continue;
+            }
+            if (!cs->ctl_txns) {
+                log_DEBUG("ignoring dnode result outside of transaction");
+                continue;
+            }
+            if (raw_pkt_is_err(&pkt)) {
+                log_INFO("received error response packet from data node");
+                log_DEBUG("flags 0x%x iserror=%d mod=%s add=%s",
+                          raw_pflags(&pkt),
+                          raw_mtype(&pkt)==RAW_MTYPE_ERR,
+                          raw_r_type_str(raw_r_type(&pkt)),
+                          raw_r_addr_str(raw_r_type(&pkt), raw_r_addr(&pkt))
+                          );
+            }
+            control_must_lock(cs);
+            memcpy(&cs->ctl_txns[cs->ctl_cur_txn].res_pkt, &pkt, sizeof(pkt));
+            control_must_unlock(cs);
+            ret |= CONTROL_WHY_CLIENT_RES;
+            break;
+        case RAW_MTYPE_ERR:
+            if (ret & CONTROL_WHY_CLIENT_ERR) {
+                /* Error packets don't contain any extra information,
+                 * so there's no use flagging or logging this
+                 * twice. */
+                continue;
+            }
+            log_INFO("received error packet from data node");
+            ret |= CONTROL_WHY_CLIENT_ERR;
+            break;
+        default:
+            /* Can't happen */
+            log_EMERG("%s: internal error", __func__);
+            assert(0);
+            return CONTROL_WHY_EXIT;
         }
-        ret = CONTROL_WHY_CLIENT_RES;
-        break;
-    case RAW_MTYPE_ERR:
-        log_INFO("received error packet from data node");
-        ret = CONTROL_WHY_CLIENT_ERR;
-        break;
-    default:
-        /* Can't happen */
-        log_EMERG("%s: internal error", __func__);
-        assert(0);
-        return CONTROL_WHY_EXIT;
     }
-    if (ret == CONTROL_WHY_CLIENT_RES) {
-        if (!cs->ctl_txns) {
-            log_DEBUG("ignoring result received outside transaction handling");
-            return CONTROL_WHY_NONE;
-        }
-        memcpy(&cs->ctl_txns[cs->ctl_cur_txn].res_pkt, &pkt, sizeof(pkt));
-    }
-    return dnode_HACK_ensure_no_more_packets(cs, ret);
+    return ret;
 }
 
 static void dnode_thread(struct control_session *cs)
