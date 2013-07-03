@@ -388,7 +388,7 @@ control_bev_reader(struct control_session *cs,
         break;
     case CONTROL_WHY_EXIT:
         log_CRIT("%s socket reader wants to shut down the worker", log_who);
-        control_fatal_err("error reading from bufferevent", -1);
+        control_fatal_err("error while reading control socket", -1);
         break;
     default:
         control_must_wake(cs, (enum control_worker_why)read_why_wake);
