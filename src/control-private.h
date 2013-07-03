@@ -82,8 +82,8 @@ enum control_worker_why {
  * https://developers.google.com/protocol-buffers/docs/techniques#large-data
  *
  * So we might as well try to enforce reasonably good behavior. It's a
- * protocol error to send messages that are too long; client code is
- * and free to close such connections. */
+ * protocol error to send messages that are too long, and we are free
+ * to close connections for misbehavior. */
 #define CONTROL_CMD_MAX_SIZE (2 * 1024 * 1024)
 
 /** Control session. */
@@ -102,23 +102,30 @@ struct control_session {
     struct bufferevent *dbev;
     void               *dpriv;
 
-    /* Board subsamples */
+    /* Data socket -- TODO move these elsewhere, along with control_data() */
     unsigned ddataif; /* Daemon data socket interface number; see
-                       * <net/if.h>.  Set during control_new(); treat
-                       * as constant. */
-    evutil_socket_t ddatafd; /* Daemon data socket, open entire session;
-                              * main thread only */
+                       * <net/if.h>.  Set during control_new().
+                       *
+                       * Treat as constant. */
+    evutil_socket_t ddatafd; /* Daemon data socket, open entire session.
+                              *
+                              * Main thread only. */
     struct event *ddataevt;  /* Data socket event */
     struct sockaddr_storage dnaddr; /* Data node address; receive
-                                     * sample data only from here. If
+                                     * subsamples from here only. If
                                      * unset, .ss_family==AF_UNSPEC.
+                                     *
                                      * Shared with worker thread. */
-    struct sockaddr_storage caddr; /* Client address; forward live
-                                    * sample data to here. If unset,
-                                    * .ss_family==AF_UNSPEC. Shared
-                                    * with worker thread. */
-    struct iovec dpbuf; /* Data socket protocol buffer; main thread
-                         * only. */
+    struct sockaddr_storage caddr; /* Client address; forward
+                                    * subsamples to here. If unset,
+                                    * .ss_family==AF_UNSPEC.
+                                    *
+                                    * Shared with worker thread. */
+    struct iovec dpbuf; /* Points to protocol buffer for ddatafd.
+                         * Users may alloc/realloc; will be cleaned up
+                         * in control_stop().
+                         *
+                         * Main thread only. */
 
     /* Worker thread */
     pthread_t thread;
