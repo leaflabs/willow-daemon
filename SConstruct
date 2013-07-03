@@ -4,6 +4,9 @@ import os.path
 Help("""
 Build arguments:
 \tCC=<compiler>: set C compiler (default: gcc)
+\tLD=<linker>: set linker (default: gcc)
+\tEXTRA_CFLAGS="flag...": extra C compiler flags (default: none)
+\tEXTRA_LDFLAGS="flag...": extra linker flags (default: none)
 \tV=1: verbose build output (default: V=0, quiet output)
 \tSKIP_TESTS=[y/n]: don't build tests (default: SKIP_TESTS=n, build tests)
 """)
@@ -36,6 +39,9 @@ test_lib_deps = ['check'] # External dependencies for tests
 verbosity_level = int(ARGUMENTS.get('V', 0))
 skip_test_build = str_to_bool(ARGUMENTS.get('SKIP_TESTS', 'n'))
 build_cc = ARGUMENTS.get('CC', 'gcc')
+build_ld = ARGUMENTS.get('LD', 'gcc')
+build_cflags_extra = ARGUMENTS.get('EXTRA_CFLAGS', '')
+build_ldflags_extra = ARGUMENTS.get('EXTRA_LDFLAGS', '')
 
 # Put all generated files underneath the build directory. protoc-c is
 # configured to do this as well, to prevent anyone from carelessly
@@ -46,9 +52,12 @@ VariantDir(build_test_dir, test_dir, duplicate=0)
 
 # Build environment. Note we don't copy os.environ here.
 env = Environment(CC=build_cc,
-                  CCFLAGS=('-pthread -std=c99 '
-                           '-g -Wall -Wextra -Wpointer-arith -Werror'),
+                  CCFLAGS=(('-pthread -std=c99 '
+                            '-g -Wall -Wextra -Wpointer-arith -Werror ') +
+                           build_cflags_extra),
                   CPPDEFINES={'_GNU_SOURCE': 1}, # we need Linux extensions
+                  LINK=build_ld,
+                  LINKFLAGS=build_ldflags_extra,
                   LIBS=lib_deps,
                   tools=['default', 'protocc'],
                   )
@@ -59,7 +68,7 @@ if verbosity_level == 0:
     env['PROTOCCCOMSTR'] = '\t[PROTOC-C] $SOURCE'
     env['PROTOCCOMSTR'] = '\t[PROTOC] $SOURCE'
     env['RANLIBCOMSTR'] = '\t[RANLIB] $TARGET'
-    env['LINKCOMSTR'] = '\t[LD] $TARGET' # note the asymmetry
+    env['LINKCOMSTR'] = '\t[LD] $TARGET'
 
 # Protobuf code generation; see site_scons/site_tools/protocc.py.
 proto_c_sources = []
