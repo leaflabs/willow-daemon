@@ -26,6 +26,7 @@
 #include <event2/event.h>
 #include <event2/util.h>
 
+#include "ch_storage.h"
 #include "logging.h"
 #include "raw_packets.h"
 #include "sockutil.h"
@@ -43,6 +44,7 @@ union sample_packet {
 #define SAMPLE_PBUF_ARR_SIZE (1024 * 1024)
 struct sample_session {
     struct event_base *base;
+    struct ch_storage *chns;
     unsigned ddataif; /* Daemon data socket interface number; see
                        * <net/if.h>.  Set during control_new().
                        *
@@ -123,6 +125,7 @@ static void sample_must_unlock(struct sample_session *smpl)
 static void sample_init(struct sample_session *smpl)
 {
     smpl->base = NULL;
+    smpl->chns = NULL;
     smpl->ddataif = 0;
     smpl->ddatafd = -1;
     smpl->ddataevt = NULL;
@@ -135,9 +138,8 @@ static void sample_init(struct sample_session *smpl)
     smpl->debug_last_sub_idx = 0;
 }
 
-struct sample_session *sample_new(struct event_base *base,
-                                  unsigned iface,
-                                  uint16_t port)
+struct sample_session *sample_new(struct event_base *base, unsigned iface,
+                                  uint16_t port, struct ch_storage *chns)
 {
     int mtx_en = 0;
     struct sample_session *smpl = malloc(sizeof(struct sample_session));
@@ -153,6 +155,7 @@ struct sample_session *sample_new(struct event_base *base,
     }
 
     smpl->base = base;
+    smpl->chns = chns;
     smpl->ddataif = iface;
     smpl->ddatafd = sockutil_get_udp_socket(port);
     if (smpl->ddatafd == -1) {

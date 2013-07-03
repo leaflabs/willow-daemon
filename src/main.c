@@ -252,7 +252,7 @@ static void free_ch_storage(struct ch_storage* chns)
 
 static int
 run_event_loop(struct arguments *args,
-               __unused struct ch_storage *chstorage)
+               struct ch_storage *chstorage)
 {
     int ret = EXIT_FAILURE;
     struct event_base *base = event_base_new();
@@ -279,7 +279,8 @@ run_event_loop(struct arguments *args,
     if (iface == 0) {
         log_EMERG("unknown network interface %s", args->sample_iface);
     }
-    struct sample_session *sample = sample_new(base, iface, args->sample_port);
+    struct sample_session *sample = sample_new(base, iface, args->sample_port,
+                                               chstorage);
     if (!sample) {
         log_EMERG("can't create sample session, iface %u, port %u",
                   iface, args->sample_port);
