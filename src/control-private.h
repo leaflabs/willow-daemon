@@ -30,6 +30,8 @@
 #include "raw_packets.h"
 #include "proto/control.pb-c.h"
 
+#include "sample.h"
+
 #define CONTROL_DEBUG_LOG 0 /* more verbose logging (helps with pthreads) */
 
 #if CONTROL_DEBUG_LOG
@@ -102,30 +104,8 @@ struct control_session {
     struct bufferevent *dbev;
     void               *dpriv;
 
-    /* Data socket -- TODO move these elsewhere, along with control_data() */
-    unsigned ddataif; /* Daemon data socket interface number; see
-                       * <net/if.h>.  Set during control_new().
-                       *
-                       * Treat as constant. */
-    evutil_socket_t ddatafd; /* Daemon data socket, open entire session.
-                              *
-                              * Main thread only. */
-    struct event *ddataevt;  /* Data socket event */
-    struct sockaddr_storage dnaddr; /* Data node address; receive
-                                     * subsamples from here only. If
-                                     * unset, .ss_family==AF_UNSPEC.
-                                     *
-                                     * Shared with worker thread. */
-    struct sockaddr_storage caddr; /* Client address; forward
-                                    * subsamples to here. If unset,
-                                    * .ss_family==AF_UNSPEC.
-                                    *
-                                    * Shared with worker thread. */
-    struct iovec dpbuf; /* Points to protocol buffer for ddatafd.
-                         * Users may alloc/realloc; will be cleaned up
-                         * in control_stop().
-                         *
-                         * Main thread only. */
+    /* Data handler */
+    struct sample_session *smpl;
 
     /* Worker thread */
     pthread_t thread;
@@ -182,11 +162,6 @@ struct control_ops {
 
     /* Worker thread callback. */
     void (*cs_thread)(struct control_session *cs);
-
-    /* Data socket callbacks.
-     *
-     * Return 0 on success, -1 on failure. */
-    int (*cs_data)(struct control_session *cs, struct sockaddr *saddr);
 };
 
 /*

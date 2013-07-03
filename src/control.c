@@ -16,7 +16,6 @@
 #include "control.h"
 
 #include <assert.h>
-#include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -64,9 +63,6 @@ static int control_client_start(struct control_session *cs)
 
 static void control_client_stop(struct control_session *cs)
 {
-    control_must_lock(cs);
-    cs->caddr.ss_family = AF_UNSPEC;
-    control_must_unlock(cs);
     if (!control_client_ops->cs_stop) {
         return;
     }
@@ -115,15 +111,6 @@ static void control_client_thread(struct control_session *cs)
     control_client_ops->cs_thread(cs);
 }
 
-static int control_client_data(struct control_session *cs,
-                               struct sockaddr *saddr)
-{
-    if (!control_client_ops->cs_data) {
-        return -1;
-    }
-    return control_client_ops->cs_data(cs, saddr);
-}
-
 static int control_dnode_start(struct control_session *cs)
 {
     if (!control_dnode_ops->cs_start) {
@@ -134,9 +121,6 @@ static int control_dnode_start(struct control_session *cs)
 
 static void control_dnode_stop(struct control_session *cs)
 {
-    control_must_lock(cs);
-    cs->dnaddr.ss_family = AF_UNSPEC;
-    control_must_unlock(cs);
     if (!control_dnode_ops->cs_stop) {
         return;
     }
@@ -186,15 +170,6 @@ static void control_dnode_thread(struct control_session *cs)
         return;
     }
     control_dnode_ops->cs_thread(cs);
-}
-
-static int control_dnode_data(struct control_session *cs,
-                              struct sockaddr *saddr)
-{
-    if (!control_dnode_ops->cs_data) {
-        return -1;
-    }
-    return control_dnode_ops->cs_data(cs, saddr);
 }
 
 /*
@@ -428,43 +403,6 @@ static void client_ecl_err(__unused struct evconnlistener *ecl,
 }
 
 /*
- * Data socket handling. TODO: move this to new files.
- */
-
-static void control_data(evutil_socket_t ddatafd, short events, void *csessvp)
-{
-    struct control_session *cs = csessvp;
-    control_must_lock(cs);
-    struct sockaddr *dnaddr = (struct sockaddr*)&cs->dnaddr;
-    struct sockaddr *caddr = (struct sockaddr*)&cs->caddr;
-    control_must_unlock(cs);
-    assert(cs->ddatafd == ddatafd);
-
-    /* Throw away unwanted data. */
-    int handling_data = (events & EV_READ &&
-                         dnaddr->sa_family != AF_UNSPEC &&
-                         caddr->sa_family != AF_UNSPEC);
-    if (!handling_data) {
-        log_DEBUG("ignoring unwanted activity on data socket");
-        recv(cs->ddatafd, NULL, 0, 0);
-        return;
-    }
-
-    /* Fill the buffer with the data node callback */
-    if (control_dnode_data(cs, dnaddr)) {
-        log_DEBUG("%s: data node callback failed", __func__);
-        recv(cs->ddatafd, NULL, 0, 0);
-        return;
-    }
-
-    /* Convert and ship the buffer with the client callback */
-    if (control_client_data(cs, caddr)) {
-        log_DEBUG("%s: client callback failed", __func__);
-        return;
-    }
-}
-
-/*
  * Public API
  */
 
@@ -478,13 +416,7 @@ static void control_init_cs(struct control_session *cs)
     cs->dport= 0;
     cs->dbev = NULL;
     cs->dpriv = NULL;
-    cs->ddataif = 0;
-    cs->ddatafd = -1;
-    cs->ddataevt = NULL;
-    cs->dnaddr.ss_family = AF_UNSPEC;
-    cs->caddr.ss_family = AF_UNSPEC;
-    cs->dpbuf.iov_base = NULL;
-    cs->dpbuf.iov_len = 0;
+    cs->smpl = NULL;
     cs->wake_why = CONTROL_WHY_NONE;
     cs->ctl_txns = NULL;
     cs->ctl_n_txns = 0;
@@ -496,8 +428,7 @@ struct control_session* control_new(struct event_base *base,
                                     uint16_t client_port,
                                     const char* dnode_addr,
                                     uint16_t dnode_port,
-                                    unsigned sample_iface,
-                                    uint16_t sample_port)
+                                    struct sample_session *smpl)
 {
     int started_client = 0, started_dnode = 0;
     int mtx_en = 0, cv_en = 0, t_en = 0;
@@ -557,24 +488,8 @@ struct control_session* control_new(struct event_base *base,
                       NULL, control_dnode_event, control_dnode_open,
                       "data node");
 
-    /* Initialize data socket */
-    cs->ddataif = sample_iface;
-    cs->ddatafd = sockutil_get_udp_socket(sample_port);
-    if (cs->ddatafd == -1) {
-        log_ERR("can't create data socket");
-        goto bail;
-    }
-    if (evutil_make_socket_nonblocking(cs->ddatafd) == -1) {
-        log_ERR("data socket doesn't support nonblocking I/O");
-        goto bail;
-    }
-    cs->ddataevt = event_new(base, cs->ddatafd, EV_READ | EV_PERSIST,
-                             control_data, cs);
-    if (!cs->ddataevt) {
-        log_ERR("can't create data socket event");
-        goto bail;
-    }
-    event_add(cs->ddataevt, NULL);
+    /* Sample session */
+    cs->smpl = smpl;
 
     /* Start the worker thread */
     control_must_lock(cs);
@@ -599,27 +514,12 @@ struct control_session* control_new(struct event_base *base,
         pthread_mutex_destroy(&cs->mtx);
     }
 
-    /* Tear down data socket */
-    if (cs->ddataevt) {
-        event_free(cs->ddataevt);
-    }
-    if (cs->ddatafd != -1 && evutil_closesocket(cs->ddatafd)) {
-        log_ERR("can't close data socket");
-    }
-    free(cs->dpbuf.iov_base);
-
     /* Tear down data node control */
     if (started_dnode) {
         control_dnode_stop(cs);
     }
     if (cs->dbev) {
         bufferevent_free(cs->dbev);
-    }
-    if (cs->ddataevt) {
-        event_free(cs->ddataevt);
-    }
-    if (cs->ddatafd != -1 && evutil_closesocket(cs->ddatafd) == -1) {
-        log_ERR("can't close sample socket: %m");
     }
 
     /* Tear down client control */
@@ -645,10 +545,6 @@ void control_free(struct control_session *cs)
     /* Acquired in control_new() */
     control_must_wake(cs, CONTROL_WHY_EXIT);
     control_must_join(cs, NULL);
-    event_free(cs->ddataevt);
-    if (cs->ddatafd != -1 && evutil_closesocket(cs->ddatafd) == -1) {
-        log_ERR("can't close sample socket: %m");
-    }
     control_dnode_stop(cs);
     control_client_stop(cs);
     pthread_cond_destroy(&cs->cv);
@@ -664,9 +560,6 @@ void control_free(struct control_session *cs)
     }
     if (cs->ctl_txns) {
         free(cs->ctl_txns);
-    }
-    if (cs->dpbuf.iov_base) {
-        free(cs->dpbuf.iov_base);
     }
 
     free(cs);

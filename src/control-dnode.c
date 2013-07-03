@@ -33,11 +33,6 @@ struct dnode_priv {
     struct evbuffer *d_rbuf;    /* Buffers control session ->req_pkt */
 };
 
-union dnode_sample {
-    struct raw_pkt_bsub bsub;
-    struct raw_pkt_bsmp bsmp;
-};
-
 /* NOT SYNCHRONIZED */
 static void dnode_free_priv(struct control_session *cs)
 {
@@ -105,26 +100,17 @@ static void dnode_ensure_clean(struct control_session *cs)
     struct dnode_priv *dpriv = cs->dpriv;
     assert(dpriv->d_rbuf);
     assert(evbuffer_get_length(dpriv->d_rbuf) == 0);
-    assert(cs->dpbuf.iov_base == NULL && cs->dpbuf.iov_len == 0);
 }
 
 static int dnode_open(struct control_session *cs,
                       __unused evutil_socket_t control_sockfd)
 {
     dnode_ensure_clean(cs);
-    cs->dpbuf.iov_base = malloc(sizeof(union dnode_sample));
-    if (!cs->dpbuf.iov_base) {
-        return -1;
-    }
-    cs->dpbuf.iov_len = sizeof(union dnode_sample);
     return 0;
 }
 
 static void dnode_close(struct control_session *cs)
 {
-    free(cs->dpbuf.iov_base);
-    cs->dpbuf.iov_base = NULL;
-    cs->dpbuf.iov_len = 0;
     dnode_reset_state_unlocked(cs);
     dnode_ensure_clean(cs);
 }
@@ -240,50 +226,6 @@ static void dnode_thread(struct control_session *cs)
     cs->wake_why &= ~CONTROL_WHY_DNODE_TXN;
 }
 
-static int dnode_data(struct control_session *cs, struct sockaddr *dnaddr)
-{
-    if (!cs->dpbuf.iov_base) {
-        /* This can happen if e.g. the data node connection closes,
-         * the client doesn't reconfigure us to stop streaming, and a
-         * malicious actor sends something to the data port. */
-        return -1;
-    }
-    struct sockaddr_storage sas;
-    ssize_t s;
-    while (1) {
-        socklen_t sas_len = sizeof(sas);
-        s = recvfrom(cs->ddatafd, cs->dpbuf.iov_base, cs->dpbuf.iov_len, 0,
-                     (struct sockaddr*)&sas, &sas_len);
-        if (s == -1) {
-            switch (errno) {
-#if EWOULDBLOCK != EAGAIN
-            case EWOULDBLOCK:   /* fall through */
-#endif
-            case EAGAIN:
-                log_WARNING("%s: spurious call; invoked with no data to read",
-                            __func__);
-                break;
-            case EINTR:
-                continue;
-            }
-            return -1;
-        }
-        break;
-    }
-    if ((size_t)s > cs->dpbuf.iov_len) {
-        log_WARNING("truncated read getting sample from data node");
-        return -1;
-    }
-    if (sas.ss_family != AF_INET && sas.ss_family != AF_INET6) {
-        log_WARNING("unexpected remote address family %d", sas.ss_family);
-        return -1;
-    }
-    if (!sockutil_addr_eq(dnaddr, (struct sockaddr*)&sas, 0)) {
-        return -1;
-    }
-    return 0;
-}
-
 static const struct control_ops dnode_control_operations = {
     .cs_start = dnode_start,
     .cs_stop = dnode_stop,
@@ -291,7 +233,6 @@ static const struct control_ops dnode_control_operations = {
     .cs_close = dnode_close,
     .cs_read = dnode_read,
     .cs_thread = dnode_thread,
-    .cs_data = dnode_data,
 };
 
 const struct control_ops *control_dnode_ops = &dnode_control_operations;

@@ -26,8 +26,7 @@
 #include "raw_packets.h"
 #include "sockutil.h"
 
-#include "proto/control.pb-c.h"
-#include "proto/data.pb-c.h"
+#include "sample.h"
 
 #define LOCAL_DEBUG_LOGV 0
 
@@ -66,15 +65,9 @@ struct client_priv {
     uint8_t c_cmd_arr[CONTROL_CMD_MAX_SIZE];
     uint8_t c_rsp_arr[CONTROL_CMD_MAX_SIZE];
 
-    /* Similarly, keep buffers around for initializing and packing
-     * data protocol messages. Touch these from the main thread
-     * only. */
-    uint32_t c_bsub_chips[RAW_BSUB_NSAMP];
-    uint32_t c_bsub_chans[RAW_BSUB_NSAMP];
-    uint32_t c_bsub_samps[RAW_BSUB_NSAMP];
-    uint8_t c_data_pbuf_arr[CONTROL_CMD_MAX_SIZE];
-
-    uint32_t debug_last_sub_idx;
+    /* For storing addresses we read from the data node over the
+     * course of a command */
+    struct sockaddr_in dn_addr_in;
 };
 
 /********************************************************************
@@ -252,7 +245,6 @@ static int client_start(struct control_session *cs)
     priv->c_rsp = NULL;
     priv->c_pbuf = c_pbuf;
     priv->c_cmdlen_buf = c_cmdlen_buf;
-    priv->debug_last_sub_idx = 0;
     cs->cpriv = priv;
     client_reset_state_locked(cs); /* worker isn't started; don't
                                     * bother locking */
@@ -418,88 +410,6 @@ static int client_read(struct control_session *cs)
  done:
     control_must_unlock(cs);
     return ret;
-}
-
-static int client_data(struct control_session *cs, struct sockaddr *addr)
-{
-    struct client_priv *cpriv = cs->cpriv;
-    uint8_t *pkt_buf = cs->dpbuf.iov_base;
-    if (raw_pkt_ntoh(pkt_buf)) {
-        log_INFO("dropping malformed data node packet");
-        return -1;
-    }
-    uint8_t mtype = raw_mtype(pkt_buf);
-    uint8_t pflags = raw_pflags(pkt_buf);
-    if (mtype == RAW_MTYPE_BSUB) {
-        struct raw_pkt_bsub *bsub = (struct raw_pkt_bsub*)pkt_buf;
-        DnodeSample dnsample = DNODE_SAMPLE__INIT;
-        BoardSubsample msg_bsub = BOARD_SUBSAMPLE__INIT;
-        msg_bsub.has_is_live = 1;
-        msg_bsub.is_live = !!(pflags & RAW_PFLAG_B_LIVE);
-        msg_bsub.has_is_last = 1;
-        msg_bsub.is_last = !!(pflags & RAW_PFLAG_B_LAST);
-        msg_bsub.has_exp_cookie = 1;
-        msg_bsub.exp_cookie = raw_exp_cookie(bsub);
-        msg_bsub.has_board_id = 1;
-        msg_bsub.board_id = bsub->b_id;
-        msg_bsub.has_samp_idx = 1;
-        msg_bsub.samp_idx = bsub->b_sidx;
-        msg_bsub.has_chip_live = 1;
-        msg_bsub.chip_live = bsub->b_chip_live;
-        msg_bsub.n_chips = RAW_BSUB_NSAMP;
-        msg_bsub.chips = cpriv->c_bsub_chips;
-        msg_bsub.n_channels = RAW_BSUB_NSAMP;
-        msg_bsub.channels = cpriv->c_bsub_chans;
-        msg_bsub.n_samples = RAW_BSUB_NSAMP;
-        msg_bsub.samples = cpriv->c_bsub_samps;
-        for (size_t i = 0; i < RAW_BSUB_NSAMP; i++) {
-            msg_bsub.chips[i] = bsub->b_cfg[i].bs_chip;
-            msg_bsub.channels[i] = bsub->b_cfg[i].bs_chan;
-            msg_bsub.samples[i] = bsub->b_samps[i];
-        }
-        msg_bsub.has_gpio = 1;
-        msg_bsub.gpio = bsub->b_gpio;
-        msg_bsub.has_dac_channel = 1;
-        msg_bsub.dac_channel = bsub->b_dac_cfg;
-        msg_bsub.has_dac_value = 1;
-        msg_bsub.dac_value = bsub->b_dac;
-        dnsample.has_type = 1;
-        dnsample.type = DNODE_SAMPLE__TYPE__SUBSAMPLE;
-        dnsample.subsample = &msg_bsub;
-        size_t dnsample_psize = dnode_sample__get_packed_size(&dnsample);
-        if (dnsample_psize > CONTROL_CMD_MAX_SIZE) {
-            log_WARNING("packed subsample buffer size %zu exceeds "
-                        "preallocated buffer size %d; "
-                        "falling back on malloc().",
-                        dnsample_psize, CONTROL_CMD_MAX_SIZE);
-            uint8_t *out = malloc(dnsample_psize);
-            if (!out) {
-                log_ERR("out of memory");
-                return -1;
-            }
-            dnode_sample__pack(&dnsample, out);
-            int ret = sendto(cs->ddatafd, out, dnsample_psize, 0,
-                            addr, sockutil_addrlen(addr));
-            free(out);
-            return ret;
-        }
-        dnode_sample__pack(&dnsample, cpriv->c_data_pbuf_arr);
-        ssize_t s = sendto(cs->ddatafd, cpriv->c_data_pbuf_arr, dnsample_psize,
-                           0, addr, sockutil_addrlen(addr));
-
-        if (cpriv->debug_last_sub_idx != msg_bsub.samp_idx - 1) {
-            log_DEBUG("bsub GAP: %u",
-                      bsub->b_sidx - 1 - cpriv->debug_last_sub_idx);
-        }
-        cpriv->debug_last_sub_idx = bsub->b_sidx;
-
-        return s == (ssize_t)dnsample_psize ? 0 : -1;
-    } else if (mtype == RAW_MTYPE_BSMP) {
-        log_WARNING("%s: board sample handling is unimplemented", __func__);
-        return -1;
-    }
-    assert(0);
-    return -1;
 }
 
 /********************************************************************
@@ -700,34 +610,24 @@ static void client_process_cmd_regio(struct control_session *cs)
 static uint32_t client_get_data_addr4(struct control_session *cs,
                                       uint32_t *s_addr)
 {
-    struct sockaddr_storage sas;
-    struct sockaddr_in *saddr = (struct sockaddr_in*)&sas;
-    socklen_t sas_len = sizeof(sas);
-    if (sockutil_get_iface_addr(cs->ddataif, AF_INET,
-                                (struct sockaddr*)&sas, &sas_len)) {
+    struct sockaddr_in saddr = {
+        .sin_family = AF_UNSPEC,
+    };
+    socklen_t addrlen = sizeof(saddr);
+    if (sample_get_saddr(cs->smpl, AF_INET, (struct sockaddr*)&saddr,
+                         &addrlen)) {
         log_WARNING("can't read dnode data socket address");
         return -1;
     }
-    assert(sas.ss_family == AF_INET);
-    *s_addr = htonl(saddr->sin_addr.s_addr);
+    assert(saddr.sin_family == AF_INET);
+    *s_addr = htonl(saddr.sin_addr.s_addr);
     return 0;
-}
-
-static int client_get_data_mac48(struct control_session *cs,
-                                 uint8_t mac48[6])
-{
-    size_t len = 6;
-    int ret = sockutil_get_iface_hwaddr(cs->ddataif, mac48, &len);
-    assert(len == 6);
-    return ret;
 }
 
 static void client_process_cmd_stream(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
     ControlCmdStream *stream = cpriv->c_cmd->stream;
-    struct sockaddr_in *caddr = (struct sockaddr_in*)&cs->caddr;
-    struct sockaddr_in *dnaddr = (struct sockaddr_in*)&cs->dnaddr;
 
     if (!stream) {
         CLIENT_RES_ERR_C_PROTO(cs, "missing stream field");
@@ -749,16 +649,21 @@ static void client_process_cmd_stream(struct control_session *cs)
     /*
      * Prepare client side of main thread conversion callback
      */
-    memset(&caddr->sin_zero, 0, sizeof(caddr->sin_zero));
     /* Reconfigure address/port if necessary */
     if (has_addr) {
-        caddr->sin_port = htons((uint16_t)stream->dest_udp_port);
+        struct sockaddr_in caddr = {
+            .sin_family = AF_INET,
+            .sin_port = htons((uint16_t)stream->dest_udp_port),
+            .sin_addr.s_addr = htonl(stream->dest_udp_addr4),
+        };
+        memset(&caddr.sin_zero, 0, sizeof(caddr.sin_zero));
+        if (sample_set_addr(cs->smpl, (struct sockaddr*)&caddr,
+                            SAMPLE_ADDR_CLIENT)) {
+            CLIENT_RES_ERR_DAEMON(cs, "can't set destination address");
+            return;
+        }
     }
-    if (has_port) {
-        caddr->sin_addr.s_addr = htonl(stream->dest_udp_addr4);
-    }
-    /* If this is just a reconfigure command, then we're done here;
-     * the main thread will pick up the change at next callback. */
+    /* If this is just a reconfigure command, then we're done here. */
     if (!stream->has_enable) {
         client_send_success(cs);
         return;
@@ -775,12 +680,19 @@ static void client_process_cmd_stream(struct control_session *cs)
         return;
     }
     if (stream->enable) {
+        /* Set up storage for the data node address */
+        cpriv->dn_addr_in.sin_family = AF_INET;
+        cpriv->dn_addr_in.sin_port = 0;
+        cpriv->dn_addr_in.sin_addr.s_addr = 0;
+        memset(&cpriv->dn_addr_in.sin_zero, 0,
+               sizeof(cpriv->dn_addr_in.sin_zero));
+
         /* Get the daemon data socket's IPv4 and MAC48 addresses, which we
          * need to initialize dnode registers. */
         uint32_t dsock_ipv4;
         uint8_t dsock_m48[6];
         if ((client_get_data_addr4(cs, &dsock_ipv4) ||
-             client_get_data_mac48(cs, dsock_m48))) {
+             sample_get_mac48(cs->smpl, dsock_m48))) {
             CLIENT_RES_ERR_DAEMON(cs, "internal network error");
             return;
         }
@@ -790,6 +702,7 @@ static void client_process_cmd_stream(struct control_session *cs)
                          ((uint32_t)dsock_m48[3] << 16) |
                          ((uint32_t)dsock_m48[4] << 8) |
                          (uint32_t)dsock_m48[5]);
+
         /* Read the data node's UDP IPv4 address and port. */
         client_udp_r(txns + txno++, RAW_RADDR_UDP_SRC_IP4);
         client_udp_r(txns + txno++, RAW_RADDR_UDP_SRC_IP4_PORT);
@@ -817,10 +730,6 @@ static void client_process_cmd_stream(struct control_session *cs)
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 1);
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 1);
     } else {
-        /* We only enable on success, from the result callback handler. */
-        caddr->sin_family = AF_UNSPEC;
-        dnaddr->sin_family = AF_UNSPEC;
-
         /* Write 0 (STOP) to DAQ and UDP enable registers */
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 0);
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 0);
@@ -938,8 +847,6 @@ static void client_process_res_stream(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
     ControlCmdStream *stream = cpriv->c_cmd->stream;
-    struct sockaddr_in *caddr = (struct sockaddr_in*)&cs->caddr;
-    struct sockaddr_in *dnaddr = (struct sockaddr_in*)&cs->dnaddr;
 
     /*
      * On failure, report error to client; they'll need to clean up
@@ -959,13 +866,7 @@ static void client_process_res_stream(struct control_session *cs)
         struct raw_cmd_res *res = ctxn_res(cs->ctl_txns + cs->ctl_cur_txn);
         if (res->r_type == RAW_RTYPE_UDP) {
             if (res->r_addr == RAW_RADDR_UDP_SRC_IP4) {
-                log_DEBUG("data node UDP source IPv4 address is %u.%u.%u.%u",
-                          (res->r_val >> 24) & 0xFF,
-                          (res->r_val >> 16) & 0xFF,
-                          (res->r_val >> 8) & 0xFF,
-                          res->r_val & 0xFF);
-                dnaddr->sin_addr.s_addr = htonl(res->r_val);
-                memset(&dnaddr->sin_zero, 0, sizeof(dnaddr->sin_zero));
+                cpriv->dn_addr_in.sin_addr.s_addr = htonl(res->r_val);
             }
             if (res->r_addr == RAW_RADDR_UDP_SRC_IP4_PORT) {
                 if (res->r_val > UINT16_MAX) {
@@ -974,9 +875,7 @@ static void client_process_res_stream(struct control_session *cs)
                     CLIENT_RES_ERR_DNODE(cs, "invalid data port specified");
                     return;
                 }
-                log_DEBUG("data node source UDP port is %u",
-                          (uint16_t)res->r_val);
-                dnaddr->sin_port = htons((uint16_t)res->r_val);
+                cpriv->dn_addr_in.sin_port = htons((uint16_t)res->r_val);
             }
         }
     }
@@ -995,9 +894,17 @@ static void client_process_res_stream(struct control_session *cs)
      * That's the last transaction. Finish up and send the success
      * result.
      */
-    if (stream->has_enable && stream->enable) {
-        caddr->sin_family = AF_INET;
-        dnaddr->sin_family = AF_INET;
+    if (stream->has_enable) {
+        if (stream->enable &&
+            sample_set_addr(cs->smpl, (struct sockaddr*)&cpriv->dn_addr_in,
+                            SAMPLE_ADDR_DNODE)) {
+            CLIENT_RES_ERR_DAEMON(cs, "can't configure data node address");
+            return;
+        }
+        if (sample_cfg_subsamples(cs->smpl, stream->enable)) {
+            CLIENT_RES_ERR_DAEMON(cs, "can't configure sample forwarding");
+            return;
+        }
     }
     client_send_success(cs);
 }
@@ -1073,7 +980,6 @@ static const struct control_ops client_control_operations = {
     .cs_close = client_close,
     .cs_read = client_read,
     .cs_thread = client_thread,
-    .cs_data = client_data,
 };
 
 const struct control_ops *control_client_ops = &client_control_operations;

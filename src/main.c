@@ -43,6 +43,7 @@
 #include "control.h"
 #include "hdf5_ch_storage.h"
 #include "raw_ch_storage.h"
+#include "sample.h"
 
 /* libevent log levels with leading underscores are deprecated as of
  * libevent 2.0.19. That's not available yet in some popular Linux
@@ -278,11 +279,16 @@ run_event_loop(struct arguments *args,
     if (iface == 0) {
         log_EMERG("unknown network interface %s", args->sample_iface);
     }
+    struct sample_session *sample = sample_new(base, iface, args->sample_port);
+    if (!sample) {
+        log_EMERG("can't create sample session, iface %u, port %u",
+                  iface, args->sample_port);
+        goto nosample;
+    }
     struct control_session *control = control_new(base, args->client_port,
                                                   args->dnode_addr,
                                                   args->dnode_port,
-                                                  iface,
-                                                  args->sample_port);
+                                                  sample);
     if (!control) {
         log_EMERG("can't create control session");
         goto nocontrol;
@@ -303,6 +309,8 @@ run_event_loop(struct arguments *args,
 
     control_free(control);
  nocontrol:
+    sample_free(sample);
+ nosample:
  nosiginstall:
     event_free(ev_sigterm);
  nosigterm:
