@@ -38,11 +38,9 @@
 #endif
 
 /* FIXME:
- *
  * - add timeouts when processing commands
  * - send error to client on timeout?
  * - allow client to configure timeout?
- * - drop ongoing transaction on client closure
  */
 
 /* Client message length prefix type. Signed so -1 can mean "still
