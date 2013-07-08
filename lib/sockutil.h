@@ -80,9 +80,10 @@ int sockutil_get_udp_socket(uint16_t port);
 int sockutil_get_udp_connected_p(const char *host, uint16_t port);
 
 /**
- *@brief Convenience for creating connected UDP socket, given sockaddr.
- *@param addr Address to connect to
- *@return Socket file descriptor on success, -1 on failure.
+ * @brief Convenience for creating connected UDP socket, given sockaddr.
+ * @param addr Address to connect to
+ * @param addrlen Length of "addr" structure
+ * @return Socket file descriptor on success, -1 on failure.
  */
 int sockutil_get_udp_connected(struct sockaddr *addr, socklen_t addrlen);
 

@@ -38,14 +38,14 @@ struct event_base;
 struct sample_session;
 
 /**
- * Start a new control session
+ * Start a new control session.
  *
  * When finished, free it with control_free().
  *
  * @param base Event base to install callbacks into
  * @param client_port Port to listen on for client connections
  * @param dnode_addr Address to connect to for data node control socket
- * @param dnode_c_port Port to connect to for data node control socket
+ * @param dnode_port Port to connect to for data node control socket
  * @param smpl Sample session
  * @see control_free()
  */
