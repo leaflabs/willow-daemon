@@ -50,21 +50,7 @@ struct sample_session {
     evutil_socket_t ddatafd; /* Daemon data socket, open entire session.
                               *
                               * Main thread only. */
-    pthread_mutex_t sub_mtx;    /* Subsample mutex:
-                                 * Protects dnaddr, caddr, forward_subs */
-    struct sockaddr_storage dnaddr; /* Data node address; receive
-                                     * subsamples from here only. If
-                                     * unset, .ss_family==AF_UNSPEC.
-                                     *
-                                     * Shared with worker threads. */
-    struct sockaddr_storage caddr; /* Client address; forward
-                                    * subsamples to here. If unset,
-                                    * .ss_family==AF_UNSPEC.
-                                    *
-                                    * Shared with worker threads. */
-    int forward_subs;  /* If true, we forward subsamples from data
-                        * node to client. Shared with worker
-                        * threads. */
+
     struct iovec dpktbuf; /* Points to raw packet buffer for ddatafd.
                            * Main thread only. */
 
@@ -77,6 +63,19 @@ struct sample_session {
 
     /* Data socket event */
     struct event *ddataevt;
+
+    pthread_mutex_t smpl_mtx;   /* Sample mutex. Protects following fields. */
+
+    /* The following fields are shared with worker threads, and are
+     * protected by smpl_mtx: */
+    struct sockaddr_storage dnaddr; /* Data node address; receive
+                                     * subsamples from here only. If
+                                     * unset, .ss_family==AF_UNSPEC. */
+    struct sockaddr_storage caddr; /* Client address; forward
+                                    * subsamples to here. If unset,
+                                    * .ss_family==AF_UNSPEC. */
+    int forward_subs;  /* If true, we forward subsamples from data
+                        * node to client. */
 
     uint32_t debug_last_sub_idx;
 };
@@ -102,7 +101,7 @@ sample_fatal_err(const char *message, int code) /* code==-1 for "no code" */
 
 static void sample_must_lock(struct sample_session *smpl)
 {
-    int en = pthread_mutex_lock(&smpl->sub_mtx);
+    int en = pthread_mutex_lock(&smpl->smpl_mtx);
     if (en) {
         sample_fatal_err("can't lock sample_session", en);
     }
@@ -110,7 +109,7 @@ static void sample_must_lock(struct sample_session *smpl)
 
 static void sample_must_unlock(struct sample_session *smpl)
 {
-    int en = pthread_mutex_unlock(&smpl->sub_mtx);
+    int en = pthread_mutex_unlock(&smpl->smpl_mtx);
     if (en) {
         sample_fatal_err("can't unlock sample_session", en);
     }
@@ -126,12 +125,12 @@ static void sample_init(struct sample_session *smpl)
     smpl->ddataif = 0;
     smpl->ddatafd = -1;
     smpl->ddataevt = NULL;
-    smpl->dnaddr.ss_family = AF_UNSPEC;
-    smpl->caddr.ss_family = AF_UNSPEC;
-    smpl->forward_subs = 0;
     smpl->dpktbuf.iov_base = NULL;
     smpl->dpktbuf.iov_len = 0;
     smpl->c_sample_pbuf_arr = NULL;
+    smpl->dnaddr.ss_family = AF_UNSPEC;
+    smpl->caddr.ss_family = AF_UNSPEC;
+    smpl->forward_subs = 0;
     smpl->debug_last_sub_idx = 0;
 }
 
@@ -145,7 +144,7 @@ struct sample_session *sample_new(struct event_base *base,
         return NULL;
     }
     sample_init(smpl);
-    mtx_en = pthread_mutex_init(&smpl->sub_mtx, NULL);
+    mtx_en = pthread_mutex_init(&smpl->smpl_mtx, NULL);
     if (mtx_en) {
         log_ERR("thread error while initializing sample session");
         free(smpl);
@@ -198,7 +197,7 @@ void sample_free(struct sample_session *smpl)
     if (smpl->ddatafd != -1 && evutil_closesocket(smpl->ddatafd)) {
         log_ERR("can't close data socket");
     }
-    pthread_mutex_destroy(&smpl->sub_mtx);
+    pthread_mutex_destroy(&smpl->smpl_mtx);
     free(smpl);
 }
 
