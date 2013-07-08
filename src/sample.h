@@ -27,10 +27,10 @@
 
 struct sample_session;
 struct event_base;
-struct ch_storage;
 
-struct sample_session *sample_new(struct event_base *base, unsigned iface,
-                                  uint16_t port, struct ch_storage *chns);
+struct sample_session *sample_new(struct event_base *base,
+                                  unsigned iface,
+                                  uint16_t port);
 void sample_free(struct sample_session *dts);
 
 /** Get daemon data socket's address. */
