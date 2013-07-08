@@ -647,9 +647,8 @@ static void client_process_cmd_stream(struct control_session *cs)
     }
 
     /*
-     * Prepare client side of main thread conversion callback
+     * Reconfigure sample conversion address/port if necessary
      */
-    /* Reconfigure address/port if necessary */
     if (has_addr) {
         struct sockaddr_in caddr = {
             .sin_family = AF_INET,
