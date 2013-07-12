@@ -127,7 +127,7 @@ void send_subsamples(int sockfd, struct sockaddr_in *to)
         ssize_t status = sendto(sockfd, &bsub, sizeof(bsub), MSG_NOSIGNAL,
                                 to, sizeof(*to));
         if (status < 0) {
-            perror("raw_bsub_send");
+            perror("sendto");
         }
         if ((size_t)status != sizeof(bsub)) {
             fprintf(stderr, "bad packet send length: wanted %zd, got %zu",
