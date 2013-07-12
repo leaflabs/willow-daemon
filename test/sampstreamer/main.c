@@ -22,7 +22,7 @@
 #include "raw_packets.h"
 #include "sockutil.h"
 
-#define PROGRAM_NAME "bsubstreamer"
+#define PROGRAM_NAME "sampstreamer"
 #define FROM_PORT 5678
 #define DAEMON_PORT 1370
 
