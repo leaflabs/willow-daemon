@@ -36,23 +36,26 @@ static void usage(int exit_status)
            "\tPrint this message\n"
            "  -p, --port"
            "\tSend to daemon at this localhost port, default %d\n"
+           "  -s, --subs"
+           "\tSend board subsamples instead of full board samples\n"
            ,
            PROGRAM_NAME, FROM_PORT, DAEMON_PORT);
     exit(exit_status);
 }
 
 #define DEFAULT_ARGUMENTS                               \
-    {  .from_port = 5678, .daemon_port = DAEMON_PORT, }
+    {  .from_port = 5678, .daemon_port = DAEMON_PORT, .subsamples = 0, }
 
 struct arguments {
     uint16_t from_port;
     uint16_t daemon_port;
+    int subsamples;
 };
 
 static void parse_args(struct arguments* args, int argc, char *const argv[])
 {
     int print_usage = 0;
-    const char shortopts[] = "f:hp:";
+    const char shortopts[] = "f:hp:s";
     struct option longopts[] = {
         /* Keep these sorted with shortopts. */
         { .name = "from-port",
@@ -67,6 +70,10 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
           .has_arg = required_argument,
           .flag = &print_usage,
           .val = 'p' },
+        { .name = "subs",
+          .has_arg = no_argument,
+          .flag = NULL,
+          .val = 's' },
         {0, 0, 0, 0},
     };
     while (1) {
@@ -90,6 +97,9 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
         case 'p':
             args->daemon_port = strtol(optarg, (char**)0, 10);
             break;
+        case 's':
+            args->subsamples = 1;
+            break;
         case '?': /* Fall through. */
         default:
             usage(EXIT_FAILURE);
@@ -97,6 +107,35 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
     }
 }
 
+void send_subsamples(int sockfd, struct sockaddr_in *to)
+{
+    struct raw_pkt_bsub bsub;
+    uint8_t dac = 0;
+    uint32_t idx = 0;
+    do {
+        raw_packet_init(&bsub, RAW_MTYPE_BSUB, 0);
+        bsub.b_cookie_h = 0xDEADBEEF;
+        bsub.b_cookie_l = 0xDEADBEEF;
+        bsub.b_id = 1234;
+        bsub.b_sidx = idx++;
+        bsub.b_dac = dac++;
+        bsub.b_chip_live = 0xFFFFFFFF;
+        if (raw_pkt_hton(&bsub)) {
+            fprintf(stderr, "invalid packet\n");
+            exit(EXIT_FAILURE);
+        }
+        ssize_t status = sendto(sockfd, &bsub, sizeof(bsub), MSG_NOSIGNAL,
+                                to, sizeof(*to));
+        if (status < 0) {
+            perror("raw_bsub_send");
+        }
+        if ((size_t)status != sizeof(bsub)) {
+            fprintf(stderr, "bad packet send length: wanted %zd, got %zu",
+                    status, sizeof(bsub));
+        }
+        usleep(1);
+    } while (1);
+}
 
 int main(int argc, char *argv[])
 {
@@ -117,32 +156,12 @@ int main(int argc, char *argv[])
         .sin_port = htons(args.daemon_port),
     };
 
-    struct raw_pkt_bsub bsub;
-    uint8_t dac = 0;
-    uint32_t idx = 0;
-    do {
-        raw_packet_init(&bsub, RAW_MTYPE_BSUB, 0);
-        bsub.b_cookie_h = 0xDEADBEEF;
-        bsub.b_cookie_l = 0xDEADBEEF;
-        bsub.b_id = 1234;
-        bsub.b_sidx = idx++;
-        bsub.b_dac = dac++;
-        bsub.b_chip_live = 0xFFFFFFFF;
-        if (raw_pkt_hton(&bsub)) {
-            fprintf(stderr, "invalid packet\n");
-            exit(EXIT_FAILURE);
-        }
-        ssize_t status = sendto(sockfd, &bsub, sizeof(bsub), MSG_NOSIGNAL,
-                                &to, sizeof(to));
-        if (status < 0) {
-            perror("raw_bsub_send");
-        }
-        if ((size_t)status != sizeof(bsub)) {
-            fprintf(stderr, "bad packet send length: wanted %zd, got %zu",
-                    status, sizeof(bsub));
-        }
-        usleep(1);
-    } while (1);
+    if (args.subsamples) {
+        send_subsamples(sockfd, &to);
+    } else {
+        fprintf(stderr, "board sample streaming is not implemented\n");
+        usage(EXIT_FAILURE);
+    }
 
     exit(EXIT_SUCCESS);         /* placate compiler */
 }
