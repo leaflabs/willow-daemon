@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "raw_packets.h"
 #include "sockutil.h"
@@ -25,7 +26,7 @@
 #define PROGRAM_NAME "sampstreamer"
 #define FROM_PORT 5678
 #define DAEMON_PORT 1370
-#define USLEEP_TIME 1
+#define NANOSLEEP_TIME 1
 #define COOKIE_H 0xDEADBEEF
 #define COOKIE_L 0xDEADBEEF
 #define BOARD_ID 1234
@@ -43,7 +44,7 @@ static void usage(int exit_status)
            "  -i, --index"
            "\tSpecify start board sample index, default %d\n"
            "  -l, --sleep"
-           "\tInter-packet microsecond sleep time (max 1000000), default %d\n"
+           "\tInter-packet nanosecond sleep time (max 1000000), default %d\n"
            "  -n, --nsamps"
            "\tNumber of packets to send, 0 (default) for \"forever\"\n"
            "  -p, --port"
@@ -51,7 +52,7 @@ static void usage(int exit_status)
            "  -s, --subs"
            "\tSend board subsamples instead of full board samples\n"
            ,
-           PROGRAM_NAME, FROM_PORT, START_INDEX, USLEEP_TIME, DAEMON_PORT);
+           PROGRAM_NAME, FROM_PORT, START_INDEX, NANOSLEEP_TIME, DAEMON_PORT);
     exit(exit_status);
 }
 
@@ -61,7 +62,7 @@ static void usage(int exit_status)
        .daemon_port = DAEMON_PORT,                      \
        .subsamples = 0,                                 \
        .start_idx = START_INDEX,                        \
-       .usleep_time = USLEEP_TIME,                      \
+       .nsleep_time = NANOSLEEP_TIME,                   \
        .nsamps = SAMPLES_FOREVER,                       \
     }
 
@@ -70,7 +71,7 @@ struct arguments {
     uint16_t daemon_port;
     int subsamples;
     uint32_t start_idx;
-    useconds_t usleep_time;
+    useconds_t nsleep_time;
     size_t nsamps;
 };
 
@@ -132,12 +133,12 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
             args->start_idx = strtol(optarg, (char**)0, 10);
             break;
         case 'l': {
-            long usleep_time = strtol(optarg, (char**)0, 10);
-            if (usleep_time > 1000000 || usleep_time < 0) {
-                fprintf(stderr, "invalid microsecond time %ld\n", usleep_time);
+            long nsleep_time = strtol(optarg, (char**)0, 10);
+            if (nsleep_time > 1000000 || nsleep_time < 0) {
+                fprintf(stderr, "invalid microsecond time %ld\n", nsleep_time);
                 usage(EXIT_FAILURE);
             }
-            args->usleep_time = usleep_time;
+            args->nsleep_time = nsleep_time;
             break;
         }
         case 'n': {
@@ -182,6 +183,10 @@ void send_subsamples(struct arguments *args,
     struct raw_pkt_bsub bsub;
     uint8_t dac = 0;
     uint32_t idx = args->start_idx;
+    struct timespec ts = {
+        .tv_sec = 0,
+        .tv_nsec = args->nsleep_time,
+    };
     while (args->nsamps == SAMPLES_FOREVER || idx < args->nsamps) {
         raw_packet_init(&bsub, RAW_MTYPE_BSUB, 0);
         bsub.b_cookie_h = COOKIE_H;
@@ -195,8 +200,8 @@ void send_subsamples(struct arguments *args,
             exit(EXIT_FAILURE);
         }
         send_pkt(&bsub, sizeof(bsub), sockfd, to);
-        if (args->usleep_time) {
-            usleep(args->usleep_time);
+        if (args->nsleep_time) {
+            nanosleep(&ts, NULL);
         }
     }
 }
@@ -207,6 +212,10 @@ void send_samples(struct arguments *args,
 {
     struct raw_pkt_bsmp bsmp;
     uint32_t idx = args->start_idx;
+    struct timespec ts = {
+        .tv_sec = 0,
+        .tv_nsec = args->nsleep_time,
+    };
     while (args->nsamps == SAMPLES_FOREVER || idx < args->nsamps) {
         raw_packet_init(&bsmp, RAW_MTYPE_BSMP, 0);
         bsmp.b_cookie_h = COOKIE_H;
@@ -219,8 +228,8 @@ void send_samples(struct arguments *args,
             exit(EXIT_FAILURE);
         }
         send_pkt(&bsmp, sizeof(bsmp), sockfd, to);
-        if (args->usleep_time) {
-            usleep(args->usleep_time);
+        if (args->nsleep_time) {
+            nanosleep(&ts, NULL);
         }
     }
 }
