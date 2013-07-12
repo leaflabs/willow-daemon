@@ -25,6 +25,12 @@
 #define PROGRAM_NAME "sampstreamer"
 #define FROM_PORT 5678
 #define DAEMON_PORT 1370
+#define USLEEP_TIME 1
+#define COOKIE_H 0xDEADBEEF
+#define COOKIE_L 0xDEADBEEF
+#define BOARD_ID 1234
+#define START_INDEX 0
+#define CHIPS_LIVE 0xFFFFFFFF
 
 static void usage(int exit_status)
 {
@@ -34,28 +40,44 @@ static void usage(int exit_status)
            "\tSend to daemon from this localhost port, default %d\n"
            "  -h, --help"
            "\tPrint this message\n"
+           "  -i, --index"
+           "\tSpecify start board sample index, default %d\n"
+           "  -l, --sleep"
+           "\tInter-packet microsecond sleep time (max 1000000), default %d\n"
+           "  -n, --nsamps"
+           "\tNumber of packets to send, 0 (default) for \"forever\"\n"
            "  -p, --port"
            "\tSend to daemon at this localhost port, default %d\n"
            "  -s, --subs"
            "\tSend board subsamples instead of full board samples\n"
            ,
-           PROGRAM_NAME, FROM_PORT, DAEMON_PORT);
+           PROGRAM_NAME, FROM_PORT, START_INDEX, USLEEP_TIME, DAEMON_PORT);
     exit(exit_status);
 }
 
+#define SAMPLES_FOREVER 0
 #define DEFAULT_ARGUMENTS                               \
-    {  .from_port = 5678, .daemon_port = DAEMON_PORT, .subsamples = 0, }
+    {  .from_port = 5678,                               \
+       .daemon_port = DAEMON_PORT,                      \
+       .subsamples = 0,                                 \
+       .start_idx = START_INDEX,                        \
+       .usleep_time = USLEEP_TIME,                      \
+       .nsamps = SAMPLES_FOREVER,                       \
+    }
 
 struct arguments {
     uint16_t from_port;
     uint16_t daemon_port;
     int subsamples;
+    uint32_t start_idx;
+    useconds_t usleep_time;
+    size_t nsamps;
 };
 
 static void parse_args(struct arguments* args, int argc, char *const argv[])
 {
     int print_usage = 0;
-    const char shortopts[] = "f:hp:s";
+    const char shortopts[] = "f:hi:l:n:p:s";
     struct option longopts[] = {
         /* Keep these sorted with shortopts. */
         { .name = "from-port",
@@ -66,10 +88,22 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
           .has_arg = no_argument,
           .flag = NULL,
           .val = 'h' },
+        { .name = "index",
+          .has_arg = required_argument,
+          .flag = NULL,
+          .val = 'i' },
+        { .name = "sleep",
+          .has_arg = required_argument,
+          .flag = NULL,
+          .val = 'l' },
         { .name = "port",
           .has_arg = required_argument,
           .flag = &print_usage,
           .val = 'p' },
+        { .name = "nsamps",
+          .has_arg = required_argument,
+          .flag = NULL,
+          .val = 'n' },
         { .name = "subs",
           .has_arg = no_argument,
           .flag = NULL,
@@ -94,6 +128,27 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
         case 'h':
             usage(EXIT_SUCCESS);
             break;
+        case 'i':
+            args->start_idx = strtol(optarg, (char**)0, 10);
+            break;
+        case 'l': {
+            long usleep_time = strtol(optarg, (char**)0, 10);
+            if (usleep_time > 1000000 || usleep_time < 0) {
+                fprintf(stderr, "invalid microsecond time %ld\n", usleep_time);
+                usage(EXIT_FAILURE);
+            }
+            args->usleep_time = usleep_time;
+            break;
+        }
+        case 'n': {
+            long nsamps = strtol(optarg, (char**)0, 10);
+            if (nsamps < 0) {
+                fprintf(stderr, "invalid number of samples %ld\n", nsamps);
+                usage(EXIT_FAILURE);
+            }
+            args->nsamps = nsamps;
+            break;
+        }
         case 'p':
             args->daemon_port = strtol(optarg, (char**)0, 10);
             break;
@@ -107,13 +162,6 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
     }
 }
 
-#define USLEEP_TIME 1
-#define COOKIE_H 0xDEADBEEF
-#define COOKIE_L 0xDEADBEEF
-#define BOARD_ID 1234
-#define START_INDEX 0
-#define CHIPS_LIVE 0xFFFFFFFF
-
 static inline void send_pkt(void *pkt, size_t size, int sockfd,
                             struct sockaddr_in *to)
 {
@@ -122,18 +170,19 @@ static inline void send_pkt(void *pkt, size_t size, int sockfd,
         perror("sendto");
     }
     if ((size_t)status != size) {
-        fprintf(stderr, "bad packet send length: wanted %zu, got %zd",
+        fprintf(stderr, "bad packet send length: wanted %zu, got %zd\n",
                 size, status);
     }
-    usleep(USLEEP_TIME);
 }
 
-void send_subsamples(int sockfd, struct sockaddr_in *to)
+void send_subsamples(struct arguments *args,
+                     int sockfd,
+                     struct sockaddr_in *to)
 {
     struct raw_pkt_bsub bsub;
     uint8_t dac = 0;
-    uint32_t idx = START_INDEX;
-    do {
+    uint32_t idx = args->start_idx;
+    while (args->nsamps == SAMPLES_FOREVER || idx < args->nsamps) {
         raw_packet_init(&bsub, RAW_MTYPE_BSUB, 0);
         bsub.b_cookie_h = COOKIE_H;
         bsub.b_cookie_l = COOKIE_L;
@@ -146,14 +195,17 @@ void send_subsamples(int sockfd, struct sockaddr_in *to)
             exit(EXIT_FAILURE);
         }
         send_pkt(&bsub, sizeof(bsub), sockfd, to);
-    } while (1);
+        usleep(args->usleep_time);
+    }
 }
 
-void send_samples(int sockfd, struct sockaddr_in *to)
+void send_samples(struct arguments *args,
+                  int sockfd,
+                  struct sockaddr_in *to)
 {
     struct raw_pkt_bsmp bsmp;
-    uint32_t idx = START_INDEX;
-    do {
+    uint32_t idx = args->start_idx;
+    while (args->nsamps == SAMPLES_FOREVER || idx < args->nsamps) {
         raw_packet_init(&bsmp, RAW_MTYPE_BSMP, 0);
         bsmp.b_cookie_h = COOKIE_H;
         bsmp.b_cookie_l = COOKIE_L;
@@ -165,7 +217,8 @@ void send_samples(int sockfd, struct sockaddr_in *to)
             exit(EXIT_FAILURE);
         }
         send_pkt(&bsmp, sizeof(bsmp), sockfd, to);
-    } while (1);
+        usleep(args->usleep_time);
+    }
 }
 
 int main(int argc, char *argv[])
@@ -174,8 +227,9 @@ int main(int argc, char *argv[])
 
     parse_args(&args, argc, argv);
 
-    fprintf(stderr, "from_port=%u, daemon port=%u\n",
-            args.from_port, args.daemon_port);
+    fprintf(stderr,
+            "from_port=%u, daemon port=%u, start index=%u, nsamples=%zu\n",
+            args.from_port, args.daemon_port, args.start_idx, args.nsamps);
 
     int sockfd = sockutil_get_udp_socket(args.from_port);
     if (sockfd == -1) {
@@ -188,9 +242,9 @@ int main(int argc, char *argv[])
     };
 
     if (args.subsamples) {
-        send_subsamples(sockfd, &to);
+        send_subsamples(&args, sockfd, &to);
     } else {
-        send_samples(sockfd, &to);
+        send_samples(&args, sockfd, &to);
     }
 
     exit(EXIT_SUCCESS);         /* placate compiler */
