@@ -107,33 +107,64 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
     }
 }
 
+#define USLEEP_TIME 1
+#define COOKIE_H 0xDEADBEEF
+#define COOKIE_L 0xDEADBEEF
+#define BOARD_ID 1234
+#define START_INDEX 0
+#define CHIPS_LIVE 0xFFFFFFFF
+
+static inline void send_pkt(void *pkt, size_t size, int sockfd,
+                            struct sockaddr_in *to)
+{
+    ssize_t status = sendto(sockfd, pkt, size, MSG_NOSIGNAL, to, sizeof(*to));
+    if (status < 0) {
+        perror("sendto");
+    }
+    if ((size_t)status != size) {
+        fprintf(stderr, "bad packet send length: wanted %zu, got %zd",
+                size, status);
+    }
+    usleep(USLEEP_TIME);
+}
+
 void send_subsamples(int sockfd, struct sockaddr_in *to)
 {
     struct raw_pkt_bsub bsub;
     uint8_t dac = 0;
-    uint32_t idx = 0;
+    uint32_t idx = START_INDEX;
     do {
         raw_packet_init(&bsub, RAW_MTYPE_BSUB, 0);
-        bsub.b_cookie_h = 0xDEADBEEF;
-        bsub.b_cookie_l = 0xDEADBEEF;
-        bsub.b_id = 1234;
+        bsub.b_cookie_h = COOKIE_H;
+        bsub.b_cookie_l = COOKIE_L;
+        bsub.b_id = BOARD_ID;
         bsub.b_sidx = idx++;
         bsub.b_dac = dac++;
-        bsub.b_chip_live = 0xFFFFFFFF;
+        bsub.b_chip_live = CHIPS_LIVE;
         if (raw_pkt_hton(&bsub)) {
             fprintf(stderr, "invalid packet\n");
             exit(EXIT_FAILURE);
         }
-        ssize_t status = sendto(sockfd, &bsub, sizeof(bsub), MSG_NOSIGNAL,
-                                to, sizeof(*to));
-        if (status < 0) {
-            perror("sendto");
+        send_pkt(&bsub, sizeof(bsub), sockfd, to);
+    } while (1);
+}
+
+void send_samples(int sockfd, struct sockaddr_in *to)
+{
+    struct raw_pkt_bsmp bsmp;
+    uint32_t idx = START_INDEX;
+    do {
+        raw_packet_init(&bsmp, RAW_MTYPE_BSMP, 0);
+        bsmp.b_cookie_h = COOKIE_H;
+        bsmp.b_cookie_l = COOKIE_L;
+        bsmp.b_id = BOARD_ID;
+        bsmp.b_sidx = idx++;
+        bsmp.b_chip_live = CHIPS_LIVE;
+        if (raw_pkt_hton(&bsmp)) {
+            fprintf(stderr, "invalid packet\n");
+            exit(EXIT_FAILURE);
         }
-        if ((size_t)status != sizeof(bsub)) {
-            fprintf(stderr, "bad packet send length: wanted %zd, got %zu",
-                    status, sizeof(bsub));
-        }
-        usleep(1);
+        send_pkt(&bsmp, sizeof(bsmp), sockfd, to);
     } while (1);
 }
 
@@ -159,8 +190,7 @@ int main(int argc, char *argv[])
     if (args.subsamples) {
         send_subsamples(sockfd, &to);
     } else {
-        fprintf(stderr, "board sample streaming is not implemented\n");
-        usage(EXIT_FAILURE);
+        send_samples(sockfd, &to);
     }
 
     exit(EXIT_SUCCESS);         /* placate compiler */
