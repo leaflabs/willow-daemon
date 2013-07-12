@@ -195,7 +195,9 @@ void send_subsamples(struct arguments *args,
             exit(EXIT_FAILURE);
         }
         send_pkt(&bsub, sizeof(bsub), sockfd, to);
-        usleep(args->usleep_time);
+        if (args->usleep_time) {
+            usleep(args->usleep_time);
+        }
     }
 }
 
@@ -217,7 +219,9 @@ void send_samples(struct arguments *args,
             exit(EXIT_FAILURE);
         }
         send_pkt(&bsmp, sizeof(bsmp), sockfd, to);
-        usleep(args->usleep_time);
+        if (args->usleep_time) {
+            usleep(args->usleep_time);
+        }
     }
 }
 
