@@ -19,6 +19,21 @@
 //
 
 //////////////////////////////////////////////////////////////////////
+// Shared datatypes
+
+// Sample type
+enum SampleType {
+    BOARD_SUBSAMPLE = 0;
+    BOARD_SAMPLE = 1;
+}
+
+// How to store samples on disk
+enum StorageBackend {
+    STORE_HDF5 = 1;            // Write to HDF5 file
+    STORE_RAW = 2;             // Write raw packets (for benchmarking)
+}
+
+//////////////////////////////////////////////////////////////////////
 // Register I/O primitives
 //
 // For low-level or debugging use.
@@ -159,7 +174,7 @@ message RegisterIO {
 // client control socket to perform a command. You'll get a
 // ControlResult back.
 
-// Configure a live stream.
+// Configure a live stream. Currently, only subsamples are supported.
 //
 // If you set one of dest_udp_addr4 and dest_udp_port, you must set
 // the other as well.
@@ -182,16 +197,45 @@ message ControlCmdStream {
     optional bool enable = 3;
 }
 
+// Store some board samples to disk.
+//
+// If any samples get stored, you'll get a ControlResponse with
+// type==SUCCESS and an embedded ControlResStore in return. The
+// embedded ControlResStore will tell you how many samples got stored;
+// this may be less than the number you requested if some packets were
+// dropped.
+//
+// If sample storage fails completely, you'll get a ControlResponse
+// with type==ERR.
+message ControlCmdStore {
+    // Where to store samples; must be present.
+    optional string path = 1;
+
+    // How many samples to store; must be present.
+    optional uint32 nsamples = 2;
+
+    // What sample index should arrive first. If missing, the count
+    // will start from the first sample that gets received.
+    optional uint32 start_sample = 3;
+
+    // What type of file to store samples into; defaults to HDF5.  If
+    // missing, samples won't be stored. If present, sample_type must
+    // be BOARD_SAMPLE.
+    optional StorageBackend backend = 17;
+}
+
 // Follows union type guidelines as described here:
 // https://developers.google.com/protocol-buffers/docs/techniques#union
 message ControlCommand {
     enum Type {
         STREAM = 1;
+        STORE = 2;
         REG_IO = 255;
     }
     optional Type type = 1;
 
     optional ControlCmdStream stream = 2;
+    optional ControlCmdStore store = 3;
     optional RegisterIO reg_io = 15;
 }
 
@@ -212,6 +256,8 @@ message ControlResErr {
         NO_DNODE = 0;
         // Internal daemon error
         DAEMON = 1;
+        // Daemon I/O error
+        DAEMON_IO = 6;
         // Protocol error on client control socket
         C_PROTO = 2;
         // Protocol error on data node control socket
@@ -225,16 +271,31 @@ message ControlResErr {
     optional string msg = 2;
 }
 
+// Success response for a ControlCmdStore.
+message ControlResStore {
+    enum Status {
+        DONE = 1;               // Finished successfully
+        ERROR = 2;              // Unknown error
+        PKTDROP = 3;            // Packet was dropped
+        TIMEOUT = 4;            // Timed out waiting for packets
+    }
+    optional Status status = 1;   // "Exit" status
+    optional string path = 2;     // Path data got stored to.
+    optional uint32 nsamples = 3; // Number of samples written.
+}
+
 message ControlResponse {
     enum Type {
         ERR = 1;
         // If type==SUCCESS, the previous command succeeded; no other
         // fields will be set.
         SUCCESS = 2;
+        STORE_FINISHED = 3;
         REG_IO = 255;
     }
     optional Type type = 1;
 
     optional ControlResErr err = 2; // when type==ERR
+    optional ControlResStore store = 3; // when type==STORE_FINISHED
     optional RegisterIO reg_io = 15; // when type==REG_IO
 }
