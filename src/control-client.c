@@ -553,6 +553,8 @@ static int client_last_txn_succeeded(struct control_session *cs)
  * Request processing
  */
 
+typedef void (*cmd_proc_fn)(struct control_session*);
+
 /* Handle a client command with embedded RegisterIO */
 static void client_process_cmd_regio(struct control_session *cs)
 {
@@ -605,6 +607,65 @@ static void client_process_cmd_regio(struct control_session *cs)
     raw_req_init(&txn->req_pkt, ioflag, 0, reg_io->type, reg_addr, ioval);
     control_set_transactions(cs, txn, 1, 1);
     cs->wake_why |= CONTROL_WHY_DNODE_TXN;
+}
+
+static void client_process_res_regio(struct control_session *cs)
+{
+    struct control_txn *txn = &cs->ctl_txns[cs->ctl_cur_txn];
+    struct raw_pkt_cmd *req_pkt = &txn->req_pkt, *res_pkt = &txn->res_pkt;
+    struct raw_cmd_req *req = raw_req(req_pkt);
+    struct raw_cmd_res *res = raw_res(res_pkt);
+
+    /* If the response doesn't match the request, something's wrong */
+    if (req->r_id != res->r_id) {
+        log_ERR("got response r_id %u, expected %u", res->r_id, req->r_id);
+        CLIENT_RES_ERR_D_PROTO(cs, "request/response ID mismatch");
+        return;
+    }
+
+    RegisterIO reg_io = REGISTER_IO__INIT;
+    reg_io.has_type = 1;
+    reg_io.type = res->r_type;
+#if (RAW_RTYPE_NTYPES - 1) != RAW_RTYPE_GPIO /* future-proofing */
+#error "changes to RAW_RTYPE_* require client code updates"
+#endif
+    switch (res->r_type) {
+    case RAW_RTYPE_ERR:
+        reg_io.has_err = 1;
+        reg_io.err = res->r_type;
+        break;
+    case RAW_RTYPE_CENTRAL:
+        reg_io.has_central = 1;
+        reg_io.central = res->r_type;
+        break;
+    case RAW_RTYPE_SATA:
+        reg_io.has_sata = 1;
+        reg_io.sata = res->r_type;
+        break;
+    case RAW_RTYPE_DAQ:
+        reg_io.has_daq = 1;
+        reg_io.daq = res->r_type;
+        break;
+    case RAW_RTYPE_UDP:
+        reg_io.has_udp = 1;
+        reg_io.udp = res->r_type;
+        break;
+    case RAW_RTYPE_GPIO:
+        reg_io.has_gpio = 1;
+        reg_io.gpio = res->r_type;
+        break;
+    default:
+        log_ERR("unhandled RAW_RTYPE: %d", res->r_type);
+        assert(0);
+        return;
+    }
+    reg_io.has_val = 1;
+    reg_io.val = res->r_val;
+    ControlResponse cr = CONTROL_RESPONSE__INIT;
+    cr.has_type = 1;
+    cr.type = CONTROL_RESPONSE__TYPE__REG_IO;
+    cr.reg_io = &reg_io;
+    client_send_response(cs, &cr);
 }
 
 static uint32_t client_get_data_addr4(struct control_session *cs,
@@ -747,101 +808,6 @@ static void client_process_cmd_stream(struct control_session *cs)
     cs->wake_why |= CONTROL_WHY_DNODE_TXN;
 }
 
-typedef void (*cmd_proc_fn)(struct control_session*);
-
-static void client_process_cmd(struct control_session *cs)
-{
-    struct client_priv *cpriv = cs->cpriv;
-    ControlCommand *cmd = cpriv->c_cmd;
-    if (!cmd->has_type) {
-        CLIENT_RES_ERR_C_PROTO(cs, "missing type field in command");
-        return;
-    }
-
-    cmd_proc_fn proc;
-    const char *type;
-
-    switch (cmd->type) {
-    case CONTROL_COMMAND__TYPE__REG_IO:
-        proc = client_process_cmd_regio;
-        type = "REG_IO";
-        break;
-    case CONTROL_COMMAND__TYPE__STREAM:
-        proc = client_process_cmd_stream;
-        type = "STREAM";
-        break;
-    default:
-        CLIENT_RES_ERR_C_PROTO(cs, "unknown command type");
-        return;
-    }
-    log_DEBUG("%s: handling protocol message, type %s (%d)", __func__,
-              type, cmd->type);
-    proc(cs);
-}
-
-/*
- * Result processing
- */
-
-static void client_process_res_regio(struct control_session *cs)
-{
-    struct control_txn *txn = &cs->ctl_txns[cs->ctl_cur_txn];
-    struct raw_pkt_cmd *req_pkt = &txn->req_pkt, *res_pkt = &txn->res_pkt;
-    struct raw_cmd_req *req = raw_req(req_pkt);
-    struct raw_cmd_res *res = raw_res(res_pkt);
-
-    /* If the response doesn't match the request, something's wrong */
-    if (req->r_id != res->r_id) {
-        log_ERR("got response r_id %u, expected %u", res->r_id, req->r_id);
-        CLIENT_RES_ERR_D_PROTO(cs, "request/response ID mismatch");
-        return;
-    }
-
-    RegisterIO reg_io = REGISTER_IO__INIT;
-    reg_io.has_type = 1;
-    reg_io.type = res->r_type;
-#if (RAW_RTYPE_NTYPES - 1) != RAW_RTYPE_GPIO /* future-proofing */
-#error "changes to RAW_RTYPE_* require client code updates"
-#endif
-    switch (res->r_type) {
-    case RAW_RTYPE_ERR:
-        reg_io.has_err = 1;
-        reg_io.err = res->r_type;
-        break;
-    case RAW_RTYPE_CENTRAL:
-        reg_io.has_central = 1;
-        reg_io.central = res->r_type;
-        break;
-    case RAW_RTYPE_SATA:
-        reg_io.has_sata = 1;
-        reg_io.sata = res->r_type;
-        break;
-    case RAW_RTYPE_DAQ:
-        reg_io.has_daq = 1;
-        reg_io.daq = res->r_type;
-        break;
-    case RAW_RTYPE_UDP:
-        reg_io.has_udp = 1;
-        reg_io.udp = res->r_type;
-        break;
-    case RAW_RTYPE_GPIO:
-        reg_io.has_gpio = 1;
-        reg_io.gpio = res->r_type;
-        break;
-    default:
-        log_ERR("unhandled RAW_RTYPE: %d", res->r_type);
-        assert(0);
-        return;
-    }
-    reg_io.has_val = 1;
-    reg_io.val = res->r_val;
-    ControlResponse cr = CONTROL_RESPONSE__INIT;
-    cr.has_type = 1;
-    cr.type = CONTROL_RESPONSE__TYPE__REG_IO;
-    cr.reg_io = &reg_io;
-    client_send_response(cs, &cr);
-}
-
 static void client_process_res_stream(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
@@ -906,6 +872,36 @@ static void client_process_res_stream(struct control_session *cs)
         }
     }
     client_send_success(cs);
+}
+
+static void client_process_cmd(struct control_session *cs)
+{
+    struct client_priv *cpriv = cs->cpriv;
+    ControlCommand *cmd = cpriv->c_cmd;
+    if (!cmd->has_type) {
+        CLIENT_RES_ERR_C_PROTO(cs, "missing type field in command");
+        return;
+    }
+
+    cmd_proc_fn proc;
+    const char *type;
+
+    switch (cmd->type) {
+    case CONTROL_COMMAND__TYPE__REG_IO:
+        proc = client_process_cmd_regio;
+        type = "REG_IO";
+        break;
+    case CONTROL_COMMAND__TYPE__STREAM:
+        proc = client_process_cmd_stream;
+        type = "STREAM";
+        break;
+    default:
+        CLIENT_RES_ERR_C_PROTO(cs, "unknown command type");
+        return;
+    }
+    log_DEBUG("%s: handling protocol message, type %s (%d)", __func__,
+              type, cmd->type);
+    proc(cs);
 }
 
 static void client_process_res(struct control_session *cs)
