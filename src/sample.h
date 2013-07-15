@@ -81,4 +81,74 @@ int sample_set_addr(struct sample_session *smpl,
 int sample_cfg_subsamples(struct sample_session *smpl,
                           int enable);
 
+struct ch_storage;
+
+/**
+ * Configuration structure for a future board sample transfer
+ */
+struct sample_bsamp_cfg {
+    size_t nsamples;            /**< Number of samples to expect */
+    /** Index of first sample to expect. This currently must be positive. */
+    ssize_t start_sample;
+    /**
+     * Channel storage handler.
+     *
+     * This must be open and ready for ch_storage_write() and
+     * ch_storage_datasync() calls. */
+    struct ch_storage *chns;
+};
+
+#define SAMPLE_BS_DONE 0x1      /**< Finished writing all samples */
+#define SAMPLE_BS_ERR 0x2       /**< Generic error */
+#define SAMPLE_BS_PKTDROP 0x4   /**< Dropped a sample packet */
+#define SAMPLE_BS_TIMEOUT 0x8   /**< Timed out while waiting for packets */
+
+/**
+ * Callback function for board sample storage configuration.
+ *
+ * @param events Logical OR of SAMPLE_BS_*.
+ * @param nwritten The number of board samples written (though not
+ *                 necessarily synced) to disk before the event that
+ *                 caused the callback to fire. No additional board
+ *                 samples will be written.
+ * @param arg Argument from sample_expect_board_samples()
+ * @see sample_expect_board_samples(), sample_reject_board_samples() */
+typedef void (*sample_bsamp_cb)(short events, size_t nwritten, void *arg);
+
+/**
+ * Start accepting board sample packets, and save them to disk.
+ *
+ * The data node address must have been previously configured using
+ * sample_set_addr().
+ *
+ * To halt board sample reading, use sample_reject_bsamps().
+ *
+ * @param smpl Sample handler
+ * @param cfg Sample retrieval configuration
+ * @param cb Event/error callback function; this must not be NULL. It
+ *           will be called from smpl's event base's thread.
+ * @param arg  Passed to "cb".
+ * @return 0 on success, -1 on failure.
+ * @see sample_set_addr(), sample_new(), sample_reject_bsamps()
+ */
+int sample_expect_bsamps(struct sample_session *smpl,
+                         struct sample_bsamp_cfg *cfg,
+                         sample_bsamp_cb cb, void *arg);
+
+/**
+ * Stop accepting board sample packets.
+ *
+ * It's an error to call this function without having called
+ * sample_expect_bsamps() first, or if the callback specified in the
+ * sample_expect_bsamps() call has already been called.
+ *
+ * This function may block.
+ *
+ * @param smpl Sample handler.
+ * @return Number of board samples written and synced to disk on
+ *         success, -1 on failure.
+ * @see sample_expect_bsamps();
+ */
+ssize_t sample_reject_bsamps(struct sample_session *smpl);
+
 #endif
