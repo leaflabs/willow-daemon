@@ -28,10 +28,29 @@
 struct sample_session;
 struct event_base;
 
-struct sample_session *sample_new(struct event_base *base,
+/**
+ * Create a new sample packet handler.
+ *
+ * The handler will start listening on the given interface/port
+ * combination, but will ignore any packets until you configure it to
+ * do something with them. You can forward board subsample packets
+ * with sample_cfg_subsamples(). You can save board sample packets to
+ * disk with sample_expect_bsamps().
+ *
+ * @param base Event loop base
+ * @param iface Interface number (see <net/if.h>) for sample data socket.
+ * @param port Port to bind to on iface.
+ * @return New sample handler on success, NULL on failure.
+ */
+struct sample_session* sample_new(struct event_base *base,
                                   unsigned iface,
                                   uint16_t port);
-void sample_free(struct sample_session *dts);
+/**
+ * Free resources allocated by a sample packet handler.
+ *
+ * You must call this from the thread controlling smpl's event loop.
+ */
+void sample_free(struct sample_session *smpl);
 
 /** Get daemon data socket's address. */
 int sample_get_saddr(struct sample_session *smpl,
