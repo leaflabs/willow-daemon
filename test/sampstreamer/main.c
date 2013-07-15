@@ -35,7 +35,8 @@
 
 static void usage(int exit_status)
 {
-    printf("Usage: %s [-p <port>] [-h]\n"
+    printf("Usage: %s OPTIONS\n\n"
+
            "Options:\n"
            "  -f, --from-port\n"
            "\tSend to daemon from this localhost port, default %d\n"
