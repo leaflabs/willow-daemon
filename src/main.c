@@ -33,16 +33,15 @@
 #include <event2/event.h>
 #include <event2/thread.h>
 
+#include <hdf5.h>
+
 #include "daemon.h"
 #include "logging.h"
 #include "sockutil.h"
 #include "type_attrs.h"
 #include "raw_packets.h"
 
-#include "ch_storage.h"
 #include "control.h"
-#include "hdf5_ch_storage.h"
-#include "raw_ch_storage.h"
 #include "sample.h"
 
 /* libevent log levels with leading underscores are deprecated as of
@@ -230,29 +229,8 @@ sigterm_handler(__unused int signum, __unused short what, void *basevp)
     event_base_loopbreak((struct event_base*)basevp);
 }
 
-static struct ch_storage* alloc_ch_storage(void)
-{
-    struct ch_storage *chns;
-    if (DO_HDF5_STORAGE) {
-        chns = hdf5_ch_storage_alloc(DNODE_DATA_FILE, DNODE_DATASET_NAME);
-    } else {
-        chns = raw_ch_storage_alloc(DNODE_DATA_FILE, 0644);
-    }
-    return chns;
-}
-
-static void free_ch_storage(struct ch_storage* chns)
-{
-    if (DO_HDF5_STORAGE) {
-        hdf5_ch_storage_free(chns);
-    } else  {
-        raw_ch_storage_free(chns);
-    }
-}
-
 static int
-run_event_loop(struct arguments *args,
-               __unused struct ch_storage *chstorage)
+run_event_loop(struct arguments *args)
 {
     int ret = EXIT_FAILURE;
     struct event_base *base = event_base_new();
@@ -324,28 +302,12 @@ run_event_loop(struct arguments *args,
 static int daemon_main(struct arguments *args)
 {
     int ret = EXIT_FAILURE;
-    struct ch_storage *chstorage = alloc_ch_storage();
-    if (!chstorage) {
-        log_CRIT("can't allocate channel storage object");
-        goto nochstorage;
-    }
-    unsigned flags = DO_HDF5_STORAGE ?
-        H5F_ACC_TRUNC :
-        O_CREAT | O_RDWR | O_TRUNC;
-    if (ch_storage_open(chstorage, flags) == -1) {
-        log_CRIT("can't open channel storage: %m");
-        goto noopen;
-    }
 
     /*
      * Everything happens in the event loop.
      */
-    ret = run_event_loop(args, chstorage);
+    ret = run_event_loop(args);
 
-    ch_storage_close(chstorage);
- noopen:
-    free_ch_storage(chstorage);
- nochstorage:
     return ret;
 }
 
