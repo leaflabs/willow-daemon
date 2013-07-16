@@ -13,6 +13,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <fcntl.h> /* leave this here; our __unused conflicts with it */
+
 #include "control-client.h"
 #include "control-private.h"
 
@@ -25,6 +27,9 @@
 #include "logging.h"
 #include "raw_packets.h"
 #include "sockutil.h"
+#include "ch_storage.h"
+#include "hdf5_ch_storage.h"
+#include "raw_ch_storage.h"
 
 #include "sample.h"
 
@@ -35,6 +40,9 @@
 #else
 #define LOCAL_DEBUG(...) ((void)0)
 #endif
+
+#define HDF5_DATASET_NAME "wired-dataset"
+#define DEFAULT_STORAGE_BACKEND STORAGE_BACKEND__STORE_HDF5
 
 /* FIXME:
  * - add timeouts when processing commands
@@ -68,6 +76,10 @@ struct client_priv {
     /* For storing addresses we read from the data node over the
      * course of a command */
     struct sockaddr_in dn_addr_in;
+
+    /* For configuring sample storage */
+    struct sample_bsamp_cfg *bs_cfg;
+    int bs_expecting;
 };
 
 /********************************************************************
@@ -102,6 +114,9 @@ static void client_free_priv(struct control_session *cs)
     if (cpriv->c_cmdlen_buf) {
         evbuffer_free(cpriv->c_cmdlen_buf);
     }
+    if (cpriv->bs_cfg) {
+        free(cpriv->bs_cfg);
+    }
     free(cpriv);
     cs->cpriv = NULL;
 }
@@ -128,6 +143,11 @@ static void client_reset_state_locked(struct control_session *cs)
         control_response__free_unpacked(cpriv->c_rsp, NULL);
     }
     cpriv->c_rsp = NULL;
+    if (cpriv->bs_cfg) {
+        free(cpriv->bs_cfg);
+    }
+    cpriv->bs_cfg = NULL;
+    cpriv->bs_expecting = 0;
     drain_evbuf(cpriv->c_pbuf);
     drain_evbuf(cpriv->c_cmdlen_buf);
 }
@@ -138,6 +158,58 @@ static void client_reset_state_unlocked(struct control_session *cs)
     control_must_lock(cs);
     client_reset_state_locked(cs);
     control_must_unlock(cs);
+}
+
+static struct ch_storage *client_new_ch_storage(const char *path,
+                                                StorageBackend backend)
+{
+    struct ch_storage *chns;
+    if (backend == STORAGE_BACKEND__STORE_HDF5) {
+        chns = hdf5_ch_storage_alloc(path, HDF5_DATASET_NAME);
+    } else if (backend == STORAGE_BACKEND__STORE_RAW) {
+        chns = raw_ch_storage_alloc(path, 0644);
+    } else {
+        assert(0);
+        return NULL;
+    }
+    if (!chns) {
+        log_ERR("can't open channel storage at %s: %m", path);
+        return NULL;
+    }
+    return chns;
+}
+
+static int client_open_ch_storage(struct ch_storage *chns,
+                                  StorageBackend backend)
+{
+    unsigned flags;
+    if (backend == STORAGE_BACKEND__STORE_HDF5) {
+        flags = H5F_ACC_TRUNC;
+    } else if (backend == STORAGE_BACKEND__STORE_RAW) {
+        flags = O_CREAT | O_RDWR | O_TRUNC;
+    } else {
+        assert(0);
+        return -1;
+    }
+    if (ch_storage_open(chns, flags) == -1) {
+        log_ERR("can't open channel storage at %s: %m",
+                chns->ch_path);
+        return -1;
+    }
+    return 0;
+}
+
+/* TODO make free a ch_storage method, so this stupidity can go away */
+static void client_free_ch_storage(struct ch_storage *chns,
+                                   StorageBackend backend)
+{
+    if (backend == STORAGE_BACKEND__STORE_HDF5) {
+        hdf5_ch_storage_free(chns);
+    } else if (backend == STORAGE_BACKEND__STORE_RAW) {
+        raw_ch_storage_free(chns);
+    } else {
+        assert(0);
+    }
 }
 
 /********************************************************************
@@ -202,6 +274,16 @@ static void client_send_success(struct control_session *cs)
                         "internal daemon error: " msg);                 \
  } while (0)
 
+#define CLIENT_RES_ERR_DAEMON_IO(cs, msg) do {                          \
+        client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__DAEMON_IO,       \
+                        "internal daemon I/O error: " msg);             \
+ } while (0)
+
+#define CLIENT_RES_ERR_DAEMON_OOM(cs) do {                              \
+        client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__DAEMON,          \
+                        "internal daemon error: out of memory");        \
+ } while (0)
+
 #define CLIENT_RES_ERR_C_PROTO(cs, msg) do {                           \
         client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__C_PROTO,        \
                         "client protocol error: " msg); } while (0)
@@ -217,6 +299,138 @@ static void client_send_success(struct control_session *cs)
 #define CLIENT_RES_ERR_DNODE_ASYNC(cs) do {                            \
         client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__DNODE_ASYNC,    \
                         "data node async error"); } while (0)
+
+/********************************************************************
+ * Shared helpers used by command processing routines
+ */
+
+static uint32_t client_get_data_addr4(struct control_session *cs,
+                                      uint32_t *s_addr)
+{
+    struct sockaddr_in saddr = {
+        .sin_family = AF_UNSPEC,
+    };
+    socklen_t addrlen = sizeof(saddr);
+    if (sample_get_saddr(cs->smpl, AF_INET, (struct sockaddr*)&saddr,
+                         &addrlen)) {
+        log_WARNING("can't read dnode data socket address");
+        return -1;
+    }
+    assert(saddr.sin_family == AF_INET);
+    *s_addr = htonl(saddr.sin_addr.s_addr);
+    return 0;
+}
+
+static int client_get_dsock_info(struct control_session *cs,
+                                 uint32_t *ipv4_s_addr,
+                                 uint32_t *iface_mac48_h,
+                                 uint32_t *iface_mac48_l)
+{
+    uint8_t dsock_m48[6];
+    if ((client_get_data_addr4(cs, ipv4_s_addr) ||
+         sample_get_mac48(cs->smpl, dsock_m48))) {
+        return -1;
+    }
+    *iface_mac48_h = (((uint32_t)dsock_m48[0] << 8) |
+                      (uint32_t)dsock_m48[1]);
+    *iface_mac48_l = (((uint32_t)dsock_m48[2] << 24) |
+                      ((uint32_t)dsock_m48[3] << 16) |
+                      ((uint32_t)dsock_m48[4] << 8) |
+                      (uint32_t)dsock_m48[5]);
+    return 0;
+}
+
+static void client_clear_dnode_addr_storage(struct control_session *cs)
+{
+    struct client_priv *cpriv = cs->cpriv;
+    cpriv->dn_addr_in.sin_family = AF_INET;
+    cpriv->dn_addr_in.sin_port = 0;
+    cpriv->dn_addr_in.sin_addr.s_addr = 0;
+    memset(&cpriv->dn_addr_in.sin_zero, 0,
+           sizeof(cpriv->dn_addr_in.sin_zero));
+}
+
+static int client_res_updates_dnode_addr(struct raw_cmd_res *res)
+{
+    /* TODO update this for IPv6 */
+    return (res->r_type == RAW_RTYPE_UDP &&
+            (res->r_addr == RAW_RADDR_UDP_SRC_IP4 ||
+             res->r_addr == RAW_RADDR_UDP_SRC_IP4_PORT));
+}
+
+#define GOT_DNODE_IP 1
+#define GOT_DNODE_PORT 2
+static int client_update_dnode_addr_storage(struct control_session *cs,
+                                            struct raw_cmd_res *res)
+{
+    struct client_priv *cpriv = cs->cpriv;
+    if (res->r_addr == RAW_RADDR_UDP_SRC_IP4) {
+        cpriv->dn_addr_in.sin_addr.s_addr = htonl(res->r_val);
+        return GOT_DNODE_IP;
+    } else if (res->r_addr == RAW_RADDR_UDP_SRC_IP4_PORT) {
+        if (res->r_val > UINT16_MAX) {
+            log_WARNING("data node source IPv4 port %u is invalid",
+                        res->r_val);
+            CLIENT_RES_ERR_DNODE(cs, "invalid data port specified");
+            return -1;
+        }
+        cpriv->dn_addr_in.sin_port = htons((uint16_t)res->r_val);
+        return GOT_DNODE_PORT;
+    }
+    return 0;
+}
+
+/********************************************************************
+ * Sample handler storage callback
+ */
+
+void client_sample_store_callback(short events, size_t nwritten, void *csvp)
+{
+    struct control_session *cs = csvp;
+    struct client_priv *cpriv;
+    ControlCmdStore *store;
+    ControlResponse cr = CONTROL_RESPONSE__INIT;
+    ControlResStore res_store = CONTROL_RES_STORE__INIT;
+
+    /* Reset sample storage state to prepare for next storage */
+    control_must_lock(cs);
+    cpriv = cs->cpriv;
+    store = cpriv->c_cmd->store;
+    assert(cpriv->bs_cfg);
+    assert(store);
+    assert(store->has_backend);
+    if (ch_storage_close(cpriv->bs_cfg->chns) == -1) {
+        log_ERR("%s: can't close channel storage", __func__);
+    }
+    client_free_ch_storage(cpriv->bs_cfg->chns, store->backend);
+    free(cpriv->bs_cfg);
+    cpriv->bs_cfg = NULL;
+    cpriv->bs_expecting = 0;
+
+    /* Send the result. */
+    res_store.has_status = 1;
+    res_store.has_nsamples = 1;
+    res_store.nsamples = nwritten;
+    res_store.path = cpriv->c_cmd->store->path;
+    if (events & SAMPLE_BS_DONE) {
+        res_store.status = CONTROL_RES_STORE__STATUS__DONE;
+    } else if (events & SAMPLE_BS_ERR) {
+        res_store.status = CONTROL_RES_STORE__STATUS__ERROR;
+    } else if (events & SAMPLE_BS_PKTDROP) {
+        res_store.status = CONTROL_RES_STORE__STATUS__PKTDROP;
+    } else if (events & SAMPLE_BS_TIMEOUT) {
+        res_store.status = CONTROL_RES_STORE__STATUS__TIMEOUT;
+    } else {
+        log_DEBUG("%s: spurious sample storage callback", __func__);
+        goto out;
+    }
+    cr.has_type = 1;
+    cr.type = CONTROL_RESPONSE__TYPE__STORE_FINISHED;
+    cr.store = &res_store;
+    client_send_response(cs, &cr);
+ out:
+    control_must_unlock(cs);
+}
 
 /********************************************************************
  * Main thread control_ops callbacks
@@ -245,6 +459,8 @@ static int client_start(struct control_session *cs)
     priv->c_rsp = NULL;
     priv->c_pbuf = c_pbuf;
     priv->c_cmdlen_buf = c_cmdlen_buf;
+    priv->bs_cfg = NULL;
+    priv->bs_expecting = 0;
     cs->cpriv = priv;
     client_reset_state_locked(cs); /* worker isn't started; don't
                                     * bother locking */
@@ -549,6 +765,76 @@ static int client_last_txn_succeeded(struct control_session *cs)
     return 1;
 }
 
+static int client_set_txns_stream(struct control_session *cs,
+                                  uint32_t daq_udp_mode)
+{
+    const size_t ntxns = 15;
+
+    /* Get the daemon data socket's IPv4 and MAC48 addresses, which we
+     * need to initialize dnode registers. */
+    uint32_t dsock_ipv4, m48h, m48l;
+    if (client_get_dsock_info(cs, &dsock_ipv4, &m48h, &m48l) == -1) {
+        CLIENT_RES_ERR_DAEMON(cs, "internal network error");
+        return -1;
+    }
+
+    struct control_txn *txns = malloc(ntxns * sizeof(struct control_txn));
+    if (!txns) {
+        CLIENT_RES_ERR_DAEMON_OOM(cs);
+        return -1;
+    }
+    size_t txno = 0;
+
+    /* IMPORTANT: the callers of this function rely on the order in
+     * which these transactions are set. Don't change it without
+     * inspecting them! */
+    /* Read the data node's UDP IPv4 address and port. */
+    client_udp_r(txns + txno++, RAW_RADDR_UDP_SRC_IP4);
+    client_udp_r(txns + txno++, RAW_RADDR_UDP_SRC_IP4_PORT);
+    /* Set UDP IPv4 destination register. */
+    client_udp_w(txns + txno++, RAW_RADDR_UDP_DST_IP4, dsock_ipv4);
+    /* Set UDP MAC destination registers */
+    client_udp_w(txns + txno++, RAW_RADDR_UDP_DST_MAC_H, m48h);
+    client_udp_w(txns + txno++, RAW_RADDR_UDP_DST_MAC_L, m48l);
+    /* Write 0 (STOP) to UDP and DAQ enable registers */
+    client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 0);
+    client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 0);
+    client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 0);
+    /* Toggle reset line by writing 1/0 to DAQ FIFO flags register
+     * (bring reset line high/low) */
+    client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 1);
+    client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 0);
+    /* Setup payload length (packet type) for UDP core */
+    client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_MODE, daq_udp_mode);
+    /* Set UDP module to stream from DAQ (not SATA) */
+    client_udp_w(txns + txno++, RAW_RADDR_UDP_MODE, 0); // 0x0D==13; 0
+    /* Enable UDP module */
+    client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 1);
+    /* Enable DAQ module */
+    client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 1);
+    client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 1);
+
+    assert(txno == ntxns);
+    control_set_transactions(cs, txns, ntxns, 1);
+    cs->wake_why |= CONTROL_WHY_DNODE_TXN;
+    return 0;
+}
+
+/* Check that the last transaction succeeded. Send an error response
+ * and return -1 if it didn't. Return 0 if the transaction
+ * succeeded. */
+static int client_ensure_txn_ok(struct control_session *cs,
+                                const char *cmd_str)
+{
+    if (!client_last_txn_succeeded(cs)) {
+        log_WARNING("transaction %zd/%zu failed while processing %s",
+                    cs->ctl_cur_txn, cs->ctl_n_txns, cmd_str);
+        CLIENT_RES_ERR_DNODE(cs, "failed I/O transaction");
+        return -1;
+    }
+    return 0;
+}
+
 /*
  * Request processing
  */
@@ -668,23 +954,6 @@ static void client_process_res_regio(struct control_session *cs)
     client_send_response(cs, &cr);
 }
 
-static uint32_t client_get_data_addr4(struct control_session *cs,
-                                      uint32_t *s_addr)
-{
-    struct sockaddr_in saddr = {
-        .sin_family = AF_UNSPEC,
-    };
-    socklen_t addrlen = sizeof(saddr);
-    if (sample_get_saddr(cs->smpl, AF_INET, (struct sockaddr*)&saddr,
-                         &addrlen)) {
-        log_WARNING("can't read dnode data socket address");
-        return -1;
-    }
-    assert(saddr.sin_family == AF_INET);
-    *s_addr = htonl(saddr.sin_addr.s_addr);
-    return 0;
-}
-
 static void client_process_cmd_stream(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
@@ -732,65 +1001,17 @@ static void client_process_cmd_stream(struct control_session *cs)
     /*
      * Prepare transactions
      */
-    const size_t max_txns = 15;
-    struct control_txn *txns = malloc(max_txns * sizeof(struct control_txn));
-    size_t txno = 0;
-    if (!txns) {
-        CLIENT_RES_ERR_DAEMON(cs, "out of memory");
-        return;
-    }
     if (stream->enable) {
-        /* Set up storage for the data node address */
-        cpriv->dn_addr_in.sin_family = AF_INET;
-        cpriv->dn_addr_in.sin_port = 0;
-        cpriv->dn_addr_in.sin_addr.s_addr = 0;
-        memset(&cpriv->dn_addr_in.sin_zero, 0,
-               sizeof(cpriv->dn_addr_in.sin_zero));
-
-        /* Get the daemon data socket's IPv4 and MAC48 addresses, which we
-         * need to initialize dnode registers. */
-        uint32_t dsock_ipv4;
-        uint8_t dsock_m48[6];
-        if ((client_get_data_addr4(cs, &dsock_ipv4) ||
-             sample_get_mac48(cs->smpl, dsock_m48))) {
-            CLIENT_RES_ERR_DAEMON(cs, "internal network error");
+        client_clear_dnode_addr_storage(cs);
+        client_set_txns_stream(cs, RAW_DAQ_UDP_MODE_BSUB);
+    } else {
+        const size_t ntxns = 5;
+        struct control_txn *txns = malloc(ntxns * sizeof(struct control_txn));
+        size_t txno = 0;
+        if (!txns) {
+            CLIENT_RES_ERR_DAEMON(cs, "out of memory");
             return;
         }
-        uint32_t m48h = (((uint32_t)dsock_m48[0] << 8) |
-                         (uint32_t)dsock_m48[1]);
-        uint32_t m48l = (((uint32_t)dsock_m48[2] << 24) |
-                         ((uint32_t)dsock_m48[3] << 16) |
-                         ((uint32_t)dsock_m48[4] << 8) |
-                         (uint32_t)dsock_m48[5]);
-
-        /* Read the data node's UDP IPv4 address and port. */
-        client_udp_r(txns + txno++, RAW_RADDR_UDP_SRC_IP4);
-        client_udp_r(txns + txno++, RAW_RADDR_UDP_SRC_IP4_PORT);
-        /* Set UDP IPv4 destination register. */
-        client_udp_w(txns + txno++, RAW_RADDR_UDP_DST_IP4, dsock_ipv4);
-        /* Set UDP MAC destination registers */
-        client_udp_w(txns + txno++, RAW_RADDR_UDP_DST_MAC_H, m48h);
-        client_udp_w(txns + txno++, RAW_RADDR_UDP_DST_MAC_L, m48l);
-        /* Write 0 (STOP) to UDP and DAQ enable registers */
-        client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 0);
-        client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 0);
-        client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 0);
-        /* Toggle reset line by writing 1/0 to DAQ FIFO flags register
-         * (bring reset line high/low) */
-        client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 1);
-        client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 0);
-        /* Setup UDP packet type (DAQ UDP mode) */
-        client_daq_w(txns + txno++,
-                     RAW_RADDR_DAQ_UDP_MODE, RAW_DAQ_UDP_MODE_BSUB);
-        /* Set UDP module to stream from DAQ (not SATA) */
-        client_udp_w(txns + txno++, RAW_RADDR_UDP_MODE, 0); // 0x0D==13; 0
-        /* Enable UDP module */
-        client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 1);
-        /* Enable DAQ module */
-        client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 1);
-        client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 1);
-    } else {
-        /* Write 0 (STOP) to DAQ and UDP enable registers */
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 0);
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 0);
         client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 0);
@@ -798,14 +1019,10 @@ static void client_process_cmd_stream(struct control_session *cs)
          * (bring reset line high/low) */
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 1);
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 0);
+        assert(txno == ntxns);
+        control_set_transactions(cs, txns, ntxns, 1);
+        cs->wake_why |= CONTROL_WHY_DNODE_TXN;
     }
-
-    /*
-     * Get data node side to start running the transactions
-     */
-    assert(txno <= max_txns);
-    control_set_transactions(cs, txns, txno, 1);
-    cs->wake_why |= CONTROL_WHY_DNODE_TXN;
 }
 
 static void client_process_res_stream(struct control_session *cs)
@@ -813,13 +1030,7 @@ static void client_process_res_stream(struct control_session *cs)
     struct client_priv *cpriv = cs->cpriv;
     ControlCmdStream *stream = cpriv->c_cmd->stream;
 
-    /*
-     * On failure, report error to client; they'll need to clean up
-     */
-    if (!client_last_txn_succeeded(cs)) {
-        log_WARNING("transaction %zd/%zu failed processing ControlCmdStream",
-                    cs->ctl_cur_txn, cs->ctl_n_txns);
-        CLIENT_RES_ERR_DNODE(cs, "failed I/O transaction");
+    if (client_ensure_txn_ok(cs, "ControlCmdStream") == -1) {
         return;
     }
 
@@ -829,19 +1040,9 @@ static void client_process_res_stream(struct control_session *cs)
     if (stream->has_enable && stream->enable) {
         /* When enabling, we read the UDP IPv4 address and port registers. */
         struct raw_cmd_res *res = ctxn_res(cs->ctl_txns + cs->ctl_cur_txn);
-        if (res->r_type == RAW_RTYPE_UDP) {
-            if (res->r_addr == RAW_RADDR_UDP_SRC_IP4) {
-                cpriv->dn_addr_in.sin_addr.s_addr = htonl(res->r_val);
-            }
-            if (res->r_addr == RAW_RADDR_UDP_SRC_IP4_PORT) {
-                if (res->r_val > UINT16_MAX) {
-                    log_WARNING("data node source IPv4 port %u is invalid",
-                                res->r_val);
-                    CLIENT_RES_ERR_DNODE(cs, "invalid data port specified");
-                    return;
-                }
-                cpriv->dn_addr_in.sin_port = htons((uint16_t)res->r_val);
-            }
+        if (client_res_updates_dnode_addr(res) &&
+            client_update_dnode_addr_storage(cs, res) == -1) {
+            return;
         }
     }
 
@@ -874,6 +1075,167 @@ static void client_process_res_stream(struct control_session *cs)
     client_send_success(cs);
 }
 
+static void client_process_cmd_store(struct control_session *cs)
+{
+    struct client_priv *cpriv = cs->cpriv;
+    ControlCmdStore *store = cpriv->c_cmd->store;
+    ssize_t start_sample;
+    size_t nsamples;
+    struct ch_storage *chns = NULL;
+    int chns_is_open = 0;
+    struct sample_bsamp_cfg *bs_cfg = NULL;
+    assert(!cpriv->bs_cfg);
+
+    /* Check that the command is well-formed. */
+    if (!store) {
+        CLIENT_RES_ERR_C_PROTO(cs, "missing store command");
+        goto bail;
+    }
+    if (!store->path) {
+        CLIENT_RES_ERR_C_PROTO(cs, "missing path field");
+        goto bail;
+    }
+    if (!store->has_nsamples) {
+        CLIENT_RES_ERR_C_PROTO(cs, "missing nsamples field");
+        goto bail;
+    }
+
+    /* FIXME: remove this for stored sample retrieval (we currently
+     * don't specify the correct transactions to handle this case). */
+    if (store->has_start_sample) {
+        CLIENT_RES_ERR_DAEMON(cs, "specifying start_sample is unimplemented");
+        goto bail;
+    }
+
+    /* Massage the command to set defaults */
+    if (!store->has_backend) {
+        store->has_backend = 1;
+        store->backend = DEFAULT_STORAGE_BACKEND;
+    }
+
+    /* Pull the fields we need out of the command. */
+    nsamples = store->nsamples;
+    start_sample = store->has_start_sample ? (ssize_t)store->start_sample : -1;
+    chns = client_new_ch_storage(store->path, store->backend);
+    if (!chns) {
+        CLIENT_RES_ERR_DAEMON_OOM(cs);
+        goto bail;
+    }
+    if (client_open_ch_storage(chns, store->backend) == -1) {
+        CLIENT_RES_ERR_DAEMON_IO(cs, "can't open channel storage");
+        goto bail;
+    }
+
+    /* Create and initialize the board sample configuration. */
+    bs_cfg = malloc(sizeof(struct sample_bsamp_cfg));
+    if (!bs_cfg) {
+        client_free_ch_storage(chns, store->backend);
+        CLIENT_RES_ERR_DAEMON_OOM(cs);
+        goto bail;
+    }
+    bs_cfg->nsamples = nsamples;
+    bs_cfg->start_sample = start_sample;
+    bs_cfg->chns = chns;
+    cpriv->bs_cfg = bs_cfg;
+
+    /* Set up storage for the data node address. */
+    client_clear_dnode_addr_storage(cs);
+
+    /* Prepare the transactions. */
+    if (client_set_txns_stream(cs, RAW_DAQ_UDP_MODE_BSMP) == -1) {
+        /* (the error response has has already been sent) */
+        goto bail;
+    }
+
+    return;
+ bail:
+    if (chns_is_open) {
+        ch_storage_close(chns);
+    }
+    if (chns) {
+        client_free_ch_storage(chns, store->backend);
+    }
+    if (bs_cfg) {
+        free(bs_cfg);
+    }
+}
+
+static void client_process_res_store(struct control_session *cs)
+{
+    struct client_priv *cpriv = cs->cpriv;
+
+    if (client_ensure_txn_ok(cs, "ControlCmdStore") == -1) {
+        if (cpriv->bs_expecting) {
+            sample_reject_bsamps(cs->smpl);
+            cpriv->bs_expecting = 0;
+        }
+        return;
+    }
+
+    /*
+     * Deal with the transaction's result.
+     */
+    struct raw_cmd_res *res = ctxn_res(cs->ctl_txns + cs->ctl_cur_txn);
+    if (client_res_updates_dnode_addr(res)) {
+        switch (client_update_dnode_addr_storage(cs, res)) {
+        case GOT_DNODE_PORT:
+            /* client_set_txns_stream() gets address, then port, so
+             * we've got the entire address now. */
+            if (sample_set_addr(cs->smpl, (struct sockaddr*)&cpriv->dn_addr_in,
+                                SAMPLE_ADDR_DNODE)) {
+                CLIENT_RES_ERR_DAEMON(cs, "can't configure data node address");
+                return;
+            }
+            break;
+        case -1:
+            /* Error trying to parse the result */
+            return;
+        default:
+            break;
+        }
+    }
+    /* If we just successfully enabled the UDP module, it's time to
+     * tell the sample handler to expect incoming board samples, so
+     * it'll be ready once the DAQ enable goes through. */
+    /* NOTE: there's a race condition here. If there are packets still
+     * on the wire or in a receive queue from a previous stream or
+     * store command, the sample handler will consider them part of
+     * this storage request and probably error out prematurely.
+     *
+     * However:
+     *
+     * 1. it's not clear what to do about this,
+     *
+     * 2. it seems unlikely that this'd happen unless the event loop
+     *    performance is really slow, and
+     *
+     * 3. we can recover from the error,
+     *
+     * so this doesn't seem worth trying to fix right now. */
+    if (res->r_type == RAW_RTYPE_UDP && res->r_addr == RAW_RADDR_UDP_ENABLE &&
+        raw_req_is_write(&cs->ctl_txns[cs->ctl_cur_txn].req_pkt) &&
+        res->r_val == 1) {
+        log_DEBUG("%s: expecting board samples", __func__);
+        if (sample_expect_bsamps(cs->smpl, cpriv->bs_cfg,
+                                 client_sample_store_callback, cs) == -1) {
+            CLIENT_RES_ERR_DAEMON(cs, "can't configure sample forwarding");
+            return;
+        } else {
+            cpriv->bs_expecting = 1;
+        }
+    }
+
+    /*
+     * OK, that last transaction was a success. If there are more to
+     * come, keep going.
+     */
+    cs->ctl_cur_txn++;
+    if ((size_t)cs->ctl_cur_txn != cs->ctl_n_txns) {
+        cs->wake_why |= CONTROL_WHY_DNODE_TXN;
+        return;
+    }
+}
+
 static void client_process_cmd(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
@@ -894,6 +1256,10 @@ static void client_process_cmd(struct control_session *cs)
     case CONTROL_COMMAND__TYPE__STREAM:
         proc = client_process_cmd_stream;
         type = "STREAM";
+        break;
+    case CONTROL_COMMAND__TYPE__STORE:
+        proc = client_process_cmd_store;
+        type = "STORE";
         break;
     default:
         CLIENT_RES_ERR_C_PROTO(cs, "unknown command type");
@@ -919,6 +1285,9 @@ static void client_process_res(struct control_session *cs)
         break;
     case CONTROL_COMMAND__TYPE__STREAM:
         client_process_res_stream(cs);
+        break;
+    case CONTROL_COMMAND__TYPE__STORE:
+        client_process_res_store(cs);
         break;
     default:
         log_ERR("got result for unhandled command type; ignoring it");
