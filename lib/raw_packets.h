@@ -181,6 +181,13 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_GPIO_NREGS (RAW_RADDR_GPIO_STATE + 1)
 ///@}
 
+/**
+ * @name Readability macros for RAW_RADDR_DAQ_UDP_MODE */
+///@{
+#define RAW_DAQ_UDP_MODE_BSUB 0
+#define RAW_DAQ_UDP_MODE_BSMP 1
+///@}
+
 /*
  * Error packet (RAW_MTYPE_ERR) data
  */
