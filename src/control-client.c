@@ -779,9 +779,9 @@ static void client_process_cmd_stream(struct control_session *cs)
          * (bring reset line high/low) */
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 1);
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 0);
-        /* Setup payload length (packet type) for UDP core */
-        /* 0 means board sub-samples (not full) */
-        client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_MODE, 0);
+        /* Setup UDP packet type (DAQ UDP mode) */
+        client_daq_w(txns + txno++,
+                     RAW_RADDR_DAQ_UDP_MODE, RAW_DAQ_UDP_MODE_BSUB);
         /* Set UDP module to stream from DAQ (not SATA) */
         client_udp_w(txns + txno++, RAW_RADDR_UDP_MODE, 0); // 0x0D==13; 0
         /* Enable UDP module */
