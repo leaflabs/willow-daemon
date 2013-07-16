@@ -946,6 +946,8 @@ static void client_thread(struct control_session *cs)
     if (cs->wake_why & CONTROL_WHY_CLIENT_CMD) {
         /* There should be no ongoing transactions */
         assert(!cs->ctl_txns);
+        /* There should be a command waiting for us */
+        assert(((struct client_priv*)cs->cpriv)->c_cmd);
 
         if (!cs->dbev) {
             CLIENT_RES_ERR_NO_DNODE(cs);
