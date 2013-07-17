@@ -125,13 +125,13 @@ struct control_session {
 };
 
 /**
- * Subclass hooks.
+ * Client/data node hooks.
  *
- * Subclasses should provide these; others should never touch them.
+ * Client and data node files provide these for use by the top-level
+ * control socket handlers; others should never touch them.
  */
 struct control_ops {
-    /* Session-wide startup and teardown callbacks. These may be NULL
-     * if you don't have anything special to do.
+    /* Session-wide startup and teardown callbacks. These may be NULL.
      *
      * The start callback is invoked from control_new() before the
      * worker thread is created. The stop callback is invoked from
@@ -142,11 +142,12 @@ struct control_ops {
     /* Per-connection open/close callbacks; use these e.g. to allocate
      * any per-connection state. These may be NULL also.
      *
-     * When the open callback is invoked, the corresponding
-     * bufferevent is valid, but disabled. When both open and close are
-     * called, the control_session lock is not held.
+     * Both of these are called WITHOUT the control_session lock held.
      *
-     * Returning -1 from the open callback will refuse the
+     * When the open callback is invoked, the corresponding
+     * bufferevent is valid, but disabled.
+     *
+     * Returning -1 from the open callback will close the
      * connection. The close callback is invoked from a libevent
      * handler, so there's nowhere to pass errors up to. */
     int (*cs_open)(struct control_session *cs, evutil_socket_t control_sockfd);
@@ -154,13 +155,18 @@ struct control_ops {
 
     /* On-receive control socket callback.
      *
+     * This is called WITHOUT the control_session lock held.
+     *
      * Pull data out of your bufferevent. If that's not enough data,
      * return CONTROL_WHY_NONE. If you've got something to wake up the
      * worker with, return another appropriate control_worker_why
-     * code. If something went wrong and you need to die, return -1. */
+     * code. If something went wrong and the connection needs closing,
+     * return -1. */
     int (*cs_read)(struct control_session *cs);
 
-    /* Worker thread callback. */
+    /* Worker thread callback.
+     *
+     * This is called with the control_session mutex held. */
     void (*cs_thread)(struct control_session *cs);
 };
 
