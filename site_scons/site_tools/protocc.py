@@ -73,7 +73,7 @@ def ProtocCEmitter(target, source, env): # C
         if env['PROTOCCOUTDIR']:
             base = os.path.join(env['PROTOCCOUTDIR'] , modulename)
             target.extend([base + '.pb-c.c', base + '.pb-c.h'])
-        else:                   # TODO remove
+        else:
             print "PROTOCCOUTDIR unset; not building C for .proto"
     for src in with_corrected_paths(source):
         handle_src(src)
@@ -92,7 +92,7 @@ def ProtocEmitter(target, source, env):
         if env['PROTOCOUTDIR']:
             base = os.path.join(env['PROTOCOUTDIR'] , modulename)
             target.extend([base + '_pb2.py'])
-        else:                   # TODO remove
+        else:
             print "PROTOCOUTDIR unset; not building Python for .proto"
     for src in with_corrected_paths(source):
         handle_src(src)
