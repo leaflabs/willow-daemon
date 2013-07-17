@@ -33,6 +33,4 @@ struct ch_storage;
 struct ch_storage *raw_ch_storage_alloc(const char *out_file_path,
                                         mode_t mode);
 
-void raw_ch_storage_free(struct ch_storage *chns);
-
 #endif

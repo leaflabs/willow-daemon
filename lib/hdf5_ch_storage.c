@@ -47,12 +47,14 @@ static int hdf5_ch_datasync(struct ch_storage *chns);
 static int hdf5_ch_write(struct ch_storage *chns,
                          const struct raw_pkt_bsmp*,
                          size_t);
+static void hdf5_ch_free(struct ch_storage *chns);
 
 static const struct ch_storage_ops hdf5_ch_storage_ops = {
     .ch_open = hdf5_ch_open,
     .ch_close = hdf5_ch_close,
     .ch_datasync = hdf5_ch_datasync,
     .ch_write = hdf5_ch_write,
+    .ch_free = hdf5_ch_free,
 };
 
 /* Convert an unsigned integer (or unsigned type) to the corresponding
@@ -196,7 +198,7 @@ struct ch_storage *hdf5_ch_storage_alloc(const char *out_file_path,
     return storage;
 }
 
-void hdf5_ch_storage_free(struct ch_storage *chns)
+static void hdf5_ch_free(struct ch_storage *chns)
 {
     free(h5_data(chns));
     free(chns);

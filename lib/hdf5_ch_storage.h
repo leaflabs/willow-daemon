@@ -30,6 +30,4 @@ struct ch_storage;
 struct ch_storage *hdf5_ch_storage_alloc(const char *out_file_path,
                                          const char *dataset_name);
 
-void hdf5_ch_storage_free(struct ch_storage *chns);
-
 #endif

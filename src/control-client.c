@@ -199,19 +199,6 @@ static int client_open_ch_storage(struct ch_storage *chns,
     return 0;
 }
 
-/* TODO make free a ch_storage method, so this stupidity can go away */
-static void client_free_ch_storage(struct ch_storage *chns,
-                                   StorageBackend backend)
-{
-    if (backend == STORAGE_BACKEND__STORE_HDF5) {
-        hdf5_ch_storage_free(chns);
-    } else if (backend == STORAGE_BACKEND__STORE_RAW) {
-        raw_ch_storage_free(chns);
-    } else {
-        assert(0);
-    }
-}
-
 /********************************************************************
  * Conveniences for sending responses to client
  *
@@ -402,7 +389,7 @@ void client_sample_store_callback(short events, size_t nwritten, void *csvp)
     if (ch_storage_close(cpriv->bs_cfg->chns) == -1) {
         log_ERR("%s: can't close channel storage", __func__);
     }
-    client_free_ch_storage(cpriv->bs_cfg->chns, store->backend);
+    ch_storage_free(cpriv->bs_cfg->chns);
     free(cpriv->bs_cfg);
     cpriv->bs_cfg = NULL;
     cpriv->bs_expecting = 0;
@@ -1129,7 +1116,7 @@ static void client_process_cmd_store(struct control_session *cs)
     /* Create and initialize the board sample configuration. */
     bs_cfg = malloc(sizeof(struct sample_bsamp_cfg));
     if (!bs_cfg) {
-        client_free_ch_storage(chns, store->backend);
+        ch_storage_free(chns);
         CLIENT_RES_ERR_DAEMON_OOM(cs);
         goto bail;
     }
@@ -1153,7 +1140,7 @@ static void client_process_cmd_store(struct control_session *cs)
         ch_storage_close(chns);
     }
     if (chns) {
-        client_free_ch_storage(chns, store->backend);
+        ch_storage_free(chns);
     }
     if (bs_cfg) {
         free(bs_cfg);

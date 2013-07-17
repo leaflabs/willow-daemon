@@ -45,6 +45,7 @@ struct ch_storage_ops {
     int (*ch_datasync)(struct ch_storage*);
     int (*ch_write)(struct ch_storage*, const struct raw_pkt_bsmp *bsamps,
                     size_t nsamps);
+    void (*ch_free)(struct ch_storage*);
 };
 
 static inline int ch_storage_open(struct ch_storage *chns, unsigned flags)
@@ -67,6 +68,12 @@ static inline int ch_storage_write(struct ch_storage *chns,
                                    size_t nsamps)
 {
     return chns->ops->ch_write(chns, bsamps, nsamps);
+}
+
+static inline void ch_storage_free(struct ch_storage *chns)
+{
+    void (*f)(struct ch_storage*) = chns->ops->ch_free;
+    f(chns);
 }
 
 #endif

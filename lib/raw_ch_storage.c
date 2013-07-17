@@ -41,12 +41,14 @@ static int raw_ch_datasync(struct ch_storage *chns);
 static int raw_ch_write(struct ch_storage *chns,
                         const struct raw_pkt_bsmp*,
                         size_t);
+static void raw_ch_free(struct ch_storage *chns);
 
 static const struct ch_storage_ops raw_ch_storage_ops = {
     .ch_open = raw_ch_open,
     .ch_close = raw_ch_close,
     .ch_datasync = raw_ch_datasync,
     .ch_write = raw_ch_write,
+    .ch_free = raw_ch_free,
 };
 
 struct ch_storage *raw_ch_storage_alloc(const char *out_file_path, mode_t mode)
@@ -66,7 +68,7 @@ struct ch_storage *raw_ch_storage_alloc(const char *out_file_path, mode_t mode)
     return storage;
 }
 
-void raw_ch_storage_free(struct ch_storage *chns)
+static void raw_ch_free(struct ch_storage *chns)
 {
     free(raw_ch_data(chns));
     free(chns);
