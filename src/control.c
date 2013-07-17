@@ -246,7 +246,6 @@ static void* control_worker_main(void *csessvp)
         while (cs->wake_why == CONTROL_WHY_NONE) {
             control_must_cond_wait(cs);
         }
-        assert(cs->wake_why != CONTROL_WHY_NONE);
         if (cs->wake_why & CONTROL_WHY_EXIT) {
             control_must_unlock(cs);
             pthread_exit(NULL);
