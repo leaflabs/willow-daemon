@@ -43,6 +43,13 @@ scripts that speak protobuf):
 
    $ sudo apt-get install check python-protobuf
 
+Other useful tools
+------------------
+
+HDF5 tools and Java-based file viewer:
+
+$ sudo apt-get install hdf5-tools hdfviewer
+
 Repository contents
 -------------------
 
