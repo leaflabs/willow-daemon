@@ -22,12 +22,14 @@ def str_to_bool(str):
 program = 'wired-leaf-is-a-codename' # come up with something better
 src_dir = '#src/'     # Main daemon sources.
 proto_dir = '#proto/' # Don't change this; we #include "proto/foo.pb-c.h".
-lib_dir = '#lib/'     # Utility library (code shared between src/ and test/)
+lib_dir = '#lib/'     # Utility library (shared w/ src, test, libsng)
+libsng_dir = '#libsng/' # Shared library used by SNG to interact w/ daemon.
 test_dir = '#test/'
 test_include_dir ='#test/include'
 build_dir = '#build/' # Scons requires this to live in the source tree :(.
 build_src_dir = toplevel_join(build_dir, src_dir)
 build_lib_dir = toplevel_join(build_dir, lib_dir)
+build_libsng_dir = toplevel_join(build_dir, libsng_dir)
 build_test_dir = toplevel_join(build_dir, test_dir)
 build_pyproto_dir = toplevel_join(build_dir, 'pyproto')
 lib_deps = [
@@ -35,11 +37,14 @@ lib_deps = [
      'event', 'event_pthreads', 'hdf5', 'protobuf', 'protobuf-c',
      # Extra system dependencies:
     'm', 'rt']
+libsng_deps = ['protobuf', 'protobuf-c', 'rt']
 test_lib_deps = ['check'] # External dependencies for tests
 verbosity_level = int(ARGUMENTS.get('V', 0))
 skip_test_build = str_to_bool(ARGUMENTS.get('SKIP_TESTS', 'n'))
 build_cc = ARGUMENTS.get('CC', 'gcc')
 build_ld = ARGUMENTS.get('LD', 'gcc')
+build_libsng_cflags = '-std=c99 -g -Wall -Wextra -Wpointer-arith -Werror'
+build_cflags = '-pthread ' + build_libsng_cflags
 build_cflags_extra = ARGUMENTS.get('EXTRA_CFLAGS', '')
 build_ldflags_extra = ARGUMENTS.get('EXTRA_LDFLAGS', '')
 
@@ -50,11 +55,9 @@ VariantDir(build_lib_dir, lib_dir, duplicate=0)
 VariantDir(build_src_dir, src_dir, duplicate=0)
 VariantDir(build_test_dir, test_dir, duplicate=0)
 
-# Build environment. Note we don't copy os.environ here.
+# Build environments. Note we don't copy os.environ here.
 env = Environment(CC=build_cc,
-                  CCFLAGS=(('-pthread -std=c99 '
-                            '-g -Wall -Wextra -Wpointer-arith -Werror ') +
-                           build_cflags_extra),
+                  CCFLAGS=build_cflags + build_cflags_extra,
                   CPPDEFINES={'_GNU_SOURCE': 1}, # we need Linux extensions
                   LINK=build_ld,
                   LINKFLAGS=build_ldflags_extra,
@@ -103,6 +106,22 @@ libutil = env.Library(os.path.join(env.GetBuildPath(build_lib_dir),
 out_program = os.path.join(env.GetBuildPath(build_dir), program)
 main = env.Program(out_program, src_sources + libutil,
                    CPPPATH=[build_lib_dir, src_dir])
+
+# libsng
+shenv = env.Clone(CCFLAGS=build_libsng_cflags,
+                  LIBS=libsng_deps)
+if verbosity_level == 0:
+    shenv['SHCCCOMSTR'] = '\t[SHCC] $SOURCE'
+    shenv['SHLINKCOMSTR'] = '\t[SHLD] $TARGET'
+shenv.VariantDir(build_libsng_dir, libsng_dir, duplicate=0)
+libsng_sources = shenv.Glob(os.path.join(libsng_dir, '*.c'))
+libsng_target = os.path.join(env.GetBuildPath(build_libsng_dir), 'sng')
+libsng_shobjs = shenv.SharedObject(target=libsng_target,
+                                   source=libsng_sources,
+                                   CPPPATH=[build_lib_dir])
+shenv.SharedLibrary(target=libsng_target,
+                    source=(libsng_shobjs + lib_sources + proto_c_sources),
+                    CPPPATH=[build_lib_dir])
 
 # Test programs, one per subdirectory of test_dir.
 for test_name, sources in test_sources_dict.iteritems():

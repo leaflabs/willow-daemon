@@ -59,6 +59,8 @@ Repository contents
 
 - lib/: Helper libraries used by the daemon.
 
+- libsng/: Sources for shared library used by SNG to interact with the daemon.
+
 - proto/: Google protobuf message files. These are kept separate from
   the source tree, as we may need to share them with others.
 
