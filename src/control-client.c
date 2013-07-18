@@ -840,7 +840,7 @@ static void client_process_cmd_regio(struct control_session *cs)
                                "register I/O");
         return;
     }
-    if (!reg_io->has_type) {
+    if (!reg_io->has_module) {
         CLIENT_RES_ERR_C_PROTO(cs, "missing RegisterIO type field");
         return;
     }
@@ -848,7 +848,7 @@ static void client_process_cmd_regio(struct control_session *cs)
     /* A little evil macro to save typing. */
     uint16_t reg_addr;
 #define REG_IO_CASE(lcase, ucase)                                       \
-    REGISTER_IO__TYPE__ ## ucase:                                       \
+    MODULE__MOD_ ## ucase:                                              \
         if (!reg_io->has_ ## lcase) {                                   \
             CLIENT_RES_ERR_C_PROTO(cs,                                 \
                                    "missing " #lcase " register address"); \
@@ -857,7 +857,7 @@ static void client_process_cmd_regio(struct control_session *cs)
         reg_addr = reg_io->lcase;                                       \
         break
 
-    switch (reg_io->type) {
+    switch (reg_io->module) {
     case REG_IO_CASE(err, ERR);
     case REG_IO_CASE(central, CENTRAL);
     case REG_IO_CASE(sata, SATA);
@@ -877,7 +877,7 @@ static void client_process_cmd_regio(struct control_session *cs)
     }
     uint8_t ioflag = reg_io->has_val ? RAW_PFLAG_RIOD_W : RAW_PFLAG_RIOD_R;
     uint32_t ioval = reg_io->has_val ? reg_io->val : 0;
-    raw_req_init(&txn->req_pkt, ioflag, 0, reg_io->type, reg_addr, ioval);
+    raw_req_init(&txn->req_pkt, ioflag, 0, reg_io->module, reg_addr, ioval);
     control_set_transactions(cs, txn, 1, 1);
     cs->wake_why |= CONTROL_WHY_DNODE_TXN;
 }
@@ -897,8 +897,8 @@ static void client_process_res_regio(struct control_session *cs)
     }
 
     RegisterIO reg_io = REGISTER_IO__INIT;
-    reg_io.has_type = 1;
-    reg_io.type = res->r_type;
+    reg_io.has_module = 1;
+    reg_io.module = res->r_type;
 #if (RAW_RTYPE_NTYPES - 1) != RAW_RTYPE_GPIO /* future-proofing */
 #error "changes to RAW_RTYPE_* require client code updates"
 #endif

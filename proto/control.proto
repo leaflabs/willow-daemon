@@ -44,6 +44,15 @@ enum StorageBackend {
 // These are the registers exposed by the data node, grouped by module.
 //
 
+enum Module {
+    MOD_ERR = 0;
+    MOD_CENTRAL = 1;
+    MOD_SATA = 2;
+    MOD_DAQ = 3;
+    MOD_UDP = 4;
+    MOD_GPIO = 5;
+}
+
 enum ErrAddr {
     ERR_ERR0 = 0;
 }
@@ -145,15 +154,7 @@ enum GpioAddr {
 message RegisterIO {
     // Choice of type specifies which group of registers (which
     // module) you can use.  You must provide a value for "type":
-    enum Type {
-        ERR = 0;
-        CENTRAL = 1;
-        SATA = 2;
-        DAQ = 3;
-        UDP = 4;
-        GPIO = 5;
-    }
-    optional Type type = 1;
+    optional Module module = 1;
 
     // Register value. Provide "val" on a write; don't on a read:
     optional fixed32 val = 2;
