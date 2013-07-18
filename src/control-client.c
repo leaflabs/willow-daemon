@@ -50,12 +50,6 @@
  * - allow client to configure timeout?
  */
 
-/* Client message length prefix type. Signed so -1 can mean "still
- * waiting to read length" */
-typedef int32_t client_cmd_len_t;
-#define CMDLEN_SIZE sizeof(client_cmd_len_t)
-#define CLIENT_CMDLEN_WAITING (-1)
-
 struct client_priv {
     ControlCommand *c_cmd; /* Latest unpacked protocol message, or
                             * NULL. Shared with worker thread. */
@@ -70,8 +64,8 @@ struct client_priv {
     /* Allocate a command and response's worth of contiguous space at
      * client_start() time, rather than using e.g. evbuffer_pullup()
      * at each read(). */
-    uint8_t c_cmd_arr[CONTROL_CMD_MAX_SIZE];
-    uint8_t c_rsp_arr[CONTROL_CMD_MAX_SIZE];
+    uint8_t c_cmd_arr[CLIENT_CMD_MAX_SIZE];
+    uint8_t c_rsp_arr[CLIENT_CMD_MAX_SIZE];
 
     /* For storing addresses we read from the data node over the
      * course of a command */
@@ -85,18 +79,6 @@ struct client_priv {
 /********************************************************************
  * Miscellaneous helpers
  */
-
-/* Convert a client message length from network to host byte ordering */
-static inline client_cmd_len_t cmd_ntoh(client_cmd_len_t net)
-{
-    return ntohl(net);
-}
-
-/* Convert client message length from host to network byte ordering */
-static inline client_cmd_len_t cmd_hton(client_cmd_len_t host)
-{
-    return htonl(host);
-}
 
 /* NOT SYNCHRONIZED; do not call while worker thread is running.*/
 static void client_free_priv(struct control_session *cs)
@@ -220,10 +202,10 @@ static void client_send_response(struct control_session *cs,
 {
     struct client_priv *cpriv = cs->cpriv;
     size_t len = control_response__get_packed_size(cr);
-    assert(len < CONTROL_CMD_MAX_SIZE); /* or WTF; honestly */
+    assert(len < CLIENT_CMD_MAX_SIZE); /* or WTF; honestly */
     size_t packed = control_response__pack(cr, cpriv->c_rsp_arr);
-    client_cmd_len_t clen = cmd_hton((client_cmd_len_t)packed);
-    bufferevent_write(cs->cbev, &clen, CMDLEN_SIZE);
+    client_cmd_len_t clen = client_cmd_hton((client_cmd_len_t)packed);
+    bufferevent_write(cs->cbev, &clen, CLIENT_CMDLEN_SIZE);
     bufferevent_write(cs->cbev, cpriv->c_rsp_arr, packed);
     client_done_with_cmd(cs);
 }
@@ -514,19 +496,19 @@ static int client_got_entire_pbuf(struct control_session *cs)
     if (cpriv->c_cmdlen == CLIENT_CMDLEN_WAITING) {
         size_t cmdlen_buflen = evbuffer_get_length(cpriv->c_cmdlen_buf);
         evbuffer_remove_buffer(evb, cpriv->c_cmdlen_buf,
-                               CMDLEN_SIZE - cmdlen_buflen);
-        assert(evbuffer_get_length(cpriv->c_cmdlen_buf) <= CMDLEN_SIZE);
-        if (evbuffer_get_length(cpriv->c_cmdlen_buf) < CMDLEN_SIZE) {
+                               CLIENT_CMDLEN_SIZE - cmdlen_buflen);
+        assert(evbuffer_get_length(cpriv->c_cmdlen_buf) <= CLIENT_CMDLEN_SIZE);
+        if (evbuffer_get_length(cpriv->c_cmdlen_buf) < CLIENT_CMDLEN_SIZE) {
             goto out;
-        } else { /* evbuffer_get_length(cs->c_cmdlen_buf) == CMDLEN_SIZE */
+        } else { /* length(cs->c_cmdlen_buf) == CLIENT_CMDLEN_SIZE */
             evbuffer_remove(cpriv->c_cmdlen_buf, &cpriv->c_cmdlen,
-                            CMDLEN_SIZE);
-            cpriv->c_cmdlen = cmd_ntoh(cpriv->c_cmdlen);
+                            CLIENT_CMDLEN_SIZE);
+            cpriv->c_cmdlen = client_cmd_ntoh(cpriv->c_cmdlen);
         }
     }
 
     /* Sanity-check the received protocol buffer length. */
-    if (cpriv->c_cmdlen > CONTROL_CMD_MAX_SIZE) {
+    if (cpriv->c_cmdlen > CLIENT_CMD_MAX_SIZE) {
         return -1;              /* Too long; kill the connection. */
     }
 

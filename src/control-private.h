@@ -27,6 +27,7 @@
 #include <sys/socket.h>
 #include <stdint.h>
 
+#include "client_socket.h"
 #include "raw_packets.h"
 #include "proto/control.pb-c.h"
 
@@ -78,15 +79,6 @@ enum control_worker_why {
     /* These are processed by dnode-side code: */
     CONTROL_WHY_DNODE_TXN  = 0x10, /* Transaction must be performed */
 };
-
-/* Google says individual protocol buffers should be < 1 MB each:
- *
- * https://developers.google.com/protocol-buffers/docs/techniques#large-data
- *
- * So we might as well try to enforce reasonably good behavior. It's a
- * protocol error to send messages that are too long, and we are free
- * to close connections for misbehavior. */
-#define CONTROL_CMD_MAX_SIZE (2 * 1024 * 1024)
 
 /** Control session. */
 struct control_session {
