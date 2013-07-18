@@ -69,5 +69,5 @@ Repository contents
 
 - src/: daemon source code; uses contents of lib/.
 
-- test/: Test cases, one per subdirectory. These use the contents of
-  lib/, and may run and interact with the daemon as built from src/.
+- test/: Test cases and utilities, one per subdirectory. These use the contents
+  of lib/, and may run and interact with the daemon as built from src/.
