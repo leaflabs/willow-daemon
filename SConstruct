@@ -34,10 +34,8 @@ build_test_dir = toplevel_join(build_dir, test_dir)
 build_pyproto_dir = toplevel_join(build_dir, 'pyproto')
 lib_deps = [
      # External dependencies:
-     'event', 'event_pthreads', 'hdf5', 'protobuf', 'protobuf-c',
-     # Extra system dependencies:
-    'm', 'rt']
-libsng_deps = ['protobuf', 'protobuf-c', 'rt']
+     'event', 'event_pthreads', 'hdf5', 'protobuf-c']
+libsng_deps = ['protobuf-c']
 test_lib_deps = ['check'] # External dependencies for tests
 verbosity_level = int(ARGUMENTS.get('V', 0))
 skip_test_build = str_to_bool(ARGUMENTS.get('SKIP_TESTS', 'n'))
