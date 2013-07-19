@@ -36,7 +36,7 @@ lib_deps = [
      # External dependencies:
      'event', 'event_pthreads', 'hdf5', 'protobuf-c']
 libsng_deps = ['protobuf-c']
-test_lib_deps = ['check'] # External dependencies for tests
+test_lib_deps = ['check', 'sng'] # External dependencies for tests
 verbosity_level = int(ARGUMENTS.get('V', 0))
 skip_test_build = str_to_bool(ARGUMENTS.get('SKIP_TESTS', 'n'))
 build_cc = ARGUMENTS.get('CC', 'gcc')
@@ -123,7 +123,8 @@ shenv.SharedLibrary(target=libsng_target,
 # Test programs, one per subdirectory of test_dir.
 test_defines = env['CPPDEFINES'].copy()
 test_defines.update({'TEST_DAEMON_PATH': str(out_program)})
-testenv = env.Clone(LIBS=lib_deps + test_lib_deps,
+testenv = env.Clone(LIBS=test_lib_deps + lib_deps,
+                    LIBPATH=[build_libsng_dir],
                     CPPDEFINES=test_defines)
 for test_name, sources in test_sources_dict.iteritems():
     if test_name == 'include':
