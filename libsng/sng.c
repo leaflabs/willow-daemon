@@ -57,6 +57,12 @@ int sng_close_connection(void)
     return ret;
 }
 
+void sng_init_cmd_store(ControlCmdStore *store)
+{
+    ControlCmdStore tmp = CONTROL_CMD_STORE__INIT;
+    memcpy(store, &tmp, sizeof(tmp));
+}
+
 int sng_store_samples(ControlCmdStore *store,
                       ControlResponse *response)
 {

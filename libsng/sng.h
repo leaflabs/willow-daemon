@@ -45,6 +45,13 @@ int sng_open_connection(const char *host, uint16_t port);
 int sng_close_connection(void);
 
 /**
+ * Initialize the protobuf library state required for a ControlCmdStore.
+ *
+ * @param store Storage command to initialize.
+ */
+void sng_init_cmd_store(ControlCmdStore *store);
+
+/**
  * Store some samples to disk.
  *
  * A connection to the daemon must be open.
