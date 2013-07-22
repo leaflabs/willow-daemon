@@ -29,7 +29,10 @@ test_include_dir ='#test/include'
 build_dir = '#build/' # Scons requires this to live in the source tree :(.
 build_src_dir = toplevel_join(build_dir, src_dir)
 build_lib_dir = toplevel_join(build_dir, lib_dir)
-build_libsng_dir = toplevel_join(build_dir, libsng_dir)
+# build dir for libsng
+build_libsng_dir = toplevel_join(build_lib_dir, libsng_dir)
+# libsng files actually needed by the user (shared object and its headers):
+build_libsng_install_dir = toplevel_join(build_dir, libsng_dir)
 build_test_dir = toplevel_join(build_dir, test_dir)
 build_pyproto_dir = toplevel_join(build_dir, 'pyproto')
 lib_deps = [
@@ -74,16 +77,22 @@ if verbosity_level == 0:
 
 # Protobuf code generation; see site_scons/site_tools/protocc.py.
 proto_c_sources = []
+proto_c_headers = []
 protoccs = [env.ProtocC([], proto,
                         PROTOCCOUTDIR=env.GetBuildPath(build_lib_dir))
             for proto in Glob(proto_dir + '*.proto')]
 protopys = [env.Protoc([], proto,
                        PROTOCOUTDIR=env.GetBuildPath(build_pyproto_dir))
             for proto in Glob(proto_dir + '*.proto')]
+def ext_nodes(nodes, ext):
+    return [n for n in nodes if str(n).endswith(ext)]
 def c_nodes(nodes):
-    return [n for n in nodes if str(n).endswith('c')]
+    return ext_nodes(nodes, 'c')
+def h_nodes(nodes):
+    return ext_nodes(nodes, 'h')
 for nodes in protoccs:
     proto_c_sources.extend(c_nodes(nodes))
+    proto_c_headers.extend(h_nodes(nodes))
 
 # Mash together all the sources. These Glob() calls work automagically
 # with the above VariantDir() calls.
@@ -111,14 +120,27 @@ shenv = env.Clone(CCFLAGS=build_libsng_cflags,
 if verbosity_level == 0:
     shenv['SHCCCOMSTR'] = '[SHCC] $SOURCE'
     shenv['SHLINKCOMSTR'] = '[SHLD] $TARGET'
+    shenv['INSTALLSTR'] = '[LIBSNG] $TARGET'
 shenv.VariantDir(build_libsng_dir, libsng_dir, duplicate=0)
 libsng_sources = shenv.Glob(os.path.join(libsng_dir, '*.c'))
+libsng_headers = shenv.Glob(os.path.join(libsng_dir, '*.h'))
 libsng_target = os.path.join(env.GetBuildPath(build_libsng_dir), 'sng')
 libsng_shobjs = shenv.SharedObject(target=libsng_target,
                                    source=libsng_sources)
-shenv.SharedLibrary(target=libsng_target,
-                    source=(libsng_shobjs + lib_sources + proto_c_sources),
-                    CPPPATH=[build_lib_dir])
+libsng_obj = shenv.SharedLibrary(target=libsng_target,
+                                 source=(libsng_shobjs + lib_sources +
+                                         proto_c_sources),
+                                 CPPPATH=[build_lib_dir])
+
+# Install builders for libsng (i.e., just the shared object file and
+# its relevant headers.)
+foo = shenv.Install(build_libsng_install_dir, libsng_obj)
+libsng_incls = toplevel_join(build_libsng_install_dir, 'include')
+libsng_proto_incls = toplevel_join(libsng_incls, 'proto')
+for h in proto_c_headers:
+    shenv.Install(libsng_proto_incls, h)
+for h in libsng_headers:
+    shenv.Install(libsng_incls, h)
 
 # Test programs, one per subdirectory of test_dir.
 test_defines = env['CPPDEFINES'].copy()
