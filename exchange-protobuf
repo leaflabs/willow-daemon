@@ -10,14 +10,15 @@ import sys
 
 import google.protobuf.text_format
 
-# Tack our protobuf ser/des directory onto sys.path
+# Tack the directory containing the protobuf serializers/deserializes
+# onto sys.path.
 script_file = abspath(__file__)
 pyproto_dir = join(dirname(script_file), 'build', 'pyproto', 'proto')
 sys.path.append(pyproto_dir)
 
 import control_pb2
 
-# Parse arguments
+# Parse arguments.
 def usage():
     print('usage: %s <protobuf-text-file> <dest-port>' % basename(script_file))
     sys.exit(1)
@@ -31,29 +32,39 @@ try:
 except:
     usage()
 
-# Serialize the command
+# Create the command protocol message from text file contents.
 cmd = control_pb2.ControlCommand()
 google.protobuf.text_format.Merge(pbuf_txt, cmd)
 
-# Connect to daemon
+# Connect to the daemon.
 sckt = socket.create_connection(('127.0.0.1', dst_port))
 if not sckt:
     print("can't create connection", file=sys.stderr)
     sys.exit(1)
 
-# Round-trip: send message, get response
+# Send the command, then wait for and get the response.
 with contextlib.closing(sckt) as sckt:
+    # Pack cmd into a protocol buffer.
     ser = cmd.SerializeToString()
+    # Convert cmd's packed length to a network byte-order uint32, and
+    # send that first.
     sckt.send(struct.pack('>l', len(ser)))
+    # Then send packed cmd.
     sckt.send(ser)
+
+    # Try to get the response's length as network byte-order uint32.
     resplen_net = sckt.recv(4)
     if len(resplen_net) == 4:
+        # Response length received. Convert it from network to host
+        # byte ordering.
         resplen = struct.unpack('>l', resplen_net)[0]
+        # Receive the response protocol buffer.
         pbuf_resp = sckt.recv(resplen)
     else:
+        # No response length was received. Maybe the socket was closed?
         pbuf_resp = None
 
-# Display response
+# If we got a response, print it in text format.
 if pbuf_resp:
     rsp = control_pb2.ControlResponse()
     rsp.ParseFromString(pbuf_resp)
