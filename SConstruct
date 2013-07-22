@@ -65,12 +65,12 @@ env = Environment(CC=build_cc,
                   )
 # Quiet build output unless user specifies verbose mode.
 if verbosity_level == 0:
-    env['ARCOMSTR'] = '\t[AR] $TARGET'
-    env['CCCOMSTR'] = '\t[CC] $SOURCE'
-    env['PROTOCCCOMSTR'] = '\t[PROTOC-C] $SOURCE'
-    env['PROTOCCOMSTR'] = '\t[PROTOC] $SOURCE'
-    env['RANLIBCOMSTR'] = '\t[RANLIB] $TARGET'
-    env['LINKCOMSTR'] = '\t[LD] $TARGET'
+    env['ARCOMSTR'] = '[AR] $TARGET'
+    env['CCCOMSTR'] = '[CC] $SOURCE'
+    env['PROTOCCCOMSTR'] = '[PROTOC-C] $SOURCE'
+    env['PROTOCCOMSTR'] = '[PROTOC] $SOURCE'
+    env['RANLIBCOMSTR'] = '[RANLIB] $TARGET'
+    env['LINKCOMSTR'] = '[LD] $TARGET'
 
 # Protobuf code generation; see site_scons/site_tools/protocc.py.
 proto_c_sources = []
@@ -109,8 +109,8 @@ shenv = env.Clone(CCFLAGS=build_libsng_cflags,
                   LIBS=libsng_deps,
                   CPPPATH=[build_lib_dir])
 if verbosity_level == 0:
-    shenv['SHCCCOMSTR'] = '\t[SHCC] $SOURCE'
-    shenv['SHLINKCOMSTR'] = '\t[SHLD] $TARGET'
+    shenv['SHCCCOMSTR'] = '[SHCC] $SOURCE'
+    shenv['SHLINKCOMSTR'] = '[SHLD] $TARGET'
 shenv.VariantDir(build_libsng_dir, libsng_dir, duplicate=0)
 libsng_sources = shenv.Glob(os.path.join(libsng_dir, '*.c'))
 libsng_target = os.path.join(env.GetBuildPath(build_libsng_dir), 'sng')
