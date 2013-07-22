@@ -716,11 +716,10 @@ static int client_last_txn_succeeded(struct control_session *cs)
         } else if (req->r_addr != res->r_addr) {
             LOCAL_DEBUG("req->r_addr=%u, res->r_addr=%u", req->r_addr,
                         res->r_addr);
-        } else if (req->r_val != res->r_val) {
+        } else {
+            assert(req->r_val != res->r_val);
             LOCAL_DEBUG("req->r_val=%u, res->r_val=%u", req->r_val,
                         res->r_val);
-        } else {
-            LOCAL_DEBUG("nvm, it's marti's fault");
         }
         return 0;
     }
