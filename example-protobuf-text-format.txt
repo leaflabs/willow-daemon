@@ -1,5 +1,5 @@
 type: REG_IO
 reg_io {
-  type: CENTRAL
+  module: MOD_CENTRAL
   central: CENTRAL_STATE
 }
