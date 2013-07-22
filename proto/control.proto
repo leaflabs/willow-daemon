@@ -171,9 +171,16 @@ message RegisterIO {
 //////////////////////////////////////////////////////////////////////
 // Commands
 //
-// Initialize and pack one of these, then send it to the daemon's
-// client control socket to perform a command. You'll get a
-// ControlResult back.
+// To perform a command:
+//
+// - Initialize a ControlCommand protocol message,
+// - pack it into a protocol buffer, and
+// - send that prefixed by its length as a uint32 to the daemon's
+//   client control socket.
+//
+// See the script 'exchange-protobuf' for an example.
+//
+// In return, you'll get a ControlResult (see below).
 
 // Connect to a data node.
 //
