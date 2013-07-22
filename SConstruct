@@ -19,7 +19,7 @@ def str_to_bool(str):
     return str.startswith('y') or str.startswith('t') or str.startswith('1')
 
 # Top-level build configuration
-program = 'wired-leaf-is-a-codename' # come up with something better
+program = 'leafysd'   # The name of the daemon program.
 src_dir = '#src/'     # Main daemon sources.
 proto_dir = '#proto/' # Don't change this; we #include "proto/foo.pb-c.h".
 lib_dir = '#lib/'     # Utility library (shared w/ src, test, libsng)
