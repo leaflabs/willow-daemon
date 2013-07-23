@@ -130,14 +130,27 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_CENTRAL_EXP_CK_L    0x03 /* Experiment cookie, low word */
 #define RAW_RADDR_CENTRAL_NREGS (RAW_RADDR_CENTRAL_EXP_CK_L + 1)
 /* RAW_RTYPE_SATA */
-#define RAW_RADDR_SATA_ERR      0x00 /* Module error flags */
-#define RAW_RADDR_SATA_ENABLE   0x01 /* Module enable */
-#define RAW_RADDR_SATA_DISK_ID  0x02 /* Disk identifier (TBD) */
-#define RAW_RADDR_SATA_IO_PARAM 0x03 /* Disk I/O parameters (TBD) */
-#define RAW_RADDR_SATA_R_IDX    0x04 /* Next read index */
-#define RAW_RADDR_SATA_R_LEN    0x05 /* Read length */
-#define RAW_RADDR_SATA_W_IDX    0x06 /* Last write index */
-#define RAW_RADDR_SATA_NREGS (RAW_RADDR_SATA_W_IDX + 1)
+#define RAW_RADDR_SATA_ERR           0x00 /* Module error flags */
+#define RAW_RADDR_SATA_MODE          0x01 /* Module mode (0 wait, 1
+                                           * read, 2 write) */
+#define RAW_RADDR_SATA_STATUS        0x02 /* Module status flags.
+                                           * Low bit==device ready flag. */
+#define RAW_RADDR_SATA_DISK_ID       0x03 /* Disk identifier (TBD) */
+#define RAW_RADDR_SATA_IO_PARAM      0x04 /* Disk I/O parameters (TBD) */
+#define RAW_RADDR_SATA_R_IDX         0x05 /* Next read index */
+#define RAW_RADDR_SATA_R_LEN         0x06 /* Read length */
+#define RAW_RADDR_SATA_W_IDX         0x07 /* Last write index */
+                                     /* 0x08 is unused */
+#define RAW_RADDR_SATA_FIFO_ST       0x09 /* FIFO status */
+#define RAW_RADDR_SATA_FIFO_CT       0x0A /* FIFO count */
+#define RAW_RADDR_SATA_UDP_FIFO_RST  0x0B /* UDP FIFO reset */
+#define RAW_RADDR_SATA_UDP_FIFO_ST   0x0C /* UDP FIFO status */
+#define RAW_RADDR_SATA_UDP_FIFO_CT   0x0D /* UDP FIFO count */
+#define RAW_RADDR_SATA_DSECT_H       0x0E /* Disk sector, high (bottom 2B) */
+#define RAW_RADDR_SATA_DSECT_L       0x0F /* Disk sector, low */
+#define RAW_RADDR_SATA_DELAY_FREQ_HZ 0x10 /* Delay clock frequency in HZ */
+#define RAW_RADDR_SATA_READ_SLOWDOWN 0x11 /* Read slowdown in clock cycles */
+#define RAW_RADDR_SATA_NREGS (RAW_RADDR_SATA_READ_SLOWDOWN + 1)
 /* RAW_RTYPE_DAQ */
 #define RAW_RADDR_DAQ_ERR          0x00 /* Module error flags */
 #define RAW_RADDR_DAQ_ENABLE       0x01 /* Module enable */
@@ -147,13 +160,16 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_DAQ_CHIP_CMD     0x05 /* CMD config */
 #define RAW_RADDR_DAQ_CHIP_SYNCH   0x06 /* Synchronous sampling mode (TBD) */
 #define RAW_RADDR_DAQ_FIFO_COUNT   0x07 /* FIFO read count ("byte in FIFO") */
-#define RAW_RADDR_DAQ_FIFO_FLAGS   0x08 /* TBD */
+#define RAW_RADDR_DAQ_FIFO_FLAGS   0x08 /* FIFO flags, bit 0 is reset line */
 #define RAW_RADDR_DAQ_UDP_ENABLE   0x09 /* UDP Output Enable */
 #define RAW_RADDR_DAQ_UDP_MODE     0x0A /* UDP Output Mode */
 #define RAW_RADDR_DAQ_SATA_ENABLE  0x0B /* DAQ SATA Output Enable */
+#define RAW_RADDR_DAQ_SATA_FIFO_CT 0x0C /* DAQ SATA FIFO Read Count */
+#define RAW_RADDR_DAQ_SATA_FIFO_FL 0x0D /* DAQ SATA FIFO flags,
+                                         * bit 0 is reset line */
 #define RAW_RADDR_DAQ_BSUB0_CFG    0x80 /* subsample #0 configuration */
     /* ... */
-#define RAW_RADDR_DAQ_BSUB31_CFG  0x80 /* subsample #31 configuration */
+#define RAW_RADDR_DAQ_BSUB31_CFG   0x80 /* subsample #31 configuration */
 #define RAW_RADDR_DAQ_NREGS (RAW_RADDR_DAQ_BSUB31_CFG + 1)
 /* RAW_RTYPE_UDP */
 #define RAW_RADDR_UDP_ERR          0x00 /* Module error flags */
@@ -171,7 +187,10 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_UDP_PAYLOAD_LEN  0x0C /* Payload length */
 #define RAW_RADDR_UDP_MODE         0x0D /* UDP Module Mode */
 #define RAW_RADDR_UDP_GIGE_STATUS  0x0E /* GigE Status */
-#define RAW_RADDR_UDP_NREGS (RAW_RADDR_UDP_GIGE_STATUS + 1)
+#define RAW_RADDR_UDP_GIGE_MIIM_EN 0x0F /* GigE PHY MIIM enable */
+#define RAW_RADDR_UDP_GIGE_MIIM_AD 0x10 /* GigE PHY MIIM address */
+#define RAW_RADDR_UDP_GIGE_MIIM_DT 0x11 /* GigE PHY MIIM data */
+#define RAW_RADDR_UDP_NREGS (RAW_RADDR_UDP_GIGE_MIIM_DT + 1)
 /* RAW_RTYPE_GPIO */
 #define RAW_RADDR_GPIO_ERR   0x00 /* Module error flags */
 /* (No state machine for GPIO) */
@@ -182,10 +201,17 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 ///@}
 
 /**
- * @name Readability macros for RAW_RADDR_DAQ_UDP_MODE */
+ * @name Macros for register bit values and flags */
 ///@{
+#define RAW_SATA_STATUS_DEVICE_READY 1 /* SATA status register, device
+                                        * ready flag */
+
 #define RAW_DAQ_UDP_MODE_BSUB 0
 #define RAW_DAQ_UDP_MODE_BSMP 1
+#define RAW_DAQ_SATA_FIFO_FL_RST 1 /* SATA FIFO flag reset bit */
+
+#define RAW_UDP_MODE_UDP 0      /* UDP module mode is UDP */
+#define RAW_UDP_MODE_SATA 1     /* UDP module mode is SATA */
 ///@}
 
 /*

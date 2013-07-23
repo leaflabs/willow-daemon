@@ -394,12 +394,22 @@ const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr)
     case RAW_RTYPE_SATA:
         switch (r_addr) {
         case CASE_STRINGIFY(RAW_RADDR_SATA_ERR);
-        case CASE_STRINGIFY(RAW_RADDR_SATA_ENABLE);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_MODE);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_STATUS);
         case CASE_STRINGIFY(RAW_RADDR_SATA_DISK_ID);
         case CASE_STRINGIFY(RAW_RADDR_SATA_IO_PARAM);
         case CASE_STRINGIFY(RAW_RADDR_SATA_R_IDX);
         case CASE_STRINGIFY(RAW_RADDR_SATA_R_LEN);
         case CASE_STRINGIFY(RAW_RADDR_SATA_W_IDX);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_FIFO_ST);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_FIFO_CT);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_UDP_FIFO_RST);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_UDP_FIFO_ST);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_UDP_FIFO_CT);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_DSECT_H);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_DSECT_L);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_DELAY_FREQ_HZ);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_READ_SLOWDOWN);
         default: return "<UNKNOWN_SATA_R_ADDR>";
         }
     case RAW_RTYPE_DAQ:
@@ -416,9 +426,10 @@ const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr)
         case CASE_STRINGIFY(RAW_RADDR_DAQ_UDP_ENABLE);
         case CASE_STRINGIFY(RAW_RADDR_DAQ_UDP_MODE);
         case CASE_STRINGIFY(RAW_RADDR_DAQ_SATA_ENABLE);
+        case CASE_STRINGIFY(RAW_RADDR_DAQ_SATA_FIFO_CT);
+        case CASE_STRINGIFY(RAW_RADDR_DAQ_SATA_FIFO_FL);
         case RAW_RADDR_DAQ_BSUB0_CFG...RAW_RADDR_DAQ_BSUB31_CFG:
             return "RAW_RADDR_DAQ_BSUBx_CFG";
-
         default: return "<UNKNOWN_DAQ_R_ADDR>";
         }
     case RAW_RTYPE_UDP:
@@ -438,6 +449,9 @@ const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr)
         case CASE_STRINGIFY(RAW_RADDR_UDP_PAYLOAD_LEN);
         case CASE_STRINGIFY(RAW_RADDR_UDP_MODE);
         case CASE_STRINGIFY(RAW_RADDR_UDP_GIGE_STATUS);
+        case CASE_STRINGIFY(RAW_RADDR_UDP_GIGE_MIIM_EN);
+        case CASE_STRINGIFY(RAW_RADDR_UDP_GIGE_MIIM_AD);
+        case CASE_STRINGIFY(RAW_RADDR_UDP_GIGE_MIIM_DT);
         default: return "<UNKNOWN_UDP_R_ADDR>";
         }
     case RAW_RTYPE_GPIO:
