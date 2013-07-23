@@ -205,6 +205,9 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 ///@{
 #define RAW_SATA_STATUS_DEVICE_READY 1 /* SATA status register, device
                                         * ready flag */
+#define RAW_SATA_MODE_WAIT 0    /* SATA mode register, wait mode */
+#define RAW_SATA_MODE_READ 1    /* SATA mode register, read mode */
+#define RAW_SATA_MODE_WRITE 2    /* SATA mode register, write mode */
 
 #define RAW_DAQ_UDP_MODE_BSUB 0
 #define RAW_DAQ_UDP_MODE_BSMP 1
