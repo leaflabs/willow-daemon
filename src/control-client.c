@@ -72,7 +72,7 @@ struct client_priv {
 
     /* For configuring sample storage */
     struct sample_bsamp_cfg *bs_cfg;
-    int bs_expecting;
+    int bs_expecting;        /* Are we currently expecting samples? */
 };
 
 /********************************************************************
