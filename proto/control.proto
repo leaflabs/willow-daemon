@@ -205,13 +205,18 @@ message ControlCmdStream {
     optional bool enable = 3;
 }
 
-// Store some board samples to disk.
+// Store board samples received from the daemon to disk.
+//
+// This command can be used to store live or pre-recorded samples. To
+// store live samples, leave "start_sample" missing. To store
+// pre-recorded samples, specify "start_sample". You can't store
+// pre-recorded samples while a live capture is ongoing.
 //
 // If any samples get stored, you'll get a ControlResponse with
 // type==SUCCESS and an embedded ControlResStore in return. The
-// embedded ControlResStore will tell you how many samples got stored;
-// this may be less than the number you requested if some packets were
-// dropped.
+// embedded ControlResStore will tell you how many samples got stored.
+// This number may be less than what you requested if some packets
+// were dropped during live capture storage.
 //
 // If sample storage fails completely, you'll get a ControlResponse
 // with type==ERR.
