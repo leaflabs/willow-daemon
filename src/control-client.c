@@ -1200,14 +1200,14 @@ static void client_process_res_store(struct control_session *cs)
      * store command, the sample handler will consider them part of
      * this storage request and probably error out prematurely.
      *
+     * This is the problem that TCP solves with TIME_WAIT.
+     *
      * However:
      *
-     * 1. it's not clear what to do about this,
-     *
-     * 2. it seems unlikely that this'd happen unless the event loop
+     * 1. it seems unlikely that this'd happen unless the event loop
      *    performance is really slow, and
      *
-     * 3. we can recover from the error,
+     * 2. we can recover from the error,
      *
      * so this doesn't seem worth trying to fix right now. */
     if (res->r_type == RAW_RTYPE_UDP && res->r_addr == RAW_RADDR_UDP_ENABLE &&
