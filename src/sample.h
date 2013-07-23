@@ -123,6 +123,10 @@ typedef void (*sample_bsamp_cb)(short events, size_t nwritten, void *arg);
  *
  * To halt board sample reading, use sample_reject_bsamps().
  *
+ * You can't call this function from a callback you've passed to
+ * it. (I.e., you can't call this function within the function pointed
+ * to by "cb".)
+ *
  * @param smpl Sample handler
  * @param cfg Sample retrieval configuration
  * @param cb Event/error callback function; this must not be NULL. It
