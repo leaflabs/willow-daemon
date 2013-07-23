@@ -352,7 +352,8 @@ static int client_update_dnode_addr_storage(struct control_session *cs,
  * Sample handler storage callback
  */
 
-void client_sample_store_callback(short events, size_t nwritten, void *csvp)
+static void client_sample_store_callback(short events, size_t nwritten,
+                                         void *csvp)
 {
     struct control_session *cs = csvp;
     struct client_priv *cpriv;
