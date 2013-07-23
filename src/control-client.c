@@ -685,6 +685,7 @@ static inline void client_gpio_w(struct control_txn *txn,
                  0, RAW_RTYPE_GPIO, r_addr, r_val);
 }
 
+/* NOT SYNCHRONIZED */
 static int client_last_txn_succeeded(struct control_session *cs)
 {
     if (!cs->ctl_txns) {
@@ -732,11 +733,17 @@ static int client_last_txn_succeeded(struct control_session *cs)
     return 1;
 }
 
-static int client_set_txns_stream(struct control_session *cs,
-                                  uint32_t daq_udp_mode)
+#define CLIENT_N_NET_TXNS 5
+static ssize_t client_add_network_txns(struct control_session *cs,
+                                       struct control_txn *txns,
+                                       size_t ntxns)
 {
-    const size_t ntxns = 15;
-
+    /* IMPORTANT: the callers of this function (and their callers)
+     * rely on the order in which these transactions are set. Don't
+     * change it! */
+    if (ntxns < CLIENT_N_NET_TXNS) {
+        return -1;
+    }
     /* Get the daemon data socket's IPv4 and MAC48 addresses, which we
      * need to initialize dnode registers. */
     uint32_t dsock_ipv4, m48h, m48l;
@@ -744,25 +751,50 @@ static int client_set_txns_stream(struct control_session *cs,
         CLIENT_RES_ERR_DAEMON(cs, "internal network error");
         return -1;
     }
+    size_t txoff = 0;
+    /* Read the data node's UDP IPv4 address and port. */
+    client_udp_r(txns + txoff++, RAW_RADDR_UDP_SRC_IP4);
+    client_udp_r(txns + txoff++, RAW_RADDR_UDP_SRC_IP4_PORT);
+    /* Set UDP IPv4 destination register. */
+    client_udp_w(txns + txoff++, RAW_RADDR_UDP_DST_IP4, dsock_ipv4);
+    /* Set UDP MAC destination registers */
+    client_udp_w(txns + txoff++, RAW_RADDR_UDP_DST_MAC_H, m48h);
+    client_udp_w(txns + txoff++, RAW_RADDR_UDP_DST_MAC_L, m48l);
+
+    assert(txoff == CLIENT_N_NET_TXNS);
+    return (ssize_t)txoff;
+}
+
+/* NOT SYNCHRONIZED */
+static void client_start_txns(struct control_session *cs,
+                              struct control_txn *txns,
+                              size_t txno,
+                              size_t ntxns)
+{
+    assert(txno <= ntxns);
+    control_set_transactions(cs, txns, txno, 1);
+    cs->wake_why |= CONTROL_WHY_DNODE_TXN;
+}
+
+/* NOT SYNCHRONIZED */
+static int client_start_txns_stream(struct control_session *cs,
+                                    uint32_t daq_udp_mode)
+{
+    const size_t ntxns = CLIENT_N_NET_TXNS + 10;
 
     struct control_txn *txns = malloc(ntxns * sizeof(struct control_txn));
+    size_t txno = 0;
     if (!txns) {
         CLIENT_RES_ERR_DAEMON_OOM(cs);
         return -1;
     }
-    size_t txno = 0;
 
-    /* IMPORTANT: the callers of this function rely on the order in
-     * which these transactions are set. Don't change it without
-     * inspecting them! */
-    /* Read the data node's UDP IPv4 address and port. */
-    client_udp_r(txns + txno++, RAW_RADDR_UDP_SRC_IP4);
-    client_udp_r(txns + txno++, RAW_RADDR_UDP_SRC_IP4_PORT);
-    /* Set UDP IPv4 destination register. */
-    client_udp_w(txns + txno++, RAW_RADDR_UDP_DST_IP4, dsock_ipv4);
-    /* Set UDP MAC destination registers */
-    client_udp_w(txns + txno++, RAW_RADDR_UDP_DST_MAC_H, m48h);
-    client_udp_w(txns + txno++, RAW_RADDR_UDP_DST_MAC_L, m48l);
+    /* Read/write the various daemon/data node network addresses. */
+    ssize_t nstat = client_add_network_txns(cs, txns, ntxns);
+    if (nstat == -1) {
+        return -1;
+    }
+    txno = (size_t)nstat;
     /* Write 0 (STOP) to UDP and DAQ enable registers */
     client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 0);
     client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 0);
@@ -781,9 +813,8 @@ static int client_set_txns_stream(struct control_session *cs,
     client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 1);
     client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 1);
 
-    assert(txno == ntxns);
-    control_set_transactions(cs, txns, ntxns, 1);
-    cs->wake_why |= CONTROL_WHY_DNODE_TXN;
+    /* Enable the deferred work. */
+    client_start_txns(cs, txns, txno, ntxns);
     return 0;
 }
 
@@ -970,7 +1001,7 @@ static void client_process_cmd_stream(struct control_session *cs)
      */
     if (stream->enable) {
         client_clear_dnode_addr_storage(cs);
-        client_set_txns_stream(cs, RAW_DAQ_UDP_MODE_BSUB);
+        client_start_txns_stream(cs, RAW_DAQ_UDP_MODE_BSUB);
     } else {
         const size_t ntxns = 5;
         struct control_txn *txns = malloc(ntxns * sizeof(struct control_txn));
@@ -986,9 +1017,7 @@ static void client_process_cmd_stream(struct control_session *cs)
          * (bring reset line high/low) */
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 1);
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 0);
-        assert(txno == ntxns);
-        control_set_transactions(cs, txns, ntxns, 1);
-        cs->wake_why |= CONTROL_WHY_DNODE_TXN;
+        client_start_txns(cs, txns, txno, ntxns);
     }
 }
 
@@ -1109,7 +1138,9 @@ static void client_process_cmd_store(struct control_session *cs)
     client_clear_dnode_addr_storage(cs);
 
     /* Prepare the transactions. */
-    if (client_set_txns_stream(cs, RAW_DAQ_UDP_MODE_BSMP) == -1) {
+    int storing_live_data = !store->has_start_sample;
+    if (storing_live_data &&
+        (client_start_txns_stream(cs, RAW_DAQ_UDP_MODE_BSMP) == -1)) {
         /* (the error response has has already been sent) */
         goto bail;
     }
@@ -1146,7 +1177,7 @@ static void client_process_res_store(struct control_session *cs)
     if (client_res_updates_dnode_addr(res)) {
         switch (client_update_dnode_addr_storage(cs, res)) {
         case GOT_DNODE_PORT:
-            /* client_set_txns_stream() gets address, then port, so
+            /* client_start_txns_stream() gets address, then port, so
              * we've got the entire address now. */
             if (sample_set_addr(cs->smpl, (struct sockaddr*)&cpriv->dn_addr_in,
                                 SAMPLE_ADDR_DNODE)) {
