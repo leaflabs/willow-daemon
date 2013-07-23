@@ -537,6 +537,15 @@ static int client_read(struct control_session *cs)
 
     control_must_lock(cs);
 
+    if (cpriv->c_cmd || cs->ctl_txns) {
+        /* There's an existing command we're still dealing with; the
+         * client shouldn't have sent us a new one. Kill the
+         * connection so we don't have to bother queueing
+         * responses. */
+        ret = -1;
+        goto done;
+    }
+
     /*
      * Try to pull an entire protocol buffer out of cs->dbev.
      */
@@ -552,15 +561,6 @@ static int client_read(struct control_session *cs)
         assert(0);
         log_ERR("%s: can't happen", __func__);
         drain_evbuf(bufferevent_get_input(cs->cbev));
-        goto done;
-    }
-
-    if (cpriv->c_cmd || cs->ctl_txns) {
-        /* There's an existing command we're still dealing with; the
-         * client shouldn't have sent us a new one. Kill the
-         * connection so we don't have to bother queueing
-         * responses. */
-        ret = -1;
         goto done;
     }
 
