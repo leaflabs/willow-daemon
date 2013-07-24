@@ -853,7 +853,7 @@ static int client_ensure_txn_ok(struct control_session *cs,
 {
     if (!client_last_txn_succeeded(cs)) {
         log_WARNING("transaction %zd/%zu failed while processing %s",
-                    cs->ctl_cur_txn, cs->ctl_n_txns, cmd_str);
+                    cs->ctl_cur_txn, cs->ctl_n_txns - 1, cmd_str);
         CLIENT_RES_ERR_DNODE(cs, "failed I/O transaction");
         return -1;
     }
