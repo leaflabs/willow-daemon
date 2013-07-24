@@ -50,6 +50,10 @@ HDF5 tools and Java-based file viewer:
 
 $ sudo apt-get install hdf5-tools hdfviewer
 
+Python dependencies for contrib/plot_hdf5.py:
+
+$ sudo apt-get install python-h5py python-matplotlib
+
 Repository contents
 -------------------
 
