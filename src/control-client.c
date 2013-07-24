@@ -734,7 +734,10 @@ static int client_last_txn_succeeded(struct control_session *cs)
      * (i.e., that the resulting r_id, r_type, r_addr, and r_val match
      * requested ones).  */
     if (raw_req_is_write(req_pkt) && (memcmp(req, res, sizeof(*req)) != 0)) {
-        LOCAL_DEBUG("write raw_cmd_req doesn't match raw_cmd_res");
+        LOCAL_DEBUG("write raw_cmd_req doesn't match raw_cmd_res; "
+                    "r_type=%s, r_addr=%s",
+                    raw_r_type_str(req->r_type),
+                    raw_r_addr_str(req->r_type, req->r_addr));
         if (req->r_id != res->r_id) {
             LOCAL_DEBUG("req->r_id=%u, res->r_id=%u", req->r_id, res->r_id);
         } else if (req->r_type != res->r_type) {
