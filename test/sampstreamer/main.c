@@ -217,7 +217,8 @@ void send_samples(struct arguments *args,
         .tv_sec = 0,
         .tv_nsec = args->nsleep_time,
     };
-    while (args->nsamps == SAMPLES_FOREVER || idx < args->nsamps) {
+    while (args->nsamps == SAMPLES_FOREVER ||
+           idx < args->start_idx + args->nsamps) {
         raw_packet_init(&bsmp, RAW_MTYPE_BSMP, 0);
         bsmp.b_cookie_h = COOKIE_H;
         bsmp.b_cookie_l = COOKIE_L;
