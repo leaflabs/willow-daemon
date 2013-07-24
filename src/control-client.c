@@ -79,6 +79,28 @@ struct client_priv {
  * Miscellaneous helpers
  */
 
+/* NOT SYNCHRONIZED
+ *
+ * If a transfer is ongoing, rejects further samples and halts the
+ * transfer.
+ *
+ * This can take a while if the worker is running, so try not to call
+ * it from the event loop thread.
+ */
+static void client_halt_ongoing_transfer(struct control_session *cs)
+{
+    struct client_priv *cpriv = cs->cpriv;
+    if (cpriv->bs_expecting) {
+        log_DEBUG("prematurely rejecting board samples; this may block");
+        assert(cpriv->bs_cfg);
+        sample_reject_bsamps(cs->smpl);
+        ch_storage_close(cpriv->bs_cfg->chns);
+        ch_storage_free(cpriv->bs_cfg->chns);
+        free(cpriv->bs_cfg);
+        cpriv->bs_cfg = NULL;
+    }
+}
+
 /* NOT SYNCHRONIZED; do not call while worker thread is running.*/
 static void client_free_priv(struct control_session *cs)
 {
@@ -95,9 +117,7 @@ static void client_free_priv(struct control_session *cs)
     if (cpriv->c_cmdlen_buf) {
         evbuffer_free(cpriv->c_cmdlen_buf);
     }
-    if (cpriv->bs_cfg) {
-        free(cpriv->bs_cfg);
-    }
+    client_halt_ongoing_transfer(cs);
     free(cpriv);
     cs->cpriv = NULL;
 }
@@ -480,9 +500,15 @@ static int client_open(struct control_session *cs,
 
 static void client_close(struct control_session *cs)
 {
-    assert(cs->cpriv);
-    client_reset_state_unlocked(cs);
-    client_ensure_clean(cs);
+    struct client_priv *cpriv = cs->cpriv;
+    assert(cpriv);
+    control_must_lock(cs);
+    /* FIXME be smarter; don't call this here. Halting sample storage
+     * needs to wait for blocking I/O to finish. */
+    client_halt_ongoing_transfer(cs);
+    client_reset_state_locked(cs);
+    client_ensure_clean_locked(cs);
+    control_must_unlock(cs);
 }
 
 static int client_got_entire_pbuf(struct control_session *cs)
