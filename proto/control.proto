@@ -66,12 +66,22 @@ enum CentralAddr {
 
 enum SataAddr {
     SATA_ERR = 0;
-    SATA_STATE = 1;
-    SATA_DISK_ID = 2;
-    SATA_DISK_PARAM = 3;
-    SATA_NEXT_READ = 4;     // in board samples
-    SATA_READ_LEN = 5;
-    SATA_LAST_WRITE = 6;    // in board samples
+    SATA_MODE = 1;
+    SATA_STATUS = 2;
+    SATA_DISK_ID = 3;
+    SATA_IO_PARAM = 4;
+    SATA_R_IDX = 5;
+    SATA_R_LEN = 6;
+    SATA_W_IDX = 7;
+    SATA_FIFO_ST = 8;
+    SATA_FIFO_CT = 9;
+    SATA_UDP_FIFO_RST = 11;
+    SATA_UDP_FIFO_ST = 12;
+    SATA_UDP_FIFO_CT = 13;
+    SATA_DSECT_H = 14;
+    SATA_DSECT_L = 15;
+    SATA_DELAY_FREQ_HZ = 16;
+    SATA_READ_SLOWDOWN = 17;
 }
 
 enum DaqAddr {
