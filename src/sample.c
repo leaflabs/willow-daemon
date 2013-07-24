@@ -1306,6 +1306,16 @@ static int sample_get_bsub_packet(struct sample_session *smpl,
         log_DEBUG("ignoring data packet from unexpected address");
         return -1;
     }
+    if (raw_pkt_ntoh(iov->iov_base)) {
+        log_INFO("dropping malformed data node packet");
+        return -1;
+    }
+    uint8_t mtype = raw_mtype(iov->iov_base);
+    if (mtype != RAW_MTYPE_BSUB) {
+        log_DEBUG("unexpected message type %s (%u) received on data socket",
+                  raw_mtype_str(mtype), mtype);
+        return -1;
+    }
     return 0;
 }
 
@@ -1374,23 +1384,13 @@ static int sample_pack_and_ship_pmsg(struct sample_session *smpl,
 static int sample_convert_and_ship_subsample(struct sample_session *smpl,
                                              struct sockaddr *caddr)
 {
-    uint8_t *pkt_buf = smpl->dpktbuf.iov_base;
-    if (raw_pkt_ntoh(pkt_buf)) {
-        log_INFO("dropping malformed data node packet");
-        return -1;
-    }
-    uint8_t mtype = raw_mtype(pkt_buf);
-    if (mtype != RAW_MTYPE_BSUB) {
-        log_DEBUG("unexpected message type %s (%u) received on data socket",
-                  raw_mtype_str(mtype), mtype);
-        return -1;
-    }
+    struct raw_pkt_bsub *bsub = (struct raw_pkt_bsub*)smpl->dpktbuf.iov_base;
     BoardSubsample msg_bsub = BOARD_SUBSAMPLE__INIT;
     msg_bsub.chips = smpl->c_bsub_chips;
     msg_bsub.channels = smpl->c_bsub_chans;
     msg_bsub.samples = smpl->c_bsub_samps;
     DnodeSample dnsample = DNODE_SAMPLE__INIT;
-    sample_init_pmsg_from_bsub(&msg_bsub, (struct raw_pkt_bsub*)pkt_buf);
+    sample_init_pmsg_from_bsub(&msg_bsub, bsub);
     dnsample.subsample = &msg_bsub;
     dnsample.has_type = 1;
     dnsample.type = DNODE_SAMPLE__TYPE__SUBSAMPLE;
