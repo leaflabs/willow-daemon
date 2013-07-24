@@ -73,6 +73,10 @@ struct client_priv {
     /* For configuring sample storage */
     struct sample_bsamp_cfg *bs_cfg;
     int bs_expecting;        /* Are we currently expecting samples? */
+    int bs_restarted;        /* Are we handling a restarted storage of
+                              * canned board samples? */
+    size_t bs_nwritten_cache; /* Cached number of written samples,
+                               * for handling restarts. */
 };
 
 /********************************************************************
@@ -149,16 +153,10 @@ static void client_reset_state_locked(struct control_session *cs)
     }
     cpriv->bs_cfg = NULL;
     cpriv->bs_expecting = 0;
+    cpriv->bs_restarted = 0;
+    cpriv->bs_nwritten_cache = 0;
     drain_evbuf(cpriv->c_pbuf);
     drain_evbuf(cpriv->c_cmdlen_buf);
-}
-
-/* For fresh connection */
-static void client_reset_state_unlocked(struct control_session *cs)
-{
-    control_must_lock(cs);
-    client_reset_state_locked(cs);
-    control_must_unlock(cs);
 }
 
 static struct ch_storage *client_new_ch_storage(const char *path,
@@ -288,6 +286,54 @@ static void client_send_success(struct control_session *cs)
         client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__DNODE_ASYNC,    \
                         "data node async error"); } while (0)
 
+static void client_send_store_res(struct control_session *cs,
+                                  short events, size_t nwritten)
+{
+    struct client_priv *cpriv;
+    ControlCmdStore *store;
+    ControlResponse cr = CONTROL_RESPONSE__INIT;
+    ControlResStore res_store = CONTROL_RES_STORE__INIT;
+
+    /* Reset sample storage state to prepare for next storage command */
+    cpriv = cs->cpriv;
+    store = cpriv->c_cmd->store;
+    assert(cpriv->bs_cfg);
+    assert(store);
+    assert(store->has_backend);
+    if (ch_storage_close(cpriv->bs_cfg->chns) == -1) {
+        log_ERR("%s: can't close channel storage", __func__);
+    }
+    ch_storage_free(cpriv->bs_cfg->chns);
+    free(cpriv->bs_cfg);
+    cpriv->bs_cfg = NULL;
+    cpriv->bs_expecting = 0;
+    cpriv->bs_restarted = 0;
+    cpriv->bs_nwritten_cache = 0;
+
+    /* Send the result. */
+    res_store.has_status = 1;
+    res_store.has_nsamples = 1;
+    res_store.nsamples = nwritten;
+    res_store.path = cpriv->c_cmd->store->path;
+    if (events & SAMPLE_BS_DONE) {
+        res_store.status = CONTROL_RES_STORE__STATUS__DONE;
+    } else if (events & SAMPLE_BS_ERR) {
+        res_store.status = CONTROL_RES_STORE__STATUS__ERROR;
+    } else if (events & SAMPLE_BS_PKTDROP) {
+        res_store.status = CONTROL_RES_STORE__STATUS__PKTDROP;
+    } else if (events & SAMPLE_BS_TIMEOUT) {
+        res_store.status = CONTROL_RES_STORE__STATUS__TIMEOUT;
+    } else {
+        assert(0);
+        CLIENT_RES_ERR_DAEMON(cs, "can't determine storage result");
+        return;
+    }
+    cr.has_type = 1;
+    cr.type = CONTROL_RESPONSE__TYPE__STORE_FINISHED;
+    cr.store = &res_store;
+    client_send_response(cs, &cr);
+}
+
 /********************************************************************
  * Shared helpers used by command processing routines
  */
@@ -378,46 +424,35 @@ static void client_sample_store_callback(short events, size_t nwritten,
     struct control_session *cs = csvp;
     struct client_priv *cpriv;
     ControlCmdStore *store;
-    ControlResponse cr = CONTROL_RESPONSE__INIT;
-    ControlResStore res_store = CONTROL_RES_STORE__INIT;
 
-    /* Reset sample storage state to prepare for next storage */
     control_must_lock(cs);
     cpriv = cs->cpriv;
+    assert(cpriv->c_cmd);
     store = cpriv->c_cmd->store;
-    assert(cpriv->bs_cfg);
     assert(store);
-    assert(store->has_backend);
-    if (ch_storage_close(cpriv->bs_cfg->chns) == -1) {
-        log_ERR("%s: can't close channel storage", __func__);
-    }
-    ch_storage_free(cpriv->bs_cfg->chns);
-    free(cpriv->bs_cfg);
-    cpriv->bs_cfg = NULL;
-    cpriv->bs_expecting = 0;
-
-    /* Send the result. */
-    res_store.has_status = 1;
-    res_store.has_nsamples = 1;
-    res_store.nsamples = nwritten;
-    res_store.path = cpriv->c_cmd->store->path;
-    if (events & SAMPLE_BS_DONE) {
-        res_store.status = CONTROL_RES_STORE__STATUS__DONE;
-    } else if (events & SAMPLE_BS_ERR) {
-        res_store.status = CONTROL_RES_STORE__STATUS__ERROR;
-    } else if (events & SAMPLE_BS_PKTDROP) {
-        res_store.status = CONTROL_RES_STORE__STATUS__PKTDROP;
-    } else if (events & SAMPLE_BS_TIMEOUT) {
-        res_store.status = CONTROL_RES_STORE__STATUS__TIMEOUT;
+    if (store->has_start_sample && (events & SAMPLE_BS_PKTDROP)) {
+        /* If we're storing canned samples and we dropped a packet,
+         * then update and restart the transfer.
+         *
+         * TODO: abort if nwritten==0 too many times in a row.
+         *
+         * Since this is the callback we gave sample_expect_bsamps(),
+         * we can't call it again ourselves. Instead, update
+         * cpriv->bs_cfg and related fields, set the restart flag, and
+         * get the worker to restart the transfer for us. */
+        control_clear_transactions(cs, 1);
+        assert(nwritten < cpriv->bs_cfg->nsamples);
+        assert(cpriv->bs_cfg->start_sample >= 0);
+        cpriv->bs_nwritten_cache += nwritten;
+        cpriv->bs_cfg->nsamples -= nwritten;
+        cpriv->bs_cfg->start_sample += nwritten;
+        cpriv->bs_restarted = 1;
+        cs->wake_why |= CONTROL_WHY_CLIENT_CMD;
+        control_must_signal(cs);
     } else {
-        log_DEBUG("%s: spurious sample storage callback", __func__);
-        goto out;
+        /* Otherwise, we're done with this command. */
+        client_send_store_res(cs, events, nwritten);
     }
-    cr.has_type = 1;
-    cr.type = CONTROL_RESPONSE__TYPE__STORE_FINISHED;
-    cr.store = &res_store;
-    client_send_response(cs, &cr);
- out:
     control_must_unlock(cs);
 }
 
@@ -450,6 +485,8 @@ static int client_start(struct control_session *cs)
     priv->c_cmdlen_buf = c_cmdlen_buf;
     priv->bs_cfg = NULL;
     priv->bs_expecting = 0;
+    priv->bs_restarted = 0;
+    priv->bs_nwritten_cache = 0;
     cs->cpriv = priv;
     client_reset_state_locked(cs); /* worker isn't started; don't
                                     * bother locking */
@@ -476,10 +513,9 @@ static void client_stop(struct control_session *cs)
     }
 }
 
-static void client_ensure_clean(struct control_session *cs)
+static void client_ensure_clean_locked(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
-    control_must_lock(cs);
     assert(cpriv);
     assert(cpriv->c_cmd == NULL);
     assert(cpriv->c_pbuf);
@@ -488,6 +524,12 @@ static void client_ensure_clean(struct control_session *cs)
     assert(cpriv->c_cmdlen == CLIENT_CMDLEN_WAITING);
     assert(cs->ctl_txns == NULL);
     assert(cs->ctl_cur_txn == -1);
+}
+
+static void client_ensure_clean(struct control_session *cs)
+{
+    control_must_lock(cs);
+    client_ensure_clean_locked(cs);
     control_must_unlock(cs);
 }
 
@@ -768,17 +810,24 @@ static ssize_t client_add_network_txns(struct control_session *cs,
                                        struct control_txn *txns,
                                        size_t ntxns)
 {
+    struct client_priv *cpriv = cs->cpriv;
+
     /* IMPORTANT: the callers of this function (and their callers)
      * rely on the order in which these transactions are set. Don't
      * change it! */
     if (ntxns < CLIENT_N_NET_TXNS) {
+        if (!cpriv->bs_restarted) {
+            CLIENT_RES_ERR_DAEMON(cs, "can't set up network transactions");
+        }
         return -1;
     }
     /* Get the daemon data socket's IPv4 and MAC48 addresses, which we
      * need to initialize dnode registers. */
     uint32_t dsock_ipv4, m48h, m48l;
     if (client_get_dsock_info(cs, &dsock_ipv4, &m48h, &m48l) == -1) {
-        CLIENT_RES_ERR_DAEMON(cs, "internal network error");
+        if (!cpriv->bs_restarted) {
+            CLIENT_RES_ERR_DAEMON(cs, "internal network error");
+        }
         return -1;
     }
     size_t txoff = 0;
@@ -844,6 +893,59 @@ static int client_start_txns_stream(struct control_session *cs,
     client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 1);
 
     /* Enable the deferred work. */
+    client_start_txns(cs, txns, txno, ntxns);
+    return 0;
+}
+
+/* NOT SYNCHRONIZED
+ *
+ * If we're currently handling a restarted storage command, no
+ * response will be sent on error. Otherwise, we send an error
+ * response if we can't start the storage register I/O transactions.
+ */
+static int client_start_txns_store(struct control_session *cs)
+{
+    struct client_priv *cpriv = cs->cpriv;
+    const size_t ntxns = CLIENT_N_NET_TXNS + 11;
+    struct control_txn *txns = malloc(ntxns * sizeof(struct control_txn));
+    size_t txno = 0;
+    if (!txns) {
+        if (!cpriv->bs_restarted) {
+            CLIENT_RES_ERR_DAEMON_OOM(cs);
+        }
+        return -1;
+    }
+
+    /* Read/write the various daemon/data node network addresses. */
+    ssize_t nstat = client_add_network_txns(cs, txns, ntxns);
+    if (nstat == -1) {
+        if (!cpriv->bs_restarted) {
+            CLIENT_RES_ERR_DAEMON(cs, "can't set up store transactions");
+        }
+        return -1;
+    }
+    txno = (size_t)nstat;
+    /* Stop SATA, DAQ, and UDP modules. */
+    client_sata_w(txns + txno++, RAW_RADDR_SATA_MODE, RAW_SATA_MODE_WAIT);
+    client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 0);
+    client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 0);
+    /* Reset SATA read FIFOs by toggling reset line */
+    client_sata_w(txns + txno++, RAW_RADDR_SATA_UDP_FIFO_RST, 1);
+    client_sata_w(txns + txno++, RAW_RADDR_SATA_UDP_FIFO_RST, 0);
+    /* Check SATA device ready flag */
+    client_sata_r(txns + txno++, RAW_RADDR_SATA_STATUS);
+    /* Set SATA read index and length */
+    client_sata_w(txns + txno++,
+                  RAW_RADDR_SATA_R_IDX, cpriv->bs_cfg->start_sample);
+    client_sata_w(txns + txno++,
+                  RAW_RADDR_SATA_R_LEN, cpriv->bs_cfg->nsamples);
+    /* Configure UDP to stream from SATA */
+    client_udp_w(txns + txno++, RAW_RADDR_UDP_MODE, RAW_UDP_MODE_SATA);
+    /* Enable UDP module. */
+    client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 1);
+    /* Enable SATA reads */
+    client_sata_w(txns + txno++, RAW_RADDR_SATA_MODE, RAW_SATA_MODE_READ);
+
     client_start_txns(cs, txns, txno, ntxns);
     return 0;
 }
@@ -1110,26 +1212,21 @@ static void client_process_cmd_store(struct control_session *cs)
     struct ch_storage *chns = NULL;
     int chns_is_open = 0;
     struct sample_bsamp_cfg *bs_cfg = NULL;
-    assert(!cpriv->bs_cfg);
 
     /* Check that the command is well-formed. */
     if (!store) {
+        assert(!cpriv->bs_restarted);
         CLIENT_RES_ERR_C_PROTO(cs, "missing store command");
         goto bail;
     }
     if (!store->path) {
+        assert(!cpriv->bs_restarted);
         CLIENT_RES_ERR_C_PROTO(cs, "missing path field");
         goto bail;
     }
     if (!store->has_nsamples) {
+        assert(!cpriv->bs_restarted);
         CLIENT_RES_ERR_C_PROTO(cs, "missing nsamples field");
-        goto bail;
-    }
-
-    /* FIXME: remove this for stored sample retrieval (we currently
-     * don't specify the correct transactions to handle this case). */
-    if (store->has_start_sample) {
-        CLIENT_RES_ERR_DAEMON(cs, "specifying start_sample is unimplemented");
         goto bail;
     }
 
@@ -1142,37 +1239,66 @@ static void client_process_cmd_store(struct control_session *cs)
     /* Pull the fields we need out of the command. */
     nsamples = store->nsamples;
     start_sample = store->has_start_sample ? (ssize_t)store->start_sample : -1;
-    chns = client_new_ch_storage(store->path, store->backend);
-    if (!chns) {
-        CLIENT_RES_ERR_DAEMON_OOM(cs);
-        goto bail;
-    }
-    if (client_open_ch_storage(chns, store->backend) == -1) {
-        CLIENT_RES_ERR_DAEMON_IO(cs, "can't open channel storage");
-        goto bail;
+
+    if (!cpriv->bs_restarted) {
+        /* If this isn't a restarted storage operation, then create
+         * the channel storage object, and initialize the board sample
+         * configuration. */
+        assert(!cpriv->bs_cfg);
+        chns = client_new_ch_storage(store->path, store->backend);
+        if (!chns) {
+            CLIENT_RES_ERR_DAEMON_OOM(cs);
+            goto bail;
+        }
+        if (client_open_ch_storage(chns, store->backend) == -1) {
+            CLIENT_RES_ERR_DAEMON_IO(cs, "can't open channel storage");
+            goto bail;
+        }
+        chns_is_open = 1;
+        bs_cfg = malloc(sizeof(struct sample_bsamp_cfg));
+        if (!bs_cfg) {
+            ch_storage_free(chns);
+            CLIENT_RES_ERR_DAEMON_OOM(cs);
+            goto bail;
+        }
+        bs_cfg->nsamples = nsamples;
+        bs_cfg->start_sample = start_sample;
+        bs_cfg->chns = chns;
+        cpriv->bs_cfg = bs_cfg;
+    } else {
+        /* Otherwise, we're restarting a channel storage operation
+         * that dropped a packet. */
+        assert(cpriv->bs_cfg);
+        chns_is_open = 1;       /* it was opened previously. */
+        log_DEBUG("restarting sample storage: "
+                  "nwritten=%zu, nsamples=%zu, start_sample=%zd",
+                  cpriv->bs_nwritten_cache, cpriv->bs_cfg->nsamples,
+                  cpriv->bs_cfg->start_sample);
     }
 
-    /* Create and initialize the board sample configuration. */
-    bs_cfg = malloc(sizeof(struct sample_bsamp_cfg));
-    if (!bs_cfg) {
-        ch_storage_free(chns);
-        CLIENT_RES_ERR_DAEMON_OOM(cs);
-        goto bail;
-    }
-    bs_cfg->nsamples = nsamples;
-    bs_cfg->start_sample = start_sample;
-    bs_cfg->chns = chns;
-    cpriv->bs_cfg = bs_cfg;
-
-    /* Set up storage for the data node address. */
+    /* Set up storage for the data node address, which we'll read
+     * regardless of whether we're capturing live or canned data. */
     client_clear_dnode_addr_storage(cs);
 
     /* Prepare the transactions. */
     int storing_live_data = !store->has_start_sample;
-    if (storing_live_data &&
-        (client_start_txns_stream(cs, RAW_DAQ_UDP_MODE_BSMP) == -1)) {
-        /* (the error response has has already been sent) */
-        goto bail;
+    if (storing_live_data) {
+        if (client_start_txns_stream(cs, RAW_DAQ_UDP_MODE_BSMP) == -1) {
+            goto bail;
+        }
+    } else {
+        if (client_start_txns_store(cs) == -1) {
+            if (cpriv->bs_restarted) {
+                /* If we failed to restart the storage, the client needs
+                 * to know how far along we got. */
+                client_send_store_res(cs, SAMPLE_BS_ERR,
+                                      cpriv->bs_nwritten_cache);
+            } else {
+                /* Otherwise, report failure to start the storage. */
+                CLIENT_RES_ERR_DAEMON(cs, "can't set up storage transactions");
+            }
+            goto bail;
+        }
     }
 
     return;
@@ -1192,10 +1318,19 @@ static void client_process_res_store(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
 
-    if (client_ensure_txn_ok(cs, "ControlCmdStore") == -1) {
+    if (cpriv->bs_restarted) {
+        if (!client_last_txn_succeeded(cs)) {
+            /* We failed a restart. The client still need to know how
+             * many samples we successfully saved. */
+            client_send_store_res(cs, SAMPLE_BS_ERR, cpriv->bs_nwritten_cache);
+            return;
+        }
+    } else if (client_ensure_txn_ok(cs, "ControlCmdStore") == -1) {
         if (cpriv->bs_expecting) {
             sample_reject_bsamps(cs->smpl);
             cpriv->bs_expecting = 0;
+            cpriv->bs_restarted = 0;
+            cpriv->bs_nwritten_cache = 0;
         }
         return;
     }
@@ -1222,6 +1357,11 @@ static void client_process_res_store(struct control_session *cs)
             break;
         }
     }
+    if (!(RAW_RADDR_SATA_STATUS & RAW_SATA_STATUS_DEVICE_READY)) {
+        CLIENT_RES_ERR_DNODE(cs, "SATA device is not ready");
+        return;
+    }
+
     /* If we just successfully enabled the UDP module, it's time to
      * tell the sample handler to expect incoming board samples, so
      * it'll be ready once the DAQ enable goes through. */
@@ -1243,13 +1383,17 @@ static void client_process_res_store(struct control_session *cs)
     if (res->r_type == RAW_RTYPE_UDP && res->r_addr == RAW_RADDR_UDP_ENABLE &&
         raw_req_is_write(&cs->ctl_txns[cs->ctl_cur_txn].req_pkt) &&
         res->r_val == 1) {
-        log_DEBUG("%s: expecting board samples", __func__);
         if (sample_expect_bsamps(cs->smpl, cpriv->bs_cfg,
                                  client_sample_store_callback, cs) == -1) {
             CLIENT_RES_ERR_DAEMON(cs, "can't configure sample forwarding");
             return;
-        } else {
+        } else if (!cpriv->bs_restarted) {
             cpriv->bs_expecting = 1;
+            cpriv->bs_nwritten_cache = 0;
+        } else {
+            /* If we're restarting a transfer, then we should already
+             * be expecting */
+            assert(cpriv->bs_expecting);
         }
     }
 
