@@ -778,20 +778,6 @@ int sample_get_addr(struct sample_session *smpl,
     return ret;
 }
 
-static void sample_log_set_addr(struct sockaddr *addr, enum sample_addr what)
-{
-    if (addr->sa_family != AF_INET) {
-        log_DEBUG("%s: can't print non-AF_INET addr", __func__);
-    }
-    struct sockaddr_in *addrin = (struct sockaddr_in*)addr;
-    char addrp[INET6_ADDRSTRLEN + INET_ADDRSTRLEN];
-    if (evutil_inet_ntop(AF_INET, &addrin->sin_addr, addrp, sizeof(addrp))) {
-        log_DEBUG("%s sample address:port is %s:%u",
-                  what == SAMPLE_ADDR_CLIENT ? "client" : "data node",
-                  addrp, ntohs(addrin->sin_port));
-    }
-}
-
 int sample_set_addr(struct sample_session *smpl,
                     struct sockaddr *addr, enum sample_addr what)
 {
@@ -803,7 +789,6 @@ int sample_set_addr(struct sample_session *smpl,
         goto out;
     }
     memcpy(dst, addr, sockutil_addrlen(addr));
-    sample_log_set_addr(addr, what);
  out:
     sample_must_unlock(smpl);
     return ret;
