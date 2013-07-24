@@ -1327,6 +1327,8 @@ static void sample_init_pmsg_from_bsub(BoardSubsample *msg_bsub,
     msg_bsub->is_live = !!(pflags & RAW_PFLAG_B_LIVE);
     msg_bsub->has_is_last = 1;
     msg_bsub->is_last = !!(pflags & RAW_PFLAG_B_LAST);
+    msg_bsub->has_is_err = 1;
+    msg_bsub->is_err = !!raw_pkt_is_err(bsub);
     msg_bsub->has_exp_cookie = 1;
     msg_bsub->exp_cookie = raw_exp_cookie(bsub);
     msg_bsub->has_board_id = 1;
