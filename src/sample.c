@@ -64,6 +64,7 @@ enum sample_stop_why {
     SAMPLE_STOP_TIMEOUT,
     SAMPLE_STOP_PKTDROP,
     SAMPLE_STOP_NET_ERR,
+    SAMPLE_STOP_PKT_ERR,
 };
 
 #define SAMPLE_PBUF_ARR_SIZE (1024 * 1024)
@@ -426,6 +427,7 @@ static const char* sample_stop_why_str(enum sample_stop_why why)
     case SAMPLE_STOP_TIMEOUT: return "timeout while waiting for packet";
     case SAMPLE_STOP_PKTDROP: return "dropped packet";
     case SAMPLE_STOP_NET_ERR: return "network error";
+    case SAMPLE_STOP_PKT_ERR: return "packet with error flag set";
     }
     assert(0);                  /* placate GCC */
     return "";
@@ -1016,6 +1018,9 @@ static void sample_worker_callback(__unused evutil_socket_t ignored,
         case SAMPLE_STOP_PKTDROP:
             cb_flags |= SAMPLE_BS_PKTDROP;
             break;
+        case SAMPLE_STOP_PKT_ERR:
+            cb_flags |= SAMPLE_BS_ERR;
+            break;
         default:
             log_WARNING("sample worker sleeping for unknown reason");
             break;
@@ -1088,6 +1093,7 @@ static inline size_t sample_samps_left(struct sample_session *smpl)
 #define DROPPED_PKT (-1)
 #define SOCKET_ERR (-2)
 #define GOT_NOTHING (-3)
+#define GOT_PKT_ERR (-4)
 static int sample_ddatafd_grab_bsamps(struct sample_session *smpl)
 {
     struct sockaddr_storage sas;
@@ -1152,6 +1158,11 @@ static int sample_ddatafd_grab_bsamps(struct sample_session *smpl)
             n_bad++;
             continue;
         }
+        if (raw_pkt_is_err(&mybufs[i])) {
+            log_INFO("board sample %u has error flag set", mybufs[i].b_sidx);
+            ret = GOT_PKT_ERR;
+            break;
+        }
         /* If this is the first packet, and we don't care about
          * indexes, then start counting from here. */
         if (smpl->bsamp_cfg.start_sample == -1) {
@@ -1174,7 +1185,7 @@ static int sample_ddatafd_grab_bsamps(struct sample_session *smpl)
     }
  done:
     /* Check if we actually got any board samples. */
-    if (i > b_start) {
+    if (i > b_start && ret != GOT_PKT_ERR) {
         ret = GOT_BSAMPS;
     }
     /* If we did, update the buffer length, and see if it's time to flip
@@ -1245,6 +1256,9 @@ static void sample_ddatafd_bsamps(struct sample_session *smpl)
         return;
     case GOT_NOTHING:
         /* Only incorrect or malformed packets were on the wire. */
+        return;
+    case GOT_PKT_ERR:
+        sample_stop_worker(smpl, SAMPLE_STOP_PKT_ERR);
         return;
     }
 }
