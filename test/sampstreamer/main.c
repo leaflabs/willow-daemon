@@ -38,6 +38,8 @@ static void usage(int exit_status)
     printf("Usage: %s OPTIONS\n\n"
 
            "Options:\n"
+           "  -e, --error-packets\n"
+           "\tSet error flag in all packets\n"
            "  -f, --from-port\n"
            "\tSend to daemon from this localhost port, default %d\n"
            "  -h, --help"
@@ -65,6 +67,7 @@ static void usage(int exit_status)
        .start_idx = START_INDEX,                        \
        .nsleep_time = NANOSLEEP_TIME,                   \
        .nsamps = SAMPLES_FOREVER,                       \
+       .set_err = 0,                                    \
     }
 
 struct arguments {
@@ -74,14 +77,19 @@ struct arguments {
     uint32_t start_idx;
     useconds_t nsleep_time;
     size_t nsamps;
+    int set_err;
 };
 
 static void parse_args(struct arguments* args, int argc, char *const argv[])
 {
     int print_usage = 0;
-    const char shortopts[] = "f:hi:l:n:p:s";
+    const char shortopts[] = "ef:hi:l:n:p:s";
     struct option longopts[] = {
         /* Keep these sorted with shortopts. */
+        { .name = "error-packets",
+          .has_arg = no_argument,
+          .flag = NULL,
+          .val = 'e' },
         { .name = "from-port",
           .has_arg = required_argument,
           .flag = &print_usage,
@@ -124,6 +132,9 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
             if (print_usage) {
                 usage(EXIT_SUCCESS);
             }
+        case 'e':
+            args->set_err = 1;
+            break;
         case 'f':
             args->from_port = strtol(optarg, (char**)0, 10);
             break;
@@ -189,7 +200,8 @@ void send_subsamples(struct arguments *args,
         .tv_nsec = args->nsleep_time,
     };
     while (args->nsamps == SAMPLES_FOREVER || idx < args->nsamps) {
-        raw_packet_init(&bsub, RAW_MTYPE_BSUB, 0);
+        raw_packet_init(&bsub, RAW_MTYPE_BSUB,
+                        args->set_err ? RAW_PFLAG_ERR : 0);
         bsub.b_cookie_h = COOKIE_H;
         bsub.b_cookie_l = COOKIE_L;
         bsub.b_id = BOARD_ID;
@@ -219,7 +231,8 @@ void send_samples(struct arguments *args,
     };
     while (args->nsamps == SAMPLES_FOREVER ||
            idx < args->start_idx + args->nsamps) {
-        raw_packet_init(&bsmp, RAW_MTYPE_BSMP, 0);
+        raw_packet_init(&bsmp, RAW_MTYPE_BSMP,
+                        args->set_err ? RAW_PFLAG_ERR : 0);
         bsmp.b_cookie_h = COOKIE_H;
         bsmp.b_cookie_l = COOKIE_L;
         bsmp.b_id = BOARD_ID;
