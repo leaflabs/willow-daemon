@@ -30,6 +30,7 @@
 #include "ch_storage.h"
 #include "logging.h"
 #include "raw_packets.h"
+#include "safe_pthread.h"
 #include "sockutil.h"
 #include "type_attrs.h"
 #include "proto/control.pb-c.h"
@@ -205,128 +206,59 @@ sample_fatal_err(const char *message, int code) /* code==-1 for "no code" */
     exit(EXIT_FAILURE);
 }
 
-static void sample_must_lock_m(pthread_mutex_t *m)
+static inline void sample_must_join(struct sample_session *smpl)
 {
-    int en = pthread_mutex_lock(m);
-    if (en) {
-        sample_fatal_err("can't acquire a sample_session lock", en);
-    }
-}
-
-static void sample_must_unlock_m(pthread_mutex_t *m)
-{
-    int en = pthread_mutex_unlock(m);
-    if (en) {
-        sample_fatal_err("can't unlock sample_session", en);
-    }
-}
-
-static void sample_must_cond_wait_cv(pthread_cond_t *cv, pthread_mutex_t *mtx)
-{
-    int en = pthread_cond_wait(cv, mtx);
-    if (en) {
-        sample_fatal_err("can't cond_wait in sample_session", en);
-    }
-}
-
-static void sample_must_signal_cv(pthread_cond_t *cv)
-{
-    int en = pthread_cond_signal(cv);
-    if (en) {
-        sample_fatal_err("can't signal in sample_session", en);
-    }
-}
-
-static void sample_must_join(struct sample_session *smpl)
-{
-    void *rv;
-    int en = pthread_join(smpl->worker, &rv);
-    if (en) {
-        sample_fatal_err("can't join sample worker thread", en);
-    }
+    safe_p_join(smpl->worker, NULL);
 }
 
 static inline void sample_must_lock(struct sample_session *smpl)
 {
-    sample_must_lock_m(&smpl->smpl_mtx);
+    safe_p_mutex_lock(&smpl->smpl_mtx);
 }
 
 static inline void sample_must_unlock(struct sample_session *smpl)
 {
-    sample_must_unlock_m(&smpl->smpl_mtx);
+    safe_p_mutex_unlock(&smpl->smpl_mtx);
 }
 
 static inline void sample_must_lock_worker(struct sample_session *smpl)
 {
-    sample_must_lock_m(&smpl->worker_mtx);
+    safe_p_mutex_lock(&smpl->worker_mtx);
 }
 
 static inline void sample_must_unlock_worker(struct sample_session *smpl)
 {
-    sample_must_unlock_m(&smpl->worker_mtx);
+    safe_p_mutex_unlock(&smpl->worker_mtx);
 }
 
 static inline void sample_must_cond_wait_worker(struct sample_session *smpl)
 {
-    sample_must_cond_wait_cv(&smpl->worker_cv, &smpl->worker_mtx);
+    safe_p_cond_wait(&smpl->worker_cv, &smpl->worker_mtx);
 }
 
 static inline void sample_must_signal_worker(struct sample_session *smpl)
 {
-    sample_must_signal_cv(&smpl->worker_cv);
-}
-
-static void sample_must_rdlock(pthread_rwlock_t *rw)
-{
-    int en = pthread_rwlock_rdlock(rw);
-    if (en) {
-        sample_fatal_err("can't read-lock", en);
-    }
-}
-
-static void sample_must_wrlock(pthread_rwlock_t *rw)
-{
-    int en = pthread_rwlock_wrlock(rw);
-    if (en) {
-        sample_fatal_err("can't write-lock", en);
-    }
-}
-
-static int sample_must_trywrlock(pthread_rwlock_t *rw)
-{
-    int en = pthread_rwlock_trywrlock(rw);
-    if (en != 0 && en != EBUSY) {
-        sample_fatal_err("can't try to write-lock", en);
-    }
-    return en;
-}
-
-static void sample_must_rwunlock(pthread_rwlock_t *rw)
-{
-    int en = pthread_rwlock_unlock(rw);
-    if (en) {
-        sample_fatal_err("can't unlock rwlock", en);
-    }
+    safe_p_cond_signal(&smpl->worker_cv);
 }
 
 static inline void sample_must_rdlock_dbuf(struct sample_session *smpl)
 {
-    sample_must_rdlock(&smpl->bsamp_mtx);
+    safe_p_rwlock_rdlock(&smpl->bsamp_mtx);
 }
 
 static inline void sample_must_wrlock_dbuf(struct sample_session *smpl)
 {
-    sample_must_wrlock(&smpl->bsamp_mtx);
+    safe_p_rwlock_wrlock(&smpl->bsamp_mtx);
 }
 
 static inline int sample_must_trywrlock_dbuf(struct sample_session *smpl)
 {
-    return sample_must_trywrlock(&smpl->bsamp_mtx);
+    return safe_p_rwlock_trywrlock(&smpl->bsamp_mtx);
 }
 
 static inline void sample_must_rwunlock_dbuf(struct sample_session *smpl)
 {
-    sample_must_rwunlock(&smpl->bsamp_mtx);
+    safe_p_rwlock_unlock(&smpl->bsamp_mtx);
 }
 
 /*
