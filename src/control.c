@@ -436,39 +436,45 @@ struct control_session* control_new(struct event_base *base,
         log_ERR("out of memory");
         return NULL;
     }
-    control_init_cs(cs);
-
-    cs->base = base;
 
     /* Set up locking */
     mtx_en = pthread_mutex_init(&cs->mtx, NULL);
     if (mtx_en) {
         log_ERR("threading error while initializing control session");
-        goto bail;
+        goto bail_unlocked;
     }
     cv_en = pthread_cond_init(&cs->cv, NULL);
     if (cv_en) {
         log_ERR("threading error while initializing control session");
-        goto bail;
+        goto bail_unlocked;
     }
+
+    /* Grab the lock while initializing fields. */
+    control_must_lock(cs);
+
+    /* Zero/NULL-initialize integer and pointer fields. */
+    control_init_cs(cs);
+
+    /* Cache the event loop base. */
+    cs->base = base;
 
     /* Client control fields */
     if (control_client_start(cs)) {
         log_ERR("can't start client side of control session");
-        goto bail;
+        goto bail_locked;
     }
     started_client = 1;
     cs->cecl = control_new_listener(cs, base, client_port, client_ecl,
                                     client_ecl_err);
     if (!cs->cecl) {
         log_ERR("can't listen for client connections");
-        goto bail;
+        goto bail_locked;
     }
 
     /* Data node control fields */
     if (control_dnode_start(cs)) {
         log_ERR("can't start data node side of control session");
-        goto bail;
+        goto bail_locked;
     }
     cs->daddr = dnode_addr;
     cs->dport = dnode_port;
@@ -477,11 +483,11 @@ struct control_session* control_new(struct event_base *base,
     if (dcontrolfd == -1) {
         log_ERR("can't connect to data node at %s, port %u",
                 dnode_addr, dnode_port);
-        goto bail;
+        goto bail_locked;
     }
     if (evutil_make_socket_nonblocking(dcontrolfd)) {
         log_ERR("data node control socket doesn't support nonblocking I/O");
-        goto bail;
+        goto bail_locked;
     }
     control_conn_open(cs, &cs->dbev, dcontrolfd, control_dnode_bev_read,
                       NULL, control_dnode_event, control_dnode_open,
@@ -490,26 +496,30 @@ struct control_session* control_new(struct event_base *base,
     /* Sample session */
     cs->smpl = smpl;
 
+    control_must_unlock(cs);
+
     /* Start the worker thread */
     control_must_lock(cs);
     t_en = pthread_create(&cs->thread, NULL, control_worker_main, cs);
     control_must_unlock(cs);
     if (t_en) {
         log_ERR("can't start worker thread");
-        goto bail;
+        goto bail_unlocked;
     }
 
     return cs;
 
- bail:
+ bail_locked:
+    control_must_unlock(cs);
+ bail_unlocked:
     /* Tear down worker thread */
     if (t_en) {
         assert(0);              /* can't happen */
     }
-    if (cv_en) {
+    if (!cv_en) {
         pthread_cond_destroy(&cs->cv);
     }
-    if (mtx_en) {
+    if (!mtx_en) {
         pthread_mutex_destroy(&cs->mtx);
     }
 

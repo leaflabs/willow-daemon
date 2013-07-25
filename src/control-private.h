@@ -120,9 +120,10 @@ struct control_session {
 struct control_ops {
     /* Session-wide startup and teardown callbacks. These may be NULL.
      *
-     * The start callback is invoked from control_new() before the
-     * worker thread is created. The stop callback is invoked from
-     * more places, but never while the worker thread is running. */
+     * The start callback is invoked from control_new(), before the
+     * worker thread is created, with the worker thread lock held. The
+     * stop callback is invoked from more places, but never while the
+     * worker thread is running. */
     int (*cs_start)(struct control_session *cs);
     void (*cs_stop)(struct control_session *cs);
 
