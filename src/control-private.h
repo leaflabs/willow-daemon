@@ -29,15 +29,10 @@
 
 #include "client_socket.h"
 #include "raw_packets.h"
+#include "safe_pthread.h"
 #include "proto/control.pb-c.h"
 
 #include "sample.h"
-
-#define CONTROL_DEBUG_LOG 0 /* more verbose logging (helps with pthreads) */
-
-#if CONTROL_DEBUG_LOG
-#include "logging.h"
-#endif
 
 struct event;
 struct event_base;
@@ -163,46 +158,34 @@ struct control_ops {
 };
 
 /*
- * Threading helpers
+ * Threading helpers for the main control session mutex
  */
 
-#if CONTROL_DEBUG_LOG
-#define CONTROL_DEBUG log_DEBUG
-#else
-#define CONTROL_DEBUG(...) ((void)0)
-#endif
+static inline void control_must_cond_wait(struct control_session *cs)
+{
+    safe_p_cond_wait(&cs->cv, &cs->mtx);
+}
 
-#ifndef CONTROL_DEBUG
-#define control_must_cond_wait __control_must_cond_wait
-#define control_must_signal __control_must_signal
-#define control_must_lock __control_must_lock
-#define control_must_unlock __control_must_unlock
-#define control_must_join __control_must_join
-#else
-#define control_must_cond_wait(cs) do {                 \
-        CONTROL_DEBUG("%s: cond_wait", __func__);         \
-        __control_must_cond_wait(cs); } while (0)
-#define control_must_signal(cs) do {                            \
-        __control_must_signal(cs);                              \
-        CONTROL_DEBUG("%s: signalled", __func__); } while (0)
-#define control_must_lock(cs) do {                              \
-        CONTROL_DEBUG("%s: locking", __func__);                   \
-        __control_must_lock(cs);                                \
-        CONTROL_DEBUG("%s: locked", __func__);  } while (0)
-#define control_must_unlock(cs) do {                            \
-        CONTROL_DEBUG("%s: unlocking", __func__);                 \
-        __control_must_unlock(cs);                              \
-        CONTROL_DEBUG("%s: unlocked", __func__); } while (0)
-#define control_must_join(cs, rv) do {               \
-        CONTROL_DEBUG("%s: join", __func__);           \
-        __control_must_join(cs, rv); } while (0)
-#endif
+static inline void control_must_signal(struct control_session *cs)
+{
+    safe_p_cond_signal(&cs->cv);
+}
 
-void __control_must_cond_wait(struct control_session *cs);
-void __control_must_signal(struct control_session *cs);
-void __control_must_lock(struct control_session *cs);
-void __control_must_unlock(struct control_session *cs);
-void __control_must_join(struct control_session *cs, void **retval);
+static inline void control_must_lock(struct control_session *cs)
+{
+    safe_p_mutex_lock(&cs->mtx);
+}
+
+static inline void control_must_unlock(struct control_session *cs)
+{
+    safe_p_mutex_unlock(&cs->mtx);
+}
+
+static inline void control_must_join(struct control_session *cs,
+                                     void **retval)
+{
+    safe_p_join(cs->thread, retval);
+}
 
 /*
  * Deferred work helpers
