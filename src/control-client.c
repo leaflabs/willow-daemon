@@ -47,7 +47,6 @@
 /* FIXME:
  * - add timeouts when processing commands
  * - send error to client on timeout?
- * - allow client to configure timeout?
  */
 
 struct client_priv {
