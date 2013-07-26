@@ -265,6 +265,52 @@ static void* control_worker_main(void *csessvp)
 }
 
 /*
+ * Data node reconnection thread
+ */
+
+static void* control_dn_conn_main(void *csessvp)
+{
+    struct control_session *cs = csessvp;
+    while (1) {
+        /* Sleep until it's time to wake up */
+        safe_p_mutex_lock(&cs->dnode_conn_mtx);
+        while (cs->dnode_conn_why == CONTROL_DCONN_WHY_NONE) {
+            safe_p_cond_wait(&cs->dnode_conn_cv, &cs->dnode_conn_mtx);
+        }
+        if (cs->dnode_conn_why & CONTROL_DCONN_WHY_EXIT) {
+            log_DEBUG("%s exiting", __func__);
+            safe_p_mutex_unlock(&cs->dnode_conn_mtx);
+            pthread_exit(NULL);
+        }
+        if (cs->dnode_conn_why & CONTROL_DCONN_WHY_CONN) {
+            /* cs->daddr and cs->dport are never written to after
+             * their first being set (prior to our starting), so it's
+             * safe to read them from any thread. */
+            int dnode_sockfd = sockutil_get_tcp_connected_p(cs->daddr,
+                                                            cs->dport);
+            if (dnode_sockfd == -1) {
+                /* That didn't work. Keep trying. That spins the
+                 * CPU. I don't care. */
+                sleep(1);
+                goto next;
+            }
+            evutil_make_socket_nonblocking(dnode_sockfd);
+            cs->dnode_conn_why &= ~CONTROL_DCONN_WHY_CONN;
+            safe_p_mutex_unlock(&cs->dnode_conn_mtx);
+            control_must_lock(cs);
+            cs->dcontrolfd = dnode_sockfd;
+            control_must_unlock(cs);
+            event_active(cs->dconn_evt, 0, 0);
+            continue;
+        }
+    next:
+        safe_p_mutex_unlock(&cs->dnode_conn_mtx);
+    }
+    control_fatal_err("control dnode connector exiting unexpectedly", -1);
+    return NULL;                /* appease GCC */
+}
+
+/*
  * libevent plumbing
  */
 
@@ -291,11 +337,13 @@ static void control_client_event(__unused struct bufferevent *bev,
 static void control_dnode_event(__unused struct bufferevent *bev,
                                 short events, void *csessvp)
 {
-    /* FIXME install periodic event that tries to re-establish a
-     * closed dnode connection */
     struct control_session *cs = csessvp;
     assert(bev == cs->dbev);
     control_bevt_handler(cs, events, control_dnode_close, "data node");
+    safe_p_mutex_lock(&cs->dnode_conn_mtx);
+    cs->dnode_conn_why |= CONTROL_DCONN_WHY_CONN;
+    safe_p_mutex_unlock(&cs->dnode_conn_mtx);
+    safe_p_cond_signal(&cs->dnode_conn_cv);
 }
 
 static void refuse_connection(evutil_socket_t fd,
@@ -330,9 +378,7 @@ control_conn_open(struct control_session *cs,
         log_ERR("can't allocate resources for %s connection", log_who);
         return;
     }
-    control_must_lock(cs);
     *bevp = bev;
-    control_must_unlock(cs);
     if (on_open(cs, fd) == -1) {
         refuse_connection(fd, log_who, NULL);
         bufferevent_free(bev);
@@ -391,14 +437,29 @@ static void client_ecl(__unused struct evconnlistener *ecl, evutil_socket_t fd,
                        void *csessvp)
 {
     struct control_session *cs = csessvp;
+    control_must_lock(cs);
     control_conn_open(cs, &cs->cbev, fd, control_client_bev_read, NULL,
                       control_client_event, control_client_open, "client");
+    control_must_unlock(cs);
 }
 
 static void client_ecl_err(__unused struct evconnlistener *ecl,
                            __unused void *csessvp)
 {
     log_ERR("client accept() failed: %m");
+}
+
+static void control_dn_conn_cb(__unused evutil_socket_t fd_ignored,
+                               __unused short events_ignored,
+                               void *csessvp)
+{
+    struct control_session *cs = csessvp;
+    control_must_lock(cs);
+    assert(cs->dcontrolfd != -1);
+    control_conn_open(cs, &cs->dbev, cs->dcontrolfd, control_dnode_bev_read,
+                      NULL, control_dnode_event, control_dnode_open,
+                      "data node");
+    control_must_unlock(cs);
 }
 
 /*
@@ -414,9 +475,14 @@ static void control_init_cs(struct control_session *cs)
     cs->daddr = NULL;
     cs->dport= 0;
     cs->dbev = NULL;
+    cs->dcontrolfd = -1;
+    cs->dconn_evt = NULL;
     cs->dpriv = NULL;
     cs->smpl = NULL;
     cs->wake_why = CONTROL_WHY_NONE;
+    safe_p_mutex_lock(&cs->dnode_conn_mtx);
+    cs->dnode_conn_why = CONTROL_DCONN_WHY_CONN;
+    safe_p_mutex_unlock(&cs->dnode_conn_mtx);
     cs->ctl_txns = NULL;
     cs->ctl_n_txns = 0;
     cs->ctl_cur_txn = -1;
@@ -431,6 +497,7 @@ struct control_session* control_new(struct event_base *base,
 {
     int started_client = 0, started_dnode = 0;
     int mtx_en = 0, cv_en = 0, t_en = 0;
+    int dmtx_en = 0, dcv_en = 0, dt_en = 0;
     struct control_session *cs = malloc(sizeof(struct control_session));
     if (!cs) {
         log_ERR("out of memory");
@@ -440,16 +507,22 @@ struct control_session* control_new(struct event_base *base,
     /* Set up locking */
     mtx_en = pthread_mutex_init(&cs->mtx, NULL);
     if (mtx_en) {
-        log_ERR("threading error while initializing control session");
         goto bail_unlocked;
     }
     cv_en = pthread_cond_init(&cs->cv, NULL);
     if (cv_en) {
-        log_ERR("threading error while initializing control session");
+        goto bail_unlocked;
+    }
+    dmtx_en = pthread_mutex_init(&cs->dnode_conn_mtx, NULL);
+    if (dmtx_en) {
+        goto bail_unlocked;
+    }
+    dcv_en = pthread_cond_init(&cs->dnode_conn_cv, NULL);
+    if (dcv_en) {
         goto bail_unlocked;
     }
 
-    /* Grab the lock while initializing fields. */
+    /* Grab the main lock while initializing fields. */
     control_must_lock(cs);
 
     /* Zero/NULL-initialize integer and pointer fields. */
@@ -478,43 +551,51 @@ struct control_session* control_new(struct event_base *base,
     }
     cs->daddr = dnode_addr;
     cs->dport = dnode_port;
-    int dcontrolfd = sockutil_get_tcp_connected_p(cs->daddr, cs->dport);
     started_dnode = 1;
-    if (dcontrolfd == -1) {
-        log_ERR("can't connect to data node at %s, port %u",
-                dnode_addr, dnode_port);
-        goto bail_locked;
-    }
-    if (evutil_make_socket_nonblocking(dcontrolfd)) {
-        log_ERR("data node control socket doesn't support nonblocking I/O");
-        goto bail_locked;
-    }
-    control_conn_open(cs, &cs->dbev, dcontrolfd, control_dnode_bev_read,
-                      NULL, control_dnode_event, control_dnode_open,
-                      "data node");
+    cs->dconn_evt = event_new(base, -1, 0, control_dn_conn_cb, cs);
 
     /* Sample session */
     cs->smpl = smpl;
 
     control_must_unlock(cs);
 
-    /* Start the worker thread */
+    /* Start the worker and data node connector threads */
     control_must_lock(cs);
     t_en = pthread_create(&cs->thread, NULL, control_worker_main, cs);
-    control_must_unlock(cs);
     if (t_en) {
         log_ERR("can't start worker thread");
-        goto bail_unlocked;
+        goto bail_locked;
     }
+    safe_p_mutex_lock(&cs->dnode_conn_mtx);
+    dt_en = pthread_create(&cs->dnode_conn_t, NULL, control_dn_conn_main, cs);
+    safe_p_mutex_unlock(&cs->dnode_conn_mtx);
+    if (dt_en) {
+        log_ERR("can't start dnode connector thread");
+        goto bail_locked;
+    }
+    control_must_unlock(cs);
 
     return cs;
 
  bail_locked:
     control_must_unlock(cs);
  bail_unlocked:
+    if (mtx_en || cv_en || t_en || dmtx_en || dcv_en || dt_en) {
+        log_ERR("threading error while initializing control session");
+    }
+    /* Tear down dnode connector thread (which was started last, so if
+     * we're here, it hasn't started yet) */
+    if (!dmtx_en) {
+        pthread_mutex_destroy(&cs->dnode_conn_mtx);
+    }
+    if (!dcv_en) {
+        pthread_cond_destroy(&cs->dnode_conn_cv);
+    }
+
     /* Tear down worker thread */
     if (t_en) {
-        assert(0);              /* can't happen */
+        control_must_wake(cs, CONTROL_WHY_EXIT);
+        control_must_join(cs, NULL);
     }
     if (!cv_en) {
         pthread_cond_destroy(&cs->cv);
@@ -529,6 +610,9 @@ struct control_session* control_new(struct event_base *base,
     }
     if (cs->dbev) {
         bufferevent_free(cs->dbev);
+    }
+    if (cs->dconn_evt) {
+        event_free(cs->dconn_evt);
     }
 
     /* Tear down client control */
@@ -551,11 +635,20 @@ void control_free(struct control_session *cs)
      * creation, so there's no need to close the control sockets
      * here. */
 
-    /* Acquired in control_new() */
+    /*
+     * Acquired in control_new()
+     */
+    /* Dnode connector thread */
+    safe_p_cancel(cs->dnode_conn_t); /* send cancellation request, in
+                                      * case it's blocked in a connect() */
+    safe_p_join(cs->dnode_conn_t, NULL);
+    /* Worker thread */
     control_must_wake(cs, CONTROL_WHY_EXIT);
     control_must_join(cs, NULL);
+    /* Everything else */
     control_dnode_stop(cs);
     control_client_stop(cs);
+    event_free(cs->dconn_evt);
     pthread_cond_destroy(&cs->cv);
     pthread_mutex_destroy(&cs->mtx);
     if (cs->dbev) {

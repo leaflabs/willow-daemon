@@ -75,8 +75,17 @@ enum control_worker_why {
     CONTROL_WHY_DNODE_TXN  = 0x10, /* Transaction must be performed */
 };
 
+/* Flags for why we woke up the dnode connector thread */
+enum control_dnode_conn_why {
+    CONTROL_DCONN_WHY_NONE = 0x0, /* Go back to sleep */
+    CONTROL_DCONN_WHY_EXIT = 0x1, /* Thread should exit (we also cancel!) */
+    CONTROL_DCONN_WHY_CONN = 0x2, /* Connection is required */
+};
+
 /** Control session. */
 struct control_session {
+    /* Lock ordering: mtx, then dnode_conn_mtx. */
+
     /* control_new() caller owns this; we own the rest */
     struct event_base *base;
 
@@ -86,10 +95,16 @@ struct control_session {
     void *cpriv;
 
     /* Data node */
-    const char         *daddr;
-    uint16_t            dport;
-    struct bufferevent *dbev;
-    void               *dpriv;
+    const char         *daddr;  /* Treat as constant */
+    uint16_t            dport;  /* Treat as constant */
+    struct bufferevent *dbev;   /* Event loop thread,
+                                 * worker thread,
+                                 * dnode_conn_t.
+                                 *
+                                 * Protected by worker mutex. */
+    evutil_socket_t     dcontrolfd; /* Main thread and dnode_conn_t. */
+    struct event       *dconn_evt; /* Activated by dnode_conn_t. */
+    void               *dpriv;  /* control-dnode.c only */
 
     /* Data handler */
     struct sample_session *smpl;
@@ -100,6 +115,31 @@ struct control_session {
     pthread_mutex_t mtx; /* For ->cv and other main thread critical sections */
     unsigned wake_why; /* OR of control_worker_why flags describing
                         * why ->thread needs to wake up */
+
+    /* Data node reconnection thread
+     *
+     * This is a workaround for bugs in libevent's asynchronous connection
+     * launching code, as implemented by bufferevent_socket_connect() in
+     * libevent 2.0.16-stable-1, as distributed with Ubuntu 12.04.
+     *
+     * In that version, when the connection you're trying to make fails
+     * (e.g. if the data node is down), then the bufferevent will hit your
+     * callback twice in quick succession, once to let you know that there
+     * was an error, and then again with a "success" argument.
+     *
+     * Rather than add a brittle "quirks mode" that ignores the
+     * success callback, we just do blocking connect() in another
+     * thread, which uses event_active() to notify the main thread
+     * when the data node connection is available.
+     */
+    pthread_t dnode_conn_t;
+    unsigned dnode_conn_why;
+    pthread_cond_t dnode_conn_cv; /* The thread pthread_cond_wait()s
+                                   * on this after the connection has
+                                   * been made. The main thread will
+                                   * signal it when the dnode
+                                   * connection has been lost. */
+    pthread_mutex_t dnode_conn_mtx; /* For dnode_conn_cv. */
 
     /* Command processing -- use control_set_transactions() to set up work */
     struct control_txn *ctl_txns; /* Transactions to perform as part
@@ -130,7 +170,8 @@ struct control_ops {
     /* Per-connection open/close callbacks; use these e.g. to allocate
      * any per-connection state. These may be NULL also.
      *
-     * Both of these are called WITHOUT the control_session lock held.
+     * Open is called WITH the control_session lock held.
+     * Close is called WITHOUT the control_session lock held.
      *
      * When the open callback is invoked, the corresponding
      * bufferevent is valid, but disabled.

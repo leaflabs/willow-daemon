@@ -526,17 +526,10 @@ static void client_ensure_clean_locked(struct control_session *cs)
     assert(cs->ctl_cur_txn == -1);
 }
 
-static void client_ensure_clean(struct control_session *cs)
-{
-    control_must_lock(cs);
-    client_ensure_clean_locked(cs);
-    control_must_unlock(cs);
-}
-
 static int client_open(struct control_session *cs,
                        __unused evutil_socket_t control_sockfd)
 {
-    client_ensure_clean(cs);
+    client_ensure_clean_locked(cs);
     return 0;
 }
 
