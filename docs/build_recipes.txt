@@ -1,0 +1,26 @@
+Command lines for building the daemon in interesting ways.
+
+--
+
+Build with optimizations:
+
+$ scons EXTRA_CFLAGS='-O2'
+
+--
+
+Build with clang instead of GCC:
+
+$ scons CC=clang LD=clang
+
+--
+
+Build with clang, and run in TSan mode (i.e., enable the thread sanitizer,
+which helps detect race conditions); requires a recent clang (v3.3 works):
+
+$ scons CC=clang LD=clang EXTRA_CFLAGS='-fsanitize=thread -O1' EXTRA_LDFLAGS='-fsanitize=thread'
+
+--
+
+Equivalently for memory sanitizer:
+
+$ scons CC=clang LD=clang EXTRA_CFLAGS='-fsanitize=address -O1' EXTRA_LDFLAGS='-fsanitize=address'
