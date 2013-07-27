@@ -188,7 +188,7 @@ message RegisterIO {
 // - send that prefixed by its length as a uint32 to the daemon's
 //   client control socket.
 //
-// See the script 'util/exchange-protobuf' for an example.
+// See the script 'util/do-pbuf-cmd' for an example.
 //
 // In return, you'll get a ControlResult (see below).
 
