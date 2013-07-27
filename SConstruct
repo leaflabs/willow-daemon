@@ -14,6 +14,9 @@ Build arguments:
 def toplevel_join(base, child):
     return os.path.join(base, child.lstrip('#'))
 
+def node_basename(node):
+    return str(node).rsplit(os.sep, 1)[1]
+
 def str_to_bool(str):
     str = str.lower().strip()
     return str.startswith('y') or str.startswith('t') or str.startswith('1')
@@ -104,7 +107,7 @@ lib_sources = Glob(os.path.join(build_lib_dir, '*.c'))
 src_sources = Glob(os.path.join(build_src_dir, '*.c'))
 util_sources_dict = {}
 for node in Glob(os.path.join(build_util_dir, '*')):
-    util_name = str(node).rsplit(os.sep, 1)[1]
+    util_name = node_basename(node)
     if os.path.isdir(node.srcnode().path):
         util_sources = Glob(os.path.join(str(node), '*.c'))
         if util_sources:
@@ -113,7 +116,7 @@ test_sources_dict = {}
 if not skip_test_build:
     for node in Glob(os.path.join(build_test_dir, '*')):
         if os.path.isdir(node.srcnode().path):
-            test_name = str(node).rsplit(os.sep, 1)[1]
+            test_name = node_basename(node)
             if test_name == 'include':
                 continue
             test_sources_dict[test_name] = Glob(os.path.join(str(node), '*.c'))
