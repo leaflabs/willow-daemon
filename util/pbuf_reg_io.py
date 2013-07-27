@@ -56,6 +56,7 @@ def reg_write(module, register, value):
     """Create a protocol message for reading a register."""
     reg_io = RegisterIO()
     reg_io.module = module
+    reg_io.val=value
     if module == MOD_ERR:
         reg_io.err = register
     elif module == MOD_CENTRAL:
