@@ -173,7 +173,7 @@ int main(int argc, char *argv[])
             if (args.enable_string) {
                 printf("%u\n", dac);
             } else {
-                write(STDOUT_FILENO, &dac, sizeof(dac));
+                __unused ssize_t n = write(STDOUT_FILENO, &dac, sizeof(dac));
             }
         } else {
             uint16_t chan = (uint16_t)samp->subsample->samples[args.channel];
@@ -183,7 +183,7 @@ int main(int argc, char *argv[])
             } else {
                 // NB: only writing the "low" 8bits of sample for waveform
                 // display
-                write(STDOUT_FILENO, &low, sizeof(low));
+                __unused ssize_t n = write(STDOUT_FILENO, &low, sizeof(low));
             }
         }
         uint32_t gap = samp->subsample->samp_idx - last_sidx - 1;

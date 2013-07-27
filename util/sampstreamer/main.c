@@ -267,6 +267,7 @@ int main(int argc, char *argv[])
     struct sockaddr_in to = {
         .sin_addr.s_addr = htonl(0x7f000001),
         .sin_port = htons(args.daemon_port),
+        .sin_zero = { [0] = 0 },
     };
 
     if (args.subsamples) {
