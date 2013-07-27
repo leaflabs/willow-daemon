@@ -837,7 +837,10 @@ static ssize_t client_add_network_txns(struct control_session *cs,
     return (ssize_t)txoff;
 }
 
-/* NOT SYNCHRONIZED */
+/* NOT SYNCHRONIZED
+ *
+ * For use within thread callback only.
+ */
 static void client_start_txns(struct control_session *cs,
                               struct control_txn *txns,
                               size_t txno,
