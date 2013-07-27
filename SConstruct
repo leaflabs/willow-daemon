@@ -111,8 +111,11 @@ for node in Glob(os.path.join(build_util_dir, '*')):
 test_sources_dict = {}
 if not skip_test_build:
     for node in Glob(os.path.join(build_test_dir, '*')):
-        test_name = str(node).rsplit(os.sep, 1)[1]
-        test_sources_dict[test_name] = Glob(os.path.join(str(node), '*.c'))
+        if os.path.isdir(node.srcnode().path):
+            test_name = str(node).rsplit(os.sep, 1)[1]
+            if test_name == 'include':
+                continue
+            test_sources_dict[test_name] = Glob(os.path.join(str(node), '*.c'))
 
 # Static support library
 libutil = env.Library(os.path.join(env.GetBuildPath(build_lib_dir),
@@ -153,14 +156,14 @@ for h in libsng_headers:
     shenv.Install(libsng_incls, h)
 
 # Test programs, one per subdirectory of test_dir.
+#
+# (test_dir is also allowed to contain scripts, which we ignore).
 test_defines = env['CPPDEFINES'].copy()
 test_defines.update({'TEST_DAEMON_PATH': str(out_program)})
 testenv = env.Clone(LIBS=test_lib_deps + lib_deps,
                     LIBPATH=[build_libsng_dir],
                     CPPDEFINES=test_defines)
 for test_name, sources in test_sources_dict.iteritems():
-    if test_name == 'include':
-        continue
     test_out_dir = os.path.join(env.GetBuildPath(build_test_dir), test_name)
     test_prog = os.path.join(build_dir, test_name)
     testenv.Program(test_prog, sources + libutil,
