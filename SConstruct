@@ -26,6 +26,7 @@ lib_dir = '#lib/'     # Utility library (shared w/ src, test, libsng)
 libsng_dir = '#libsng/' # Shared library used by SNG to interact w/ daemon.
 test_dir = '#test/'
 test_include_dir ='#test/include'
+util_dir = '#util/'
 build_dir = '#build/' # Scons requires this to live in the source tree :(.
 build_src_dir = toplevel_join(build_dir, src_dir)
 build_lib_dir = toplevel_join(build_dir, lib_dir)
@@ -34,6 +35,7 @@ build_libsng_dir = toplevel_join(build_lib_dir, libsng_dir)
 # libsng files actually needed by the user (shared object and its headers):
 build_libsng_install_dir = toplevel_join(build_dir, libsng_dir)
 build_test_dir = toplevel_join(build_dir, test_dir)
+build_util_dir = toplevel_join(build_dir, util_dir)
 build_pyproto_dir = toplevel_join(build_dir, 'pyproto')
 lib_deps = [
      # External dependencies:
@@ -55,8 +57,9 @@ build_ldflags_extra = ARGUMENTS.get('EXTRA_LDFLAGS', '')
 VariantDir(build_lib_dir, lib_dir, duplicate=0)
 VariantDir(build_src_dir, src_dir, duplicate=0)
 VariantDir(build_test_dir, test_dir, duplicate=0)
+VariantDir(build_util_dir, util_dir, duplicate=0)
 
-# Build environments. Note we don't copy os.environ here.
+# Base build environment. Note we don't copy os.environ here.
 env = Environment(CC=build_cc,
                   CCFLAGS=build_cflags + build_cflags_extra,
                   CPPDEFINES={'_GNU_SOURCE': 1}, # we need Linux extensions
@@ -98,13 +101,20 @@ for nodes in protoccs:
 # with the above VariantDir() calls.
 lib_sources = Glob(os.path.join(build_lib_dir, '*.c'))
 src_sources = Glob(os.path.join(build_src_dir, '*.c'))
+util_sources_dict = {}
+for node in Glob(os.path.join(build_util_dir, '*')):
+    util_name = str(node).rsplit(os.sep, 1)[1]
+    if os.path.isdir(node.srcnode().path):
+        util_sources = Glob(os.path.join(str(node), '*.c'))
+        if util_sources:
+            util_sources_dict[util_name] = util_sources
 test_sources_dict = {}
 if not skip_test_build:
     for node in Glob(os.path.join(build_test_dir, '*')):
         test_name = str(node).rsplit(os.sep, 1)[1]
         test_sources_dict[test_name] = Glob(os.path.join(str(node), '*.c'))
 
-# Utility library
+# Static support library
 libutil = env.Library(os.path.join(env.GetBuildPath(build_lib_dir),
                                    'daemonutil'),
                       lib_sources + proto_c_sources)
@@ -156,3 +166,13 @@ for test_name, sources in test_sources_dict.iteritems():
     testenv.Program(test_prog, sources + libutil,
                     CPPPATH=[build_lib_dir, test_out_dir, test_include_dir,
                              build_libsng_dir])
+
+# Utility programs (written in C), one per subdirectory of
+# util_dir. (util_dir also contains scripts, which we ignore).
+#
+# These are built in the same environment as the daemon. This allows
+# them access to the daemon's include files, which is arguably bad,
+# but I don't care.
+for util_name, sources in util_sources_dict.iteritems():
+    util_prog = os.path.join(build_dir, util_name)
+    env.Program(util_prog, sources + libutil)
