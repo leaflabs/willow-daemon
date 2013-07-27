@@ -75,5 +75,13 @@ Repository contents
 
 - src/: daemon source code; uses contents of lib/.
 
-- test/: Test cases and utilities, one per subdirectory. These use the contents
-  of lib/, and may run and interact with the daemon as built from src/.
+- test/: Testing code.
+
+  Tests written in C are placed in subdirectories that begin with
+  'test-'. Tests written in Python are executable scripts that begin with
+  'test_' and end with '.py'.
+
+  These use the contents of lib/, and may run and interact with the daemon as
+  built from src/, and any of the utilities in util/.
+
+- util/: Miscellaneous helper utilities.
