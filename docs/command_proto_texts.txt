@@ -1,0 +1,37 @@
+Example protobuf messages, in text format, for various commands you might want
+to do. You can put these in a file, and pass it as an argument to
+util/do-pbuf-cmd.
+
+--
+
+Start streaming board subsamples to localhost, port 7654
+(hex(2130706433)=0x7f00001=127 0 0 1):
+
+type: STREAM
+stream {
+  dest_udp_addr4: 2130706433
+  dest_udp_port: 7654
+  enable: true
+}
+
+--
+
+Store some samples to disk in HDF5 format:
+
+type: STORE
+store {
+  path: "/tmp/foo.h5"
+  nsamples: 60600
+  backend: STORE_HDF5
+  start_sample: 0
+}
+
+--
+
+Read the central module's state register:
+
+type: REG_IO
+reg_io {
+  module: MOD_CENTRAL
+  central: CENTRAL_STATE
+}

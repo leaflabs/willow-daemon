@@ -1,5 +1,0 @@
-type: REG_IO
-reg_io {
-  module: MOD_CENTRAL
-  central: CENTRAL_STATE
-}
