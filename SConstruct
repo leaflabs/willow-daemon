@@ -41,7 +41,7 @@ lib_deps = [
      # External dependencies:
      'event', 'event_pthreads', 'hdf5', 'protobuf-c']
 libsng_deps = ['protobuf-c']
-test_lib_deps = ['check', 'sng'] # External dependencies for tests
+test_lib_deps = ['check_pic', 'sng'] # External dependencies for tests
 verbosity_level = int(ARGUMENTS.get('V', 0))
 skip_test_build = str_to_bool(ARGUMENTS.get('SKIP_TESTS', 'n'))
 build_cc = ARGUMENTS.get('CC', 'gcc')
