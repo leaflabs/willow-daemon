@@ -1,4 +1,19 @@
-#!/usr/bin/env python
+"""Helper module for doing register I/O through the daemon.
+
+Example use as a module:
+
+from pbuf_reg_io import *
+
+commands = [reg_read(MOD_CENTRAL, CENTRAL_STATE),
+            reg_read(2, 14),
+            reg_write(MOD_UDP, UDP_STATE, 0)]
+responses = do_reg_ios(cmds)
+for i, rsp in enumerate(responses):
+    print('Response %d:' % i)
+    print(rsp, end='');
+    print('Response %d value in hex: 0x%x' % (i, rsp.reg_io.val))
+    print('----')
+"""
 
 from __future__ import print_function
 
@@ -95,28 +110,3 @@ def do_reg_ios(commands):
                 print("Didn't get response for command", i, file=sys.stderr)
                 None
         return responses
-
-def main():
-    # Create some protocol messages which do register I/O
-    cmds = [# You can spell the module and register completely, like this:
-            reg_read(MOD_CENTRAL, CENTRAL_STATE),
-            # or just use numbers to be quick and dirty:
-            reg_read(2, 14),
-            # writes are like reads, but take a value to write:
-            reg_write(MOD_UDP, UDP_STATE, 0)]
-
-    # Perform the commands
-    responses = do_reg_ios(cmds)
-
-    # Print the responses.
-    #
-    # A read will contain the value of the register requested. A write
-    # will contain the value written, unless there was an error.
-    for i, rsp in enumerate(responses):
-        print('Response %d:' % i)
-        print(rsp, end='');
-        print('Response %d value in hex: 0x%x' % (i, rsp.reg_io.val))
-        print('----')
-
-if __name__ == '__main__':
-    main()
