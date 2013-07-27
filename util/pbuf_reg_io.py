@@ -6,13 +6,17 @@ from pbuf_reg_io import *
 
 commands = [reg_read(MOD_CENTRAL, CENTRAL_STATE),
             reg_read(2, 14),
-            reg_write(MOD_UDP, UDP_STATE, 0)]
-responses = do_reg_ios(cmds)
+            reg_write(MOD_UDP, UDP_ENABLE, 0)]
+
+responses = do_reg_ios(commands)
+
 for i, rsp in enumerate(responses):
-    print('Response %d:' % i)
-    print(rsp, end='');
-    print('Response %d value in hex: 0x%x' % (i, rsp.reg_io.val))
-    print('----')
+    print 'Response %d:' % i
+    print '  * module:', rsp.reg_io.module
+    print '  * value in hex: 0x%x' % rsp.reg_io.val
+    print '  * Stringification:'
+    print str(rsp),
+    print
 """
 
 from __future__ import print_function
