@@ -46,8 +46,9 @@ verbosity_level = int(ARGUMENTS.get('V', 0))
 skip_test_build = str_to_bool(ARGUMENTS.get('SKIP_TESTS', 'n'))
 build_cc = ARGUMENTS.get('CC', 'gcc')
 build_ld = ARGUMENTS.get('LD', 'gcc')
-build_libsng_cflags = '-std=c99 -g -Wall -Wextra -Wpointer-arith -Werror'
-build_cflags = '-pthread ' + build_libsng_cflags
+build_base_cflags = '-std=c99 -g -Wall -Wextra -Wpointer-arith -Werror'
+build_libsng_cflags = build_base_cflags
+build_cflags = '-pthread ' + build_base_cflags
 build_cflags_extra = ARGUMENTS.get('EXTRA_CFLAGS', '')
 build_ldflags_extra = ARGUMENTS.get('EXTRA_LDFLAGS', '')
 
