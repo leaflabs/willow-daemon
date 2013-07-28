@@ -163,6 +163,8 @@ for h in libsng_headers:
     shenv.Install(libsng_incls, h)
 
 # Test programs.
+#
+# The master test runner is test/run-tests.py. We special-case it here.
 test_defines = env['CPPDEFINES'].copy()
 test_defines.update({'TEST_DAEMON_PATH': str(out_program)})
 testenv = env.Clone(LIBS=test_lib_deps + lib_deps,
@@ -178,6 +180,7 @@ for test_name, sources in test_sources_dict.iteritems():
                              build_libsng_dir])
 for py_test in test_py_sources:
     testenv.Install(build_dir, py_test)
+testenv.Install(build_dir, os.path.join(build_test_dir, 'run-tests.py'))
 
 # Utility programs (written in C), one per subdirectory of
 # util_dir. (util_dir also contains scripts, which we ignore).
