@@ -1044,27 +1044,27 @@ static void client_process_res_regio(struct control_session *cs)
     switch (res->r_type) {
     case RAW_RTYPE_ERR:
         reg_io.has_err = 1;
-        reg_io.err = res->r_type;
+        reg_io.err = res->r_addr;
         break;
     case RAW_RTYPE_CENTRAL:
         reg_io.has_central = 1;
-        reg_io.central = res->r_type;
+        reg_io.central = res->r_addr;
         break;
     case RAW_RTYPE_SATA:
         reg_io.has_sata = 1;
-        reg_io.sata = res->r_type;
+        reg_io.sata = res->r_addr;
         break;
     case RAW_RTYPE_DAQ:
         reg_io.has_daq = 1;
-        reg_io.daq = res->r_type;
+        reg_io.daq = res->r_addr;
         break;
     case RAW_RTYPE_UDP:
         reg_io.has_udp = 1;
-        reg_io.udp = res->r_type;
+        reg_io.udp = res->r_addr;
         break;
     case RAW_RTYPE_GPIO:
         reg_io.has_gpio = 1;
-        reg_io.gpio = res->r_type;
+        reg_io.gpio = res->r_addr;
         break;
     default:
         log_ERR("unhandled RAW_RTYPE: %d", res->r_type);
