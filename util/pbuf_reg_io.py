@@ -106,7 +106,7 @@ def do_reg_ios(commands):
                 # No response length was received. Maybe the socket was closed?
                 pbuf_resp = None
 
-            # If we got a response, print it in text format.
+            # If we got a response, append it to the list.
             if pbuf_resp:
                 rsp = ControlResponse()
                 rsp.ParseFromString(pbuf_resp)
