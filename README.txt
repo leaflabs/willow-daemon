@@ -1,58 +1,84 @@
-What's this?
-------------
+This are the sources for leafysd, the WiredLeaf electrophysiology daemon.
 
-This is the source code repository for the project codenamed
-"Wired-Leaf". To build, install scons and run
+For the impatient
+-----------------
+
+On Ubuntu 12.04:
+
+1. Install mandatory dependencies:
+
+    $ sudo apt-get install libprotobuf-dev libprotobuf-c0-dev \
+         libhdf5-serial-dev protobuf-c-compiler scons python \
+         libevent-dev
+
+2. Install optional dependencies:
+
+    $ sudo apt-get install check python-protobuf protobuf-compiler \
+         python-h5py python-matplotlib
+
+3. Compile everything:
 
     $ scons
 
-from this directory. The output will go under build/.
+4. Now you can run the daemon, ./build/leafysd. Use "./build/leafysd -h" for
+   help with command line arguments.
 
-Build dependencies
-------------------
+You can install some useful programs later, if you want:
 
-- scons
+   $ sudo apt-get install hdf5-tools hdfviewer
 
-- HDF5
+Mandatory dependencies
+----------------------
 
-- Google protocol buffers (libprotobuf)
+You can't build the daemon without these. If you only install these, you can
+build just the daemon with
 
-- C bindings to protobuf (protobuf-c), and compiler
+    $ scons SKIP_TESTS=1 SKIP_UTIL=1
 
-- Python bindings for protobuf (protobuf), and compiler
+The compiled daemon is build/leafysd. The shared library and its headers are in
+build/libsng.
 
-- python
+- scons:
+  http://www.scons.org/
 
-- check: unit test framework for C, http://check.sourceforge.net/.
-  This is only required to build the test cases, not the daemon
-  itself. To skip building the test cases, build with:
+- HDF5's C library:
+  http://www.hdfgroup.org/
 
-    $ scons SKIP_TESTS=y
+- Google's protocol buffers (libprotobuf) and compiler:
+  https://code.google.com/p/protobuf/
 
-- libevent
+- C bindings to protobuf (protobuf-c), and compiler:
+  https://code.google.com/p/protobuf-c/
 
-On Ubuntu 12.04, the mandatory build dependencies are:
+- Python 2.7 (_not_ 3):
+  http://www.python.org/
 
-   $ sudo apt-get install libprotobuf-dev libprotobuf-c0-dev \
-        libhdf5-serial-dev protobuf-c-compiler scons python \
-        protobuf-c-compiler protobuf-compiler libevent-dev
+- libevent:
+  http://libevent.org/
 
-The optional build dependencies (you can still build the daemon
-without these, but you won't be able to build tests or run Python
-scripts that speak protobuf):
+Optional dependencies and useful tools
+--------------------------------------
 
-   $ sudo apt-get install check python-protobuf
+You can build the daemon without these, but you won't be able to run tests or
+use the utility programs (under util/). With these installed, you can build
+everything with
 
-Other useful tools
-------------------
+    $ scons
 
-HDF5 tools and Java-based file viewer:
+- check: unit test framework for C:
+  http://check.sourceforge.net/.
 
-$ sudo apt-get install hdf5-tools hdfviewer
+- Google's protocol buffer Python bindings and compiler:
+  https://code.google.com/p/protobuf/
 
-Python dependencies for contrib/plot_hdf5.py:
+- Python bindings to the HDF5 library:
+  https://code.google.com/p/h5py/
 
-$ sudo apt-get install python-h5py python-matplotlib
+- Python matplotlib, for graphing HDF5 file contents:
+  http://matplotlib.org/
+
+- HDF5's command line utilities (h5*) and Java-based file viewer (hdfviewer):
+  http://www.hdfgroup.org/downloads/index.html
 
 Repository contents
 -------------------
@@ -61,7 +87,7 @@ Repository contents
 
 - SConstruct, site_scons/: build system files.
 
-- lib/: Helper libraries used by the daemon.
+- lib/: Helper libraries used by the daemon and libsng.
 
 - libsng/: Sources for shared library used by SNG to interact with the daemon.
 
@@ -73,15 +99,23 @@ Repository contents
   "proto/foo.pb-c.h") and that the generated C sources get built and
   linked into the final program.
 
-- src/: daemon source code; uses contents of lib/.
+- src/: Daemon source code.
 
-- test/: Testing code.
+- test/: Test code.
+
+  To run tests, run scons, then run build/run_tests.py:
+
+      $ scons
+      $ ./build/run-tests.py
 
   Tests written in C are placed in subdirectories that begin with
   'test-'. Tests written in Python are executable scripts that begin with
   'test_' and end with '.py'.
 
-  These use the contents of lib/, and may run and interact with the daemon as
-  built from src/, and any of the utilities in util/.
+  Tests may use the headers provided by lib/ and libsng/. They may run the
+  compiled daemon and any of the utilities in util/.
+
+  Test programs are a pain to run individually; they need a special
+  environment. Use run-tests.py.
 
 - util/: Miscellaneous helper utilities.
