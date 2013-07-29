@@ -75,12 +75,24 @@ def reg_write(module, register, value):
         reg_io.gpio = register
     return ControlCommand(type=ControlCommand.REG_IO, reg_io=reg_io)
 
-def do_reg_ios(commands):
-    # Connect to the daemon.
-    sckt = socket.create_connection(('127.0.0.1', 1371))
-    if not sckt:
-        print("can't create daemon connection", file=sys.stderr)
-        sys.exit(1)
+def get_daemon_control_sock(addr=('127.0.0.1', 1371), retry=False,
+                            max_retries=100):
+    tries = max_retries if retry else 1
+    while tries:
+        try:
+            sckt = socket.create_connection(('127.0.0.1', 1371))
+        except socket.error:
+            tries -= 1
+            continue
+        return sckt
+    return None
+
+def do_reg_ios(commands, retry=False, max_retries=100):
+    sckt = get_daemon_control_sock(retry=retry, max_retries=max_retries)
+
+    if sckt is None:
+        print("Can't open connection to daemon", file=sys.stderr)
+        return None
 
     with contextlib.closing(sckt) as sckt:
         # Send each command, then wait for and get the response.
@@ -113,5 +125,5 @@ def do_reg_ios(commands):
                 responses.append(rsp)
             else:
                 print("Didn't get response for command", i, file=sys.stderr)
-                None
+                return None
         return responses
