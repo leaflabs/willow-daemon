@@ -9,6 +9,7 @@ Build arguments:
 \tEXTRA_LDFLAGS="flag...": extra linker flags (default: none)
 \tV=1: verbose build output (default: V=0, quiet output)
 \tSKIP_TESTS=[y/n]: don't build tests (default: SKIP_TESTS=n, build tests)
+\tSKIP_UTIL=[y/n]: don't build utilities (default: SKIP_UTIL=n, build utils)
 """)
 
 def toplevel_join(base, child):
@@ -47,6 +48,7 @@ libsng_deps = ['protobuf-c']
 test_lib_deps = ['check_pic', 'sng'] # External dependencies for tests
 verbosity_level = int(ARGUMENTS.get('V', 0))
 skip_test_build = str_to_bool(ARGUMENTS.get('SKIP_TESTS', 'n'))
+skip_util_build = str_to_bool(ARGUMENTS.get('SKIP_UTIL', 'n'))
 build_cc = ARGUMENTS.get('CC', 'gcc')
 build_ld = ARGUMENTS.get('LD', 'gcc')
 build_base_cflags = '-std=c99 -g -Wall -Wextra -Wpointer-arith -Werror'
@@ -88,9 +90,11 @@ proto_c_headers = []
 protoccs = [env.ProtocC([], proto,
                         PROTOCCOUTDIR=env.GetBuildPath(build_lib_dir))
             for proto in Glob(proto_dir + '*.proto')]
-protopys = [env.Protoc([], proto,
-                       PROTOCOUTDIR=env.GetBuildPath(build_pyproto_dir))
-            for proto in Glob(proto_dir + '*.proto')]
+if not (skip_util_build and skip_test_build):
+    # The Python bindings aren't needed by the daemon itself.
+    protopys = [env.Protoc([], proto,
+                           PROTOCOUTDIR=env.GetBuildPath(build_pyproto_dir))
+                for proto in Glob(proto_dir + '*.proto')]
 def ext_nodes(nodes, ext):
     return [n for n in nodes if str(n).endswith(ext)]
 def c_nodes(nodes):
@@ -180,7 +184,8 @@ for test_name, sources in test_sources_dict.iteritems():
                              build_libsng_dir])
 for py_test in test_py_sources:
     testenv.Install(build_dir, py_test)
-testenv.Install(build_dir, os.path.join(build_test_dir, 'run-tests.py'))
+if not skip_test_build:
+    testenv.Install(build_dir, os.path.join(build_test_dir, 'run-tests.py'))
 
 # Utility programs (written in C), one per subdirectory of
 # util_dir. (util_dir also contains scripts, which we ignore).
@@ -188,6 +193,7 @@ testenv.Install(build_dir, os.path.join(build_test_dir, 'run-tests.py'))
 # These are built in the same environment as the daemon. This allows
 # them access to the daemon's include files, which is arguably bad,
 # but I don't care.
-for util_name, sources in util_sources_dict.iteritems():
-    util_prog = os.path.join(build_dir, util_name)
-    env.Program(util_prog, sources + libutil)
+if not skip_util_build:
+    for util_name, sources in util_sources_dict.iteritems():
+        util_prog = os.path.join(build_dir, util_name)
+        env.Program(util_prog, sources + libutil)
