@@ -31,7 +31,6 @@ class TestChannelStorage(test_helpers.DaemonTest):
     def __init__(self, *args, **kwargs):
         kwargs['start_sampstreamer'] = True
         super(TestChannelStorage, self).__init__(*args, **kwargs)
-        self.longMessage = True
 
     def setUp(self):
         super(TestChannelStorage, self).setUp()

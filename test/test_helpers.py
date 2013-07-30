@@ -36,6 +36,7 @@ class DaemonTest(unittest.TestCase):
     def __init__(self, methodName='runTest',
                  start_daemon=True, start_dnode=True,
                  start_sampstreamer=False):
+        self.longMessage = True
         super(DaemonTest, self).__init__(methodName=methodName)
         self.start_daemon = start_daemon
         self.start_dnode = start_dnode
