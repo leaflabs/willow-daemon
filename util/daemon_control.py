@@ -87,14 +87,18 @@ def get_daemon_control_sock(addr=('127.0.0.1', 1371), retry=False,
         return sckt
     return None
 
-def do_control_cmds(commands, retry=False, max_retries=100):
-    sckt = get_daemon_control_sock(retry=retry, max_retries=max_retries)
+def do_control_cmds(commands, retry=False, max_retries=100,
+                    control_socket=None):
+    if control_socket is not None:
+        sckt = control_socket
+    else:
+        sckt = get_daemon_control_sock(retry=retry, max_retries=max_retries)
 
     if sckt is None:
         print("Can't open connection to daemon", file=sys.stderr)
         return None
 
-    with contextlib.closing(sckt) as sckt:
+    try:
         # Send each command, then wait for and get the response.
         responses = []
         for i, cmd in enumerate(commands):
@@ -127,3 +131,6 @@ def do_control_cmds(commands, retry=False, max_retries=100):
                 print("Didn't get response for command", i, file=sys.stderr)
                 return None
         return responses
+    finally:
+        if control_socket is None:
+            sckt.close()
