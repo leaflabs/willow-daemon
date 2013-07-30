@@ -397,9 +397,12 @@ int main(int argc, char *argv[])
     /* Stash the program name, parse arguments, and set up logging and
      * libevent before doing anything else.
      *
+     * TODO take the program name from a C define at build-time.
+     *
      * AFTER THIS POINT, DO NOT USE printf() etc.; use the logging.h
      * API instead. */
-    program_name = strdup(argv[0]);
+    char *pname = basename(argv[0]);
+    program_name = strdup(pname);
     if (!program_name) {
         fprintf(stderr, "Out of memory at startup\n");
         goto bail;
