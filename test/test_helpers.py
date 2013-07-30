@@ -18,6 +18,10 @@ def dummy_dnode_sub(*args, **kwargs):
                            **kwargs)
     return sub
 
+def sampstreamer_sub(*args, **kwargs):
+    sub = subprocess.Popen(['sampstreamer'] + list(args), **kwargs)
+    return sub
+
 class DaemonTest(unittest.TestCase):
     """Parent class for tests which need leafysd and dummy-datanode running.
 
@@ -25,10 +29,12 @@ class DaemonTest(unittest.TestCase):
     happens."""
 
     def __init__(self, methodName='runTest',
-                 start_daemon=True, start_dnode=True):
+                 start_daemon=True, start_dnode=True,
+                 start_sampstreamer=False):
         super(DaemonTest, self).__init__(methodName=methodName)
         self.start_daemon = start_daemon
         self.start_dnode = start_dnode
+        self.start_sampstreamer = start_sampstreamer
 
     def setUp(self):
 
@@ -40,6 +46,8 @@ class DaemonTest(unittest.TestCase):
             self.daemon = daemon_sub(**self.sub_kwargs)
         if self.start_dnode:
             self.dnode = dummy_dnode_sub(**self.sub_kwargs)
+        if self.start_sampstreamer:
+            self.sampstreamer = sampstreamer_sub(**self.sub_kwargs)
 
         cmds = [daemon_control.reg_read(daemon_control.MOD_CENTRAL,
                                         daemon_control.CENTRAL_STATE)]
@@ -70,4 +78,7 @@ class DaemonTest(unittest.TestCase):
         if self.start_daemon:
             self.daemon.terminate()
             self.daemon.wait()
+        if self.start_sampstreamer:
+            self.sampstreamer.terminate()
+            self.sampstreamer.wait()
         self.dn.close()
