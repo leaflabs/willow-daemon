@@ -8,8 +8,13 @@ import unittest
 
 import daemon_control
 
+DO_IT_LIVE = bool(int(os.environ['TEST_DO_IT_LIVE']))
+
 def daemon_sub(*args, **kwargs):
-    sub = subprocess.Popen([os.environ['TEST_DAEMON_PATH'], '-N'] + list(args),
+    sub = subprocess.Popen([os.environ['TEST_DAEMON_PATH'],
+                            '-N',
+                            '-A', os.environ['TEST_DNODE_IP']] +
+                           list(args),
                            **kwargs)
     return sub
 
@@ -44,7 +49,7 @@ class DaemonTest(unittest.TestCase):
         self.sub_kwargs = { 'stdin': dn, 'stdout': dn, 'stderr': dn }
         if self.start_daemon:
             self.daemon = daemon_sub(**self.sub_kwargs)
-        if self.start_dnode:
+        if self.start_dnode and not DO_IT_LIVE:
             self.dnode = dummy_dnode_sub(**self.sub_kwargs)
         if self.start_sampstreamer:
             self.sampstreamer = sampstreamer_sub(**self.sub_kwargs)
@@ -57,7 +62,7 @@ class DaemonTest(unittest.TestCase):
             if resps is None:
                 self.bail()
         # Spin until the daemon and data node connect to each other
-        if self.start_daemon and self.start_dnode:
+        if self.start_daemon and (self.start_dnode or DO_IT_LIVE):
             while (resps is not None and
                    resps[0].type == daemon_control.ControlResponse.ERR and
                    resps[0].err.code == daemon_control.ControlResErr.NO_DNODE):
@@ -72,7 +77,7 @@ class DaemonTest(unittest.TestCase):
         raise IOError("can't start up necessary processes")
 
     def tearDown(self):
-        if self.start_dnode:
+        if self.start_dnode and not DO_IT_LIVE:
             self.dnode.terminate()
             self.dnode.wait()
         if self.start_daemon:

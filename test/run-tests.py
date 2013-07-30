@@ -4,6 +4,9 @@
 #
 # This is a hack, but it works.
 #
+# If you want to use the real WiredLeaf board, set DO_IT_LIVE=1 in the
+# environment. If you don't, leave it out or set DO_IT_LIVE=0.
+#
 # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #
 #     YOU CAN'T RUN THIS SCRIPT AS-IS. YOU MUST RUN IT FROM THE BUILD
@@ -24,6 +27,8 @@ import os.path
 import subprocess
 import sys
 
+DEFAULT_LIVE_DNODE_ADDR = '192.168.1.2'
+
 # Make sure we're not being called from test/
 if 'build' not in os.path.abspath(__file__):
     print('NOPE. First run scons, then run this script as installed in '
@@ -43,6 +48,13 @@ test_py_path = os.pathsep.join([build_dir, util_dir])
 
 # Tests the user wants
 tests_to_run = sys.argv[1:]
+
+# Does the user want us to use the dummy datanode?
+if 'DO_IT_LIVE' in os.environ:
+    do_it_live = bool(int(os.environ['DO_IT_LIVE']))
+else:
+    do_it_live = False
+dnode_ip = DEFAULT_LIVE_DNODE_ADDR if do_it_live else 'localhost'
 
 # Find the daemon and the dummy datanode
 daemon_bin = os.path.join(build_dir, 'leafysd')
@@ -91,11 +103,20 @@ def fresh_test_env():
              'PYTHONPATH': test_py_path,
              'TEST_DAEMON_PATH': daemon_bin,
              'TEST_DUMMY_DNODE_PATH': dummy_dnode_bin,
+             'TEST_DO_IT_LIVE': str(int(do_it_live)),
+             'TEST_DNODE_IP': dnode_ip,
              'LD_LIBRARY_PATH': build_libsng_dir }
 
 oldcwd = os.getcwd()
 os.chdir(build_dir)
 try:
+    print('=' * 70)
+    if do_it_live:
+        print('Using WiredLeaf board at IP address %s' %
+              DEFAULT_LIVE_DNODE_ADDR)
+    else:
+        print('Using the dummy datanode')
+
     if ctests:
         print('=' * 70)
         print('Running C tests:', ' '.join(t[len('test-'):] for t in ctests))
