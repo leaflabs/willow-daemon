@@ -26,7 +26,7 @@ class TestBasicRegIO(unittest.TestCase):
 
     def testCentralState(self):
         cmd = reg_read(MOD_CENTRAL, CENTRAL_STATE)
-        resps = do_reg_ios([cmd], retry=True)
+        resps = do_control_cmds([cmd], retry=True)
         self.assertIsNotNone(resps)
         rsp = resps[0].reg_io
         self.assertEqual(rsp.module, MOD_CENTRAL)
@@ -37,7 +37,7 @@ class TestBasicRegIO(unittest.TestCase):
         cookie_l = 0xbbbbeeee
         cmds = [reg_write(MOD_CENTRAL, CENTRAL_COOKIE_H, cookie_h),
                 reg_write(MOD_CENTRAL, CENTRAL_COOKIE_L, cookie_l)]
-        responses = do_reg_ios(cmds, retry=True)
+        responses = do_control_cmds(cmds, retry=True)
         self.assertIsNotNone(responses)
         rsp_h, rsp_l = [r.reg_io for r in responses]
         self.assertEqual(rsp_h.module, MOD_CENTRAL)

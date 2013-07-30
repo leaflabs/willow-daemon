@@ -8,7 +8,7 @@ commands = [reg_read(MOD_CENTRAL, CENTRAL_STATE),
             reg_read(2, 14),
             reg_write(MOD_UDP, UDP_ENABLE, 0)]
 
-responses = do_reg_ios(commands)
+responses = do_control_cmds(commands)
 
 for i, rsp in enumerate(responses):
     print 'Response %d:' % i
@@ -87,7 +87,7 @@ def get_daemon_control_sock(addr=('127.0.0.1', 1371), retry=False,
         return sckt
     return None
 
-def do_reg_ios(commands, retry=False, max_retries=100):
+def do_control_cmds(commands, retry=False, max_retries=100):
     sckt = get_daemon_control_sock(retry=retry, max_retries=max_retries)
 
     if sckt is None:
