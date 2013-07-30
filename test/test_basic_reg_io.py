@@ -26,6 +26,9 @@ class TestBasicRegIO(test_helpers.DaemonTest):
                 reg_write(MOD_CENTRAL, CENTRAL_COOKIE_L, cookie_l)]
         responses = do_control_cmds(cmds)
         self.assertIsNotNone(responses)
+        for i, rsp in enumerate(responses):
+            self.assertEqual(rsp.type, ControlResponse.REG_IO,
+                             msg='(resp %d); \n' % i + str(rsp))
         rsp_h, rsp_l = [r.reg_io for r in responses]
         self.assertEqual(rsp_h.module, MOD_CENTRAL)
         self.assertEqual(rsp_l.module, MOD_CENTRAL)
