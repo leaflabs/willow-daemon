@@ -7,9 +7,6 @@ import unittest
 import test_helpers
 from daemon_control import *
 
-# FIXME: allow the environment to show logging output to stderr, for
-# debugging tests
-
 class TestBasicRegIO(test_helpers.DaemonTest):
 
     def testCentralState(self):
