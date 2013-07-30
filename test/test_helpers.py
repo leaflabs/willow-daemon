@@ -24,35 +24,49 @@ class DaemonDnodeTest(unittest.TestCase):
     Provides setUp() and tearDown() methods that ensure this
     happens."""
 
+    def __init__(self, methodName='runTest'):
+        super(DaemonDnodeTest, self).__init__(methodName=methodName)
+
     def setUp(self):
+        self.start_daemon = True
+        self.start_dnode = True
+
+        # Start the subprocesses
         dn = open('/dev/null', 'rw+')
         self.dn = dn
         self.sub_kwargs = { 'stdin': dn, 'stdout': dn, 'stderr': dn }
-        self.daemon = daemon_sub(**self.sub_kwargs)
-        self.dnode = dummy_dnode_sub(**self.sub_kwargs)
+        if self.start_daemon:
+            self.daemon = daemon_sub(**self.sub_kwargs)
+        if self.start_dnode:
+            self.dnode = dummy_dnode_sub(**self.sub_kwargs)
+
         cmds = [daemon_control.reg_read(daemon_control.MOD_CENTRAL,
                                         daemon_control.CENTRAL_STATE)]
         # Spin until the daemon comes up
-        resps = daemon_control.do_control_cmds(cmds, retry=True)
-        if resps is None:
-            self.bail()
+        if self.start_daemon:
+            resps = daemon_control.do_control_cmds(cmds, retry=True)
+            if resps is None:
+                self.bail()
         # Spin until the daemon and data node connect to each other
-        while (resps is not None and
-               resps[0].type == daemon_control.ControlResponse.ERR and
-               resps[0].err.code == daemon_control.ControlResErr.NO_DNODE):
-            resps = daemon_control.do_control_cmds(cmds)
-            time.sleep(0.2)
-        if (resps is None or
-            resps[0].type == daemon_control.ControlResponse.ERR):
-            self.bail()
+        if self.start_daemon and self.start_dnode:
+            while (resps is not None and
+                   resps[0].type == daemon_control.ControlResponse.ERR and
+                   resps[0].err.code == daemon_control.ControlResErr.NO_DNODE):
+                resps = daemon_control.do_control_cmds(cmds)
+                time.sleep(0.2)
+            if (resps is None or
+                resps[0].type == daemon_control.ControlResponse.ERR):
+                self.bail()
 
     def bail(self):
         self.tearDown()
-        raise IOError("can't connect daemon to dummy-datanode")
+        raise IOError("can't start up necessary processes")
 
     def tearDown(self):
-        self.daemon.terminate()
-        self.dnode.terminate()
-        self.daemon.wait()
-        self.dnode.wait()
+        if self.start_dnode:
+            self.dnode.terminate()
+            self.dnode.wait()
+        if self.start_daemon:
+            self.daemon.terminate()
+            self.daemon.wait()
         self.dn.close()
