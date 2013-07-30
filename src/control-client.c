@@ -1353,7 +1353,9 @@ static void client_process_res_store(struct control_session *cs)
             break;
         }
     }
-    if (!(RAW_RADDR_SATA_STATUS & RAW_SATA_STATUS_DEVICE_READY)) {
+    if (res->r_type == RAW_RTYPE_SATA &&
+        res->r_addr == RAW_RADDR_SATA_STATUS &&
+        !(res->r_val & RAW_SATA_STATUS_DEVICE_READY)) {
         CLIENT_RES_ERR_DNODE(cs, "SATA device is not ready");
         return;
     }
