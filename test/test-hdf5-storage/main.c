@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <unistd.h>
 
 #include <hdf5.h>
 
@@ -75,5 +76,6 @@ int main(__unused int argc, __unused char *argv[])
     srunner_run_all(sr, CK_NORMAL);
     int n_failed = srunner_ntests_failed(sr);
     srunner_free(sr);
+    unlink(H5FILE);
     return n_failed == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
