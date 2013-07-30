@@ -10,7 +10,7 @@ from daemon_control import *
 # FIXME: allow the environment to show logging output to stderr, for
 # debugging tests
 
-class TestBasicRegIO(test_helpers.DaemonDnodeTest):
+class TestBasicRegIO(test_helpers.DaemonTest):
 
     def testCentralState(self):
         cmd = reg_read(MOD_CENTRAL, CENTRAL_STATE)

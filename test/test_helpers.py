@@ -18,18 +18,19 @@ def dummy_dnode_sub(*args, **kwargs):
                            **kwargs)
     return sub
 
-class DaemonDnodeTest(unittest.TestCase):
+class DaemonTest(unittest.TestCase):
     """Parent class for tests which need leafysd and dummy-datanode running.
 
     Provides setUp() and tearDown() methods that ensure this
     happens."""
 
-    def __init__(self, methodName='runTest'):
-        super(DaemonDnodeTest, self).__init__(methodName=methodName)
+    def __init__(self, methodName='runTest',
+                 start_daemon=True, start_dnode=True):
+        super(DaemonTest, self).__init__(methodName=methodName)
+        self.start_daemon = start_daemon
+        self.start_dnode = start_dnode
 
     def setUp(self):
-        self.start_daemon = True
-        self.start_dnode = True
 
         # Start the subprocesses
         dn = open('/dev/null', 'rw+')
