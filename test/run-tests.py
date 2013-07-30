@@ -36,10 +36,12 @@ build_dir = os.path.abspath(os.path.dirname(__file__))
 build_libsng_dir = os.path.join(build_dir, 'libsng')
 util_dir = os.path.abspath(os.path.join(build_dir, '..', 'util'))
 
+# Path-related environment variables
 os_path = os.environ['PATH'].split(os.pathsep)
 test_path = os.pathsep.join([build_dir, util_dir] + os_path)
 test_py_path = os.pathsep.join([build_dir, util_dir])
 
+# Find the daemon and the dummy datanode
 daemon_bin = os.path.join(build_dir, 'leafysd')
 if not os.path.isfile(daemon_bin):
     printf("Can't find daemon; expected it at %s" % daemon_bin,
