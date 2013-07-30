@@ -110,7 +110,7 @@ try:
               ' '.join(t[len('test-'):-len('.py')] for t in pytests))
         for t in sorted(pytests):
             tmod = t[:-len('.py')]
-            subprocess.call(['python', '-m', 'unittest', tmod],
+            subprocess.call(['python', '-m', 'unittest', '-q', tmod],
                             env=fresh_test_env())
 finally:
     os.chdir(oldcwd)
