@@ -44,13 +44,13 @@ test_py_path = os.pathsep.join([build_dir, util_dir])
 # Find the daemon and the dummy datanode
 daemon_bin = os.path.join(build_dir, 'leafysd')
 if not os.path.isfile(daemon_bin):
-    printf("Can't find daemon; expected it at %s" % daemon_bin,
-           file=sys.stderr)
+    print("Can't find daemon; expected it at %s" % daemon_bin,
+          file=sys.stderr)
     sys.exit(1)
 dummy_dnode_bin = os.path.join(build_dir, 'dummy-datanode')
 if not os.path.isfile(dummy_dnode_bin):
-    printf("Can't find dummy data node, expected it at %s" % dummy_dnode_bin,
-           file=sys.stderr)
+    print("Can't find dummy data node, expected it at %s" % dummy_dnode_bin,
+          file=sys.stderr)
     sys.exit(1)
 
 # Grab all the test executables.
