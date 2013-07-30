@@ -5,7 +5,7 @@ import time
 import unittest
 
 import test_helpers
-from pbuf_reg_io import *
+from daemon_control import *
 
 # FIXME: allow the environment to show logging output to stderr, for
 # debugging tests

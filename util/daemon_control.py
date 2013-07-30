@@ -1,8 +1,8 @@
-"""Helper module for doing register I/O through the daemon.
+"""Helper module for controlling the daemon (via protobuf).
 
 Example use as a module:
 
-from pbuf_reg_io import *
+from daemon_control import *
 
 commands = [reg_read(MOD_CENTRAL, CENTRAL_STATE),
             reg_read(2, 14),
