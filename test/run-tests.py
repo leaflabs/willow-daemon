@@ -18,7 +18,7 @@
 
 from __future__ import print_function
 
-from glob import glob
+from fnmatch import fnmatch
 import os
 import os.path
 import subprocess
@@ -41,6 +41,9 @@ os_path = os.environ['PATH'].split(os.pathsep)
 test_path = os.pathsep.join([build_dir, util_dir] + os_path)
 test_py_path = os.pathsep.join([build_dir, util_dir])
 
+# Tests the user wants
+tests_to_run = sys.argv[1:]
+
 # Find the daemon and the dummy datanode
 daemon_bin = os.path.join(build_dir, 'leafysd')
 if not os.path.isfile(daemon_bin):
@@ -54,8 +57,25 @@ if not os.path.isfile(dummy_dnode_bin):
     sys.exit(1)
 
 # Grab all the test executables.
-ctests = glob(os.path.join(build_dir, 'test-*'))
-pytests = glob(os.path.join(build_dir, 'test_*.py'))
+ctests_all = [t for t in os.listdir(build_dir) if fnmatch(t, 'test-*')]
+pytests_all = [t for t in os.listdir(build_dir)
+               if fnmatch(t, 'test_*.py') and t != 'test_helpers.py']
+if tests_to_run:
+    ctests = []
+    pytests = []
+    for ttr in tests_to_run:
+        if 'test-' + ttr in ctests_all:
+            ctests.append('test-' + ttr)
+        elif 'test_' + ttr + '.py' in pytests_all:
+            pytests.append('test_' + ttr + '.py')
+        else:
+            print(('No such test as "%s"; ' % ttr) +
+                  'be sure to omit the test-/test_/.py parts',
+                  file=sys.stderr)
+            sys.exit(1)
+else:
+    ctests = ctests_all
+    pytests = pytests_all
 
 # Run the tests.
 #
@@ -73,13 +93,24 @@ def fresh_test_env():
              'TEST_DUMMY_DNODE_PATH': dummy_dnode_bin,
              'LD_LIBRARY_PATH': build_libsng_dir }
 
-print('=' * 70)
-print('Running C tests')
-for t in sorted(ctests):
-    subprocess.call([t], env=fresh_test_env())
-print()
+oldcwd = os.getcwd()
+os.chdir(build_dir)
+try:
+    if ctests:
+        print('=' * 70)
+        print('Running C tests:', ' '.join(t[len('test-'):] for t in ctests))
+        for t in sorted(ctests):
+            subprocess.call([t], env=fresh_test_env())
+        if pytests:
+            print()
 
-print('=' * 70)
-print('Running Python tests')
-subprocess.call(['python', '-m', 'unittest', 'discover', '-s', build_dir],
-                env=fresh_test_env())
+    if pytests:
+        print('=' * 70)
+        print('Running Python tests:',
+              ' '.join(t[len('test-'):-len('.py')] for t in pytests))
+        for t in sorted(pytests):
+            tmod = t[:-len('.py')]
+            subprocess.call(['python', '-m', 'unittest', tmod],
+                            env=fresh_test_env())
+finally:
+    os.chdir(oldcwd)
