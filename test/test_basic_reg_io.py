@@ -13,7 +13,8 @@ class TestBasicRegIO(test_helpers.DaemonTest):
         cmd = reg_read(MOD_CENTRAL, CENTRAL_STATE)
         resps = do_control_cmds([cmd])
         self.assertIsNotNone(resps)
-        self.assertEqual(resps[0].type, ControlResponse.REG_IO)
+        self.assertEqual(resps[0].type, ControlResponse.REG_IO,
+                         msg='\n' + str(resps[0]))
         rsp = resps[0].reg_io
         self.assertEqual(rsp.module, MOD_CENTRAL)
         self.assertEqual(rsp.central, CENTRAL_STATE)
