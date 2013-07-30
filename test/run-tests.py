@@ -77,6 +77,7 @@ print('=' * 70)
 print('Running C tests')
 for t in sorted(ctests):
     subprocess.call([t], env=fresh_test_env())
+print()
 
 print('=' * 70)
 print('Running Python tests')
