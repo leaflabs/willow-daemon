@@ -224,6 +224,11 @@ static void client_send_response(struct control_session *cs,
     client_cmd_len_t clen = client_cmd_hton((client_cmd_len_t)packed);
     bufferevent_write(cs->cbev, &clen, CLIENT_CMDLEN_SIZE);
     bufferevent_write(cs->cbev, cpriv->c_rsp_arr, packed);
+    if (cr->type != CONTROL_RESPONSE__TYPE__ERR) {
+        log_DEBUG("sending non-error ControlResponse type %d", cr->type);
+    } else {
+        log_DEBUG("sending error ControlResponse type");
+    }
     client_done_with_cmd(cs);
 }
 
