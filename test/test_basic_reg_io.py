@@ -10,23 +10,11 @@ from daemon_control import *
 # FIXME: allow the environment to show logging output to stderr, for
 # debugging tests
 
-class TestBasicRegIO(unittest.TestCase):
-
-    def setUp(self):
-        dn = open('/dev/null', 'rw+')
-        self.dn = dn
-        self.sub_kwargs = { 'stdin': dn, 'stdout': dn, 'stderr': dn }
-        self.daemon = test_helpers.daemon_sub(**self.sub_kwargs)
-        self.dnode = test_helpers.dummy_dnode_sub(**self.sub_kwargs)
-
-    def tearDown(self):
-        self.daemon.terminate()
-        self.dnode.terminate()
-        self.dn.close()
+class TestBasicRegIO(test_helpers.DaemonDnodeTest):
 
     def testCentralState(self):
         cmd = reg_read(MOD_CENTRAL, CENTRAL_STATE)
-        resps = do_control_cmds([cmd], retry=True)
+        resps = do_control_cmds([cmd])
         self.assertIsNotNone(resps)
         rsp = resps[0].reg_io
         self.assertEqual(rsp.module, MOD_CENTRAL)
@@ -37,7 +25,7 @@ class TestBasicRegIO(unittest.TestCase):
         cookie_l = 0xbbbbeeee
         cmds = [reg_write(MOD_CENTRAL, CENTRAL_COOKIE_H, cookie_h),
                 reg_write(MOD_CENTRAL, CENTRAL_COOKIE_L, cookie_l)]
-        responses = do_control_cmds(cmds, retry=True)
+        responses = do_control_cmds(cmds)
         self.assertIsNotNone(responses)
         rsp_h, rsp_l = [r.reg_io for r in responses]
         self.assertEqual(rsp_h.module, MOD_CENTRAL)
