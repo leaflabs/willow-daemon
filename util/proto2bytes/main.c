@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <getopt.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -36,6 +37,8 @@ static void usage(int exit_status)
            "\tOutput DAC channel (this is the default)\n"
            "  -h, --help"
            "\tPrint this message\n"
+           "  -M, --board-samples"
+           "\tExpect board samples instead of subsamples\n"
            "  -p, --port"
            "\tListen to daemon at this address, default %d\n"
            "  -s, --string"
@@ -50,6 +53,7 @@ static void usage(int exit_status)
       .output = OUT_DAC,           \
       .channel = -1,               \
       .enable_string = 0,          \
+      .board_samples = 0,          \
     }
 
 struct arguments {
@@ -57,12 +61,13 @@ struct arguments {
     enum out_type output;
     unsigned channel;
     int enable_string;
+    int board_samples;
 };
 
 static void parse_args(struct arguments* args, int argc, char *const argv[])
 {
     int print_usage = 0;
-    const char shortopts[] = "c:dhp:s";
+    const char shortopts[] = "c:dhMp:s";
     struct option longopts[] = {
         /* Keep these sorted with shortopts. */
         { .name = "channel",
@@ -77,6 +82,10 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
           .has_arg = no_argument,
           .flag = NULL,
           .val = 'h' },
+        { .name = "board-samples",
+          .has_arg = no_argument,
+          .flag = NULL,
+          .val = 'M' },
         { .name = "port",
           .has_arg = required_argument,
           .flag = &print_usage,
@@ -115,6 +124,9 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
         case 'h':
             usage(EXIT_SUCCESS);
             break;
+        case 'M':
+            args->board_samples = 1;
+            break;
         case 'p':
             args->daemon_port = strtol(optarg, (char**)0, 10);
             break;
@@ -131,6 +143,54 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
                 args->channel, RAW_BSUB_NSAMP);
         exit(EXIT_FAILURE);
     }
+    if (args->output == OUT_DAC && args->board_samples) {
+        fprintf(stderr, "DAC output for board samples is unimplemented\n");
+        exit(EXIT_FAILURE);
+    }
+}
+
+static void write_chan(uint16_t chan, struct arguments *args)
+{
+    if (args->enable_string) {
+        printf("%u\n", chan);
+    } else {
+        // NB: only writing the "low" 8bits of sample for waveform
+        // display
+        uint8_t low = (uint8_t)(chan & 0xFF);
+        __unused ssize_t n = write(STDOUT_FILENO, &low, sizeof(low));
+    }
+}
+
+/* Returns sample index, for gap checking */
+uint32_t handle_sample(DnodeSample *samp, struct arguments *args)
+{
+    /* TODO handle DAC output -- interacts with gap checking */
+    assert(args->output == OUT_CHANNEL);
+
+    uint8_t *samples8 = samp->sample->samples.data;
+    /* Ensure samples are aligned on a 2-byte boundary before the cast */
+    assert(!((uintptr_t)(void*)samples8 & 1));
+    uint16_t *samples = (uint16_t*)samples8;
+    uint16_t chan = samples[args->channel];
+    write_chan(chan, args);
+    return samp->sample->samp_idx;
+}
+
+/* Returns sample index, for gap checking */
+uint32_t handle_subsample(DnodeSample *samp, struct arguments *args)
+{
+    if (args->output == OUT_DAC) {
+        uint8_t dac = (uint8_t)samp->subsample->dac_value;
+        if (args->enable_string) {
+            printf("%u\n", dac);
+        } else {
+            __unused ssize_t n = write(STDOUT_FILENO, &dac, sizeof(dac));
+        }
+    } else {
+        uint16_t chan = (uint16_t)samp->subsample->samples[args->channel];
+        write_chan(chan, args);
+    }
+    return samp->subsample->samp_idx;
 }
 
 int main(int argc, char *argv[])
@@ -168,29 +228,14 @@ int main(int argc, char *argv[])
             fprintf(stderr, "unpacking failed; skipping packet\n");
             continue;
         }
-        if (args.output == OUT_DAC) {
-            uint8_t dac = (uint8_t)samp->subsample->dac_value;
-            if (args.enable_string) {
-                printf("%u\n", dac);
-            } else {
-                __unused ssize_t n = write(STDOUT_FILENO, &dac, sizeof(dac));
-            }
-        } else {
-            uint16_t chan = (uint16_t)samp->subsample->samples[args.channel];
-            uint8_t low = chan & 0xFF;
-            if (args.enable_string) {
-                printf("%u\n", chan);
-            } else {
-                // NB: only writing the "low" 8bits of sample for waveform
-                // display
-                __unused ssize_t n = write(STDOUT_FILENO, &low, sizeof(low));
-            }
-        }
-        uint32_t gap = samp->subsample->samp_idx - last_sidx - 1;
+        uint32_t cur_idx = (args.board_samples ?
+                            handle_sample(samp, &args) :
+                            handle_subsample(samp, &args));
+        uint32_t gap = cur_idx - last_sidx - 1;
         if (gap) {
             fprintf(stderr, "GAP: %d\n", gap);
         }
-        last_sidx = samp->subsample->samp_idx;
+        last_sidx = cur_idx;
         dnode_sample__free_unpacked(samp, NULL);
     }
 
