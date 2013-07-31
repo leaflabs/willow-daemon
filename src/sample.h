@@ -77,6 +77,8 @@ enum sample_forward {
     SAMPLE_FWD_NOTHING = 0,     /**< Forward no packets */
     SAMPLE_FWD_BSMP = 1,        /**< Forward board subsamples as protobuf */
     SAMPLE_FWD_BSUB = 2,        /**< Forward board samples as protobuf */
+    SAMPLE_FWD_BSMP_RAW = 4,    /**< Forward board samples as raw packets */
+    SAMPLE_FWD_BSUB_RAW = 8,    /**< Forward board subsamples as raw packets */
 };
 
 /**

@@ -727,6 +727,23 @@ int sample_set_addr(struct sample_session *smpl,
 }
 
 /* NOT SYNCHRONIZED (smpl_mtx) */
+static uint8_t sample_forward_mtype(struct sample_session *smpl)
+{
+    switch (smpl->forward_what) {
+    case SAMPLE_FWD_BSMP:       /* fall through */
+    case SAMPLE_FWD_BSMP_RAW:
+        return RAW_MTYPE_BSMP;
+    case SAMPLE_FWD_BSUB:       /* fall through */
+    case SAMPLE_FWD_BSUB_RAW:
+        return RAW_MTYPE_BSUB;
+    case SAMPLE_FWD_NOTHING:    /* shouldn't happen; fall through */
+    default:
+        assert(0);
+        return RAW_MTYPE_ERR;
+    }
+}
+
+/* NOT SYNCHRONIZED (smpl_mtx) */
 static int sample_enable_forwarding(struct sample_session *smpl,
                                     enum sample_forward what)
 {
@@ -759,8 +776,26 @@ int sample_cfg_forwarding(struct sample_session *smpl,
         if (what == SAMPLE_FWD_NOTHING) {
             log_DEBUG("disabled sample forwarding");
         } else {
-            log_DEBUG("enabled board %s forwarding",
-                      what == SAMPLE_FWD_BSMP ? "sample" : "subsample");
+            __unused const char *what_str = "";
+            switch (what) {
+            case SAMPLE_FWD_BSMP:
+                what_str = "board sample";
+                break;
+            case SAMPLE_FWD_BSUB:
+                what_str = "board subsample";
+                break;
+            case SAMPLE_FWD_BSMP_RAW:
+                what_str = "raw board sample";
+                break;
+            case SAMPLE_FWD_BSUB_RAW:
+                what_str = "raw board subsample";
+                break;
+            case SAMPLE_FWD_NOTHING: /* can't happen; fall through */
+            default:
+                assert(0);
+                break;
+            }
+            log_DEBUG("enabled %s forwarding", what_str);
         }
     }
     return ret;
@@ -1234,8 +1269,7 @@ static int sample_get_data_packet(struct sample_session *smpl)
     socklen_t sas_len = sizeof(sas);
     ssize_t s;
     struct sockaddr *dnaddr = (struct sockaddr*)&smpl->dnaddr;
-    const uint8_t mtype_expected = (smpl->forward_what == SAMPLE_FWD_BSMP ?
-                                    RAW_MTYPE_BSMP : RAW_MTYPE_BSUB);
+    const uint8_t mtype_expected = sample_forward_mtype(smpl);
     assert(iov->iov_base);
     while (1) {
         s = recvfrom(smpl->ddatafd, iov->iov_base, iov->iov_len, 0,
@@ -1282,6 +1316,36 @@ static int sample_get_data_packet(struct sample_session *smpl)
         return -1;
     }
     return 0;
+}
+
+/* Ship the latest data packet raw and direct to the client. */
+static void sample_forward_raw_packet(struct sample_session *smpl)
+{
+    /* Actually, make a copy and ship that.
+     *
+     * If this is too slow, we can optimize by skipping the original
+     * raw_pkt_ntoh() and just sending smpl->dpktbuf.iov_base, but
+     * that requires more care when validating the packet. */
+    struct sockaddr *caddr = (struct sockaddr*)&smpl->caddr;
+    socklen_t caddr_len = sockutil_addrlen(caddr);
+    void *copy;
+    size_t copylen;
+    union sample_packet pkt;
+    uint8_t mtype = raw_mtype(smpl->dpktbuf.iov_base);
+    if (mtype == RAW_MTYPE_BSMP) {
+        copy = &pkt.bsmp;
+        copylen = sizeof(pkt.bsmp);
+    } else if (mtype == RAW_MTYPE_BSUB) {
+        copy = &pkt.bsub;
+        copylen = sizeof(pkt.bsub);
+    } else {
+        assert(0);
+    }
+    memcpy(copy, smpl->dpktbuf.iov_base, copylen);
+    __unused int rph = raw_pkt_hton(&copy);
+    assert(rph == 0);
+    __unused ssize_t n = sendto(smpl->ddatafd, copy, sizeof(copy), 0,
+                                caddr, caddr_len);
 }
 
 static void sample_init_pmsg_from_bsub(BoardSubsample *msg_bsub,
@@ -1371,9 +1435,15 @@ static int sample_convert_and_ship_subsample(struct sample_session *smpl)
 /* NOT SYNCHRONIZED */
 static void sample_ddatafd_forward_bsub(struct sample_session *smpl)
 {
-    /* Convert the raw packet to protobuf and ship that to the client. */
-    if (sample_convert_and_ship_subsample(smpl)) {
-        log_DEBUG("%s: can't forward board subsample to client", __func__);
+    assert(smpl->forward_what == SAMPLE_FWD_BSUB ||
+           smpl->forward_what == SAMPLE_FWD_BSUB_RAW);
+    if (smpl->forward_what == SAMPLE_FWD_BSUB) {
+        /* Convert the raw packet to protobuf and ship that to the client. */
+        if (sample_convert_and_ship_subsample(smpl)) {
+            log_DEBUG("%s: can't forward board subsample to client", __func__);
+        }
+    } else {
+        sample_forward_raw_packet(smpl);
     }
 }
 
@@ -1430,8 +1500,14 @@ static int sample_convert_and_ship_sample(struct sample_session *smpl)
 
 static void sample_ddatafd_forward_bsamp(struct sample_session *smpl)
 {
-    if (sample_convert_and_ship_sample(smpl)) {
-        log_DEBUG("%s: can't forward board sample to client", __func__);
+    assert(smpl->forward_what == SAMPLE_FWD_BSMP ||
+           smpl->forward_what == SAMPLE_FWD_BSMP_RAW);
+    if (smpl->forward_what == SAMPLE_FWD_BSMP) {
+        if (sample_convert_and_ship_sample(smpl)) {
+            log_DEBUG("%s: can't forward board sample to client", __func__);
+        }
+    } else {
+        sample_forward_raw_packet(smpl);
     }
 }
 

@@ -1130,15 +1130,6 @@ static void client_process_cmd_stream(struct control_session *cs)
     }
 
     /*
-     * FIXME: support raw sample forwarding.
-     */
-    if (stream->sample_type != SAMPLE_TYPE__BOARD_SAMPLE &&
-        stream->sample_type != SAMPLE_TYPE__BOARD_SUBSAMPLE) {
-        CLIENT_RES_ERR_DAEMON(cs, "raw sample forwarding is unimplemented");
-        return;
-    }
-
-    /*
      * Reconfigure sample conversion address/port if necessary
      */
     if (has_addr) {
@@ -1165,9 +1156,20 @@ static void client_process_cmd_stream(struct control_session *cs)
      */
     if (stream->enable) {
         client_clear_dnode_addr_storage(cs);
-        uint32_t daq_udp_mode =
-            stream->sample_type == SAMPLE_TYPE__BOARD_SAMPLE ?
-            RAW_DAQ_UDP_MODE_BSMP : RAW_DAQ_UDP_MODE_BSUB;
+        uint32_t daq_udp_mode;
+        switch (stream->sample_type) {
+        case SAMPLE_TYPE__BOARD_SUBSAMPLE: /* fall through */
+        case SAMPLE_TYPE__BOARD_SUBSAMPLE_RAW:
+            daq_udp_mode = RAW_DAQ_UDP_MODE_BSUB;
+            break;
+        case SAMPLE_TYPE__BOARD_SAMPLE: /* fall through */
+        case SAMPLE_TYPE__BOARD_SAMPLE_RAW:
+            daq_udp_mode = RAW_DAQ_UDP_MODE_BSMP;
+            break;
+        default:
+            CLIENT_RES_ERR_C_PROTO(cs, "unknown sample_type");
+            return;
+        }
         client_start_txns_stream(cs, daq_udp_mode);
     } else {
         const size_t ntxns = 5;
