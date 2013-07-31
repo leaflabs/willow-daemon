@@ -80,6 +80,34 @@ everything with
 - HDF5's command line utilities (h5*) and Java-based file viewer (hdfviewer):
   http://www.hdfgroup.org/downloads/index.html
 
+Dealing with tests
+------------------
+
+To write a test:
+
+- Tests in C are in subdirectories of test/ matching shell glob 'test-*'.
+- Tests in Python are files in test/ matching 'test_*.py'.
+
+To build all the tests (YOU MUST REBUILD AFTER CHANGES):
+
+    $ scons
+
+To run all the tests with dummy programs instead of the real data node:
+
+    $ ./build/run-tests.py
+
+To run all the tests with the real data node, at default IP address (see
+run-tests.py):
+
+    $ DO_IT_LIVE=1 ./build/run-tests.py
+
+Run just one test, "foo" (Python: test/test_foo.py, C: test/test-foo/):
+
+    $ ./build/run-tests.py foo
+
+Tests can use headers in lib/ and libsng/. They can run the daemon and anything
+in util/. See test/test_helpers.py for some help with that.
+
 Repository contents
 -------------------
 
@@ -103,19 +131,7 @@ Repository contents
 
 - test/: Test code.
 
-  To run tests, run scons, then run build/run_tests.py:
-
-      $ scons
-      $ ./build/run-tests.py
-
-  Tests written in C are placed in subdirectories that begin with
-  'test-'. Tests written in Python are executable scripts that begin with
-  'test_' and end with '.py'.
-
-  Tests may use the headers provided by lib/ and libsng/. They may run the
-  compiled daemon and any of the utilities in util/.
-
   Test programs are a pain to run individually; they need a special
-  environment. Use run-tests.py.
+  environment. Use run-tests.py for that; see "Dealing with tests", above.
 
 - util/: Miscellaneous helper utilities.
