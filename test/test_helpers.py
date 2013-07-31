@@ -37,13 +37,20 @@ class DaemonTest(unittest.TestCase):
     utilities etc. are available or running."""
 
     def __init__(self, methodName='runTest',
-                 start_daemon=True, start_dnode=True,
-                 start_sampstreamer=False):
+                 start_daemon=True,
+                 daemon_args=[],
+                 start_dnode=True,
+                 dnode_args=[],
+                 start_sampstreamer=False,
+                 sampstreamer_args=[]):
         self.longMessage = True
         super(DaemonTest, self).__init__(methodName=methodName)
         self.start_daemon = start_daemon
+        self.daemon_args = daemon_args
         self.start_dnode = start_dnode
+        self.dnode_args = dnode_args
         self.start_sampstreamer = start_sampstreamer
+        self.sampstreamer_args = sampstreamer_args
 
     def setUp(self):
 
@@ -52,11 +59,12 @@ class DaemonTest(unittest.TestCase):
         self.dn = dn
         self.sub_kwargs = { 'stdin': dn, 'stdout': dn, 'stderr': dn }
         if self.start_daemon:
-            self.daemon = daemon_sub(**self.sub_kwargs)
+            self.daemon = daemon_sub(*self.daemon_args, **self.sub_kwargs)
         if self.start_dnode and not DO_IT_LIVE:
-            self.dnode = dummy_dnode_sub(**self.sub_kwargs)
+            self.dnode = dummy_dnode_sub(*self.dnode_args, **self.sub_kwargs)
         if self.start_sampstreamer and not DO_IT_LIVE:
-            self.sampstreamer = sampstreamer_sub(**self.sub_kwargs)
+            self.sampstreamer = sampstreamer_sub(*self.sampstreamer_args,
+                                                 **self.sub_kwargs)
 
         cmds = [daemon_control.reg_read(daemon_control.MOD_CENTRAL,
                                         daemon_control.CENTRAL_STATE)]
