@@ -1423,6 +1423,89 @@ static void client_process_res_store(struct control_session *cs)
     client_start_next_txn(cs);
 }
 
+static void client_process_cmd_acquire(struct control_session *cs)
+{
+    struct client_priv *cpriv = cs->cpriv;
+    ControlCmdAcquire *acquire = cpriv->c_cmd->acquire;
+    int enable;
+    uint32_t exp_ck_h;
+    uint32_t exp_ck_l;
+
+    /* Sanity check our expectations with regards to sample storage. */
+    assert(!cpriv->bs_cfg);
+    assert(!cpriv->bs_expecting);
+    assert(!cpriv->bs_restarted);
+
+    /* Check that the command is well formed. */
+    if (!acquire) {
+        CLIENT_RES_ERR_C_PROTO(cs, "missing acquire command");
+        return;
+    }
+    if (!acquire->has_exp_cookie) {
+        CLIENT_RES_ERR_C_PROTO(cs, "missing experiment cookie");
+        return;
+    }
+    if (!acquire->has_enable) {
+        CLIENT_RES_ERR_C_PROTO(cs, "missing enable");
+        return;
+    }
+
+    /* Pull the fields we need out of the command. */
+    exp_ck_h = (uint32_t)(acquire->exp_cookie >> 32);
+    exp_ck_l = (uint32_t)(acquire->exp_cookie & 0xFFFFFFFF);
+    enable = acquire->enable;
+
+    const size_t max_ntxns = 11;
+    struct control_txn *txns = malloc(max_ntxns * sizeof(struct control_txn));
+    size_t txno = 0;
+    if (!txns) {
+        CLIENT_RES_ERR_DAEMON_OOM(cs);
+        return;
+    }
+
+    if (enable) {
+        /* Stop SATA module and DAQ-SATA output */
+        client_sata_w(txns + txno++, RAW_RADDR_SATA_MODE, RAW_SATA_MODE_WAIT);
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_SATA_ENABLE, 0);
+        /* Toggle acquisition */
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 0);
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 1);
+        /* Set experiment cookie */
+        client_central_w(txns + txno++, RAW_RADDR_CENTRAL_EXP_CK_H, exp_ck_h);
+        client_central_w(txns + txno++, RAW_RADDR_CENTRAL_EXP_CK_L, exp_ck_l);
+        /* Toggle DAQ-SATA FIFO flag reset bit */
+        client_daq_w(txns + txno++,
+                     RAW_RADDR_DAQ_SATA_FIFO_FL, RAW_DAQ_SATA_FIFO_FL_RST);
+        client_daq_w(txns + txno++,
+                     RAW_RADDR_DAQ_SATA_FIFO_FL, 0);
+        /* Set up SATA module to write incoming DAQ data */
+        client_sata_w(txns + txno++, RAW_RADDR_SATA_MODE, RAW_SATA_MODE_WRITE);
+        /* Enable DAQ writes to SATA
+         * FIXME bnewbold calls this 'weird "zero only" mode'; why? fix it! */
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_SATA_ENABLE, 3);
+        /* Set board sample index to zero (this actually starts the
+         * writes, so do it last) */
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_BSMP_START, 0);
+    } else {
+        /* Disable DAQ-SATA stream */
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_SATA_ENABLE, 0);
+        /* Disable SATA */
+        client_sata_w(txns + txno++, RAW_RADDR_SATA_MODE, RAW_SATA_MODE_WAIT);
+    }
+    client_start_txns(cs, txns, txno, max_ntxns);
+}
+
+static void client_process_res_acquire(struct control_session *cs)
+{
+    if (client_ensure_txn_ok(cs, "ControlCmdAcquire") == -1) {
+        return;
+    }
+    if (!client_start_next_txn(cs)) {
+        return;
+    }
+    client_send_success(cs);
+}
+
 static void client_process_cmd(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
@@ -1447,6 +1530,10 @@ static void client_process_cmd(struct control_session *cs)
     case CONTROL_COMMAND__TYPE__STORE:
         proc = client_process_cmd_store;
         type = "STORE";
+        break;
+    case CONTROL_COMMAND__TYPE__ACQUIRE:
+        proc = client_process_cmd_acquire;
+        type = "ACQUIRE";
         break;
     default:
         CLIENT_RES_ERR_C_PROTO(cs, "unknown command type");
@@ -1475,6 +1562,9 @@ static void client_process_res(struct control_session *cs)
         break;
     case CONTROL_COMMAND__TYPE__STORE:
         client_process_res_store(cs);
+        break;
+    case CONTROL_COMMAND__TYPE__ACQUIRE:
+        client_process_res_acquire(cs);
         break;
     default:
         log_ERR("got result for unhandled command type; ignoring it");
