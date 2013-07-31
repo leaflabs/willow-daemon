@@ -225,6 +225,7 @@ message ControlCmdStream {
     optional fixed32 dest_udp_addr4 = 1;
     optional uint32 dest_udp_port = 2;
     optional bool enable = 3;
+    optional SampleType sample_type = 4; // default is BOARD_SUBSAMPLE
 }
 
 // Store board samples received from the daemon to disk.
@@ -331,11 +332,14 @@ message ControlResStore {
 
 message ControlResponse {
     enum Type {
+        // If type==ERR, the "err" field will be present
         ERR = 1;
         // If type==SUCCESS, the previous command succeeded; no other
         // fields will be set.
         SUCCESS = 2;
+        // If type==STORE_FINISHED, the "store" field will be present
         STORE_FINISHED = 3;
+        // If type==REG_IO, the "reg_io" field will be present
         REG_IO = 255;
     }
     optional Type type = 1;

@@ -1124,6 +1124,13 @@ static void client_process_cmd_stream(struct control_session *cs)
         return;
     }
 
+    /* We don't currently support board sample streaming */
+    if (stream->has_sample_type &&
+        stream->sample_type == SAMPLE_TYPE__BOARD_SAMPLE) {
+        CLIENT_RES_ERR_DAEMON(cs, "streaming board samples is unimplemented");
+        return;
+    }
+
     /*
      * Reconfigure sample conversion address/port if necessary
      */
