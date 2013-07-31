@@ -33,9 +33,6 @@
 #include "control-client.h"
 #include "control-dnode.h"
 
-/* TODO use cached dnode_addr and dnode_c_port to establish periodic
- * reconnect handler to cover data node crashes. */
-
 static void
 control_fatal_err(const char *message, int code) /* code==-1 for "no code" */
 {
