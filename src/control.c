@@ -274,11 +274,6 @@ static void* control_dn_conn_main(void *csessvp)
         while (cs->dnode_conn_why == CONTROL_DCONN_WHY_NONE) {
             safe_p_cond_wait(&cs->dnode_conn_cv, &cs->dnode_conn_mtx);
         }
-        if (cs->dnode_conn_why & CONTROL_DCONN_WHY_EXIT) {
-            log_DEBUG("%s exiting", __func__);
-            safe_p_mutex_unlock(&cs->dnode_conn_mtx);
-            pthread_exit(NULL);
-        }
         if (cs->dnode_conn_why & CONTROL_DCONN_WHY_CONN) {
             /* cs->daddr and cs->dport are never written to after
              * their first being set (prior to our starting), so it's

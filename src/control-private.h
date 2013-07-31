@@ -78,7 +78,6 @@ enum control_worker_why {
 /* Flags for why we woke up the dnode connector thread */
 enum control_dnode_conn_why {
     CONTROL_DCONN_WHY_NONE = 0x0, /* Go back to sleep */
-    CONTROL_DCONN_WHY_EXIT = 0x1, /* Thread should exit (we also cancel!) */
     CONTROL_DCONN_WHY_CONN = 0x2, /* Connection is required */
 };
 
