@@ -49,6 +49,7 @@ class DaemonTest(unittest.TestCase):
                  dnode_args=[],
                  start_proto2bytes=False,
                  proto2bytes_args=[],
+                 proto2bytes_popen_kwargs={},
                  start_sampstreamer=False,
                  sampstreamer_args=[]):
         self.longMessage = True
@@ -61,6 +62,7 @@ class DaemonTest(unittest.TestCase):
         self.sampstreamer_args = sampstreamer_args
         self.start_proto2bytes = start_proto2bytes
         self.proto2bytes_args = proto2bytes_args
+        self.proto2bytes_popen_kwargs = proto2bytes_popen_kwargs
 
     def setUp(self):
 
@@ -76,8 +78,9 @@ class DaemonTest(unittest.TestCase):
             self.sampstreamer = sampstreamer_sub(*self.sampstreamer_args,
                                                  **self.sub_kwargs)
         if self.start_proto2bytes:
-            self.proto2bytes = proto2bytes_sub(*self.proto2bytes_args,
-                                               **self.sub_kwargs)
+            p2bkw = dict(self.sub_kwargs)
+            p2bkw.update(self.proto2bytes_popen_kwargs)
+            self.proto2bytes = proto2bytes_sub(*self.proto2bytes_args, **p2bkw)
 
         cmds = [daemon_control.reg_read(daemon_control.MOD_CENTRAL,
                                         daemon_control.CENTRAL_STATE)]
