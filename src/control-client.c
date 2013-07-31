@@ -1410,6 +1410,13 @@ static void client_process_res_store(struct control_session *cs)
         cs->wake_why |= CONTROL_WHY_DNODE_TXN;
         return;
     }
+
+    /*
+     * If there aren't any more to come, the incoming packets are en
+     * route. The sample callback handler we registered with
+     * sample_expect_bsamps() will let us know when we need to send
+     * the result to the client.
+     */
 }
 
 static void client_process_cmd(struct control_session *cs)
