@@ -1130,6 +1130,15 @@ static void client_process_cmd_stream(struct control_session *cs)
     }
 
     /*
+     * FIXME: support raw sample forwarding.
+     */
+    if (stream->sample_type != SAMPLE_TYPE__BOARD_SAMPLE &&
+        stream->sample_type != SAMPLE_TYPE__BOARD_SUBSAMPLE) {
+        CLIENT_RES_ERR_DAEMON(cs, "raw sample forwarding is unimplemented");
+        return;
+    }
+
+    /*
      * Reconfigure sample conversion address/port if necessary
      */
     if (has_addr) {

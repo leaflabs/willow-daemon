@@ -25,6 +25,8 @@
 enum SampleType {
     BOARD_SUBSAMPLE = 0;
     BOARD_SAMPLE = 1;
+    BOARD_SUBSAMPLE_RAW = 2;
+    BOARD_SAMPLE_RAW = 3;
 }
 
 // How to store samples on disk
