@@ -1187,7 +1187,7 @@ static void sample_flip_bsamp_bufs(struct sample_session *smpl)
 }
 
 /* NOT SYNCHRONIZED (smpl_mtx) */
-static void sample_ddatafd_bsamps(struct sample_session *smpl)
+static void sample_ddatafd_store_bsamps(struct sample_session *smpl)
 {
     switch (sample_ddatafd_grab_bsamps(smpl)) {
     case GOT_BSAMPS:
@@ -1403,7 +1403,7 @@ static void sample_ddatafd_callback(evutil_socket_t ddatafd, short events,
 
     sample_must_lock(smpl);
     if (sample_expecting_bsamps(smpl)) {
-        sample_ddatafd_bsamps(smpl);
+        sample_ddatafd_store_bsamps(smpl);
         smpl->debug_print_ddatafd = 1;
     } else if (sample_expecting_bsubs(smpl)) {
         sample_ddatafd_bsubs(smpl);
