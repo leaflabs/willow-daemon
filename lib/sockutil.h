@@ -40,6 +40,15 @@ static inline socklen_t sockutil_addrlen(struct sockaddr *a)
     }
 }
 
+static inline ssize_t sockutil_addrstrlen(struct sockaddr *a)
+{
+    switch (a->sa_family) {
+    case AF_INET: return INET_ADDRSTRLEN;
+    case AF_INET6: return INET6_ADDRSTRLEN;
+    default: return -1;
+    }
+}
+
 #define SOCKUTIL_IGN_PORT 0x2   /* Port */
 #define SOCKUTIL_IGN_ADDR 0x4   /* Address */
 #define SOCKUTIL_IGN_FLOW 0x8   /* IPv6 flow information */
