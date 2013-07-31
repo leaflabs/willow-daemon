@@ -55,7 +55,7 @@ class DaemonTest(unittest.TestCase):
             self.daemon = daemon_sub(**self.sub_kwargs)
         if self.start_dnode and not DO_IT_LIVE:
             self.dnode = dummy_dnode_sub(**self.sub_kwargs)
-        if self.start_sampstreamer:
+        if self.start_sampstreamer and not DO_IT_LIVE:
             self.sampstreamer = sampstreamer_sub(**self.sub_kwargs)
 
         cmds = [daemon_control.reg_read(daemon_control.MOD_CENTRAL,
@@ -87,7 +87,7 @@ class DaemonTest(unittest.TestCase):
         if self.start_daemon:
             self.daemon.terminate()
             self.daemon.wait()
-        if self.start_sampstreamer:
+        if self.start_sampstreamer and not DO_IT_LIVE:
             self.sampstreamer.terminate()
             self.sampstreamer.wait()
         self.dn.close()
