@@ -1124,11 +1124,9 @@ static void client_process_cmd_stream(struct control_session *cs)
         return;
     }
 
-    /* We don't currently support board sample streaming */
-    if (stream->has_sample_type &&
-        stream->sample_type == SAMPLE_TYPE__BOARD_SAMPLE) {
-        CLIENT_RES_ERR_DAEMON(cs, "streaming board samples is unimplemented");
-        return;
+    /* Set defaults */
+    if (!stream->has_sample_type) {
+        stream->sample_type = SAMPLE_TYPE__BOARD_SUBSAMPLE;
     }
 
     /*
@@ -1158,7 +1156,10 @@ static void client_process_cmd_stream(struct control_session *cs)
      */
     if (stream->enable) {
         client_clear_dnode_addr_storage(cs);
-        client_start_txns_stream(cs, RAW_DAQ_UDP_MODE_BSUB);
+        uint32_t daq_udp_mode =
+            stream->sample_type == SAMPLE_TYPE__BOARD_SAMPLE ?
+            RAW_DAQ_UDP_MODE_BSMP : RAW_DAQ_UDP_MODE_BSUB;
+        client_start_txns_stream(cs, daq_udp_mode);
     } else {
         const size_t ntxns = 5;
         struct control_txn *txns = malloc(ntxns * sizeof(struct control_txn));
@@ -1183,6 +1184,8 @@ static void client_process_res_stream(struct control_session *cs)
     struct client_priv *cpriv = cs->cpriv;
     ControlCmdStream *stream = cpriv->c_cmd->stream;
 
+    assert(stream->has_enable);
+
     if (client_ensure_txn_ok(cs, "ControlCmdStream") == -1) {
         return;
     }
@@ -1190,7 +1193,7 @@ static void client_process_res_stream(struct control_session *cs)
     /*
      * Deal with any register values we needed to read.
      */
-    if (stream->has_enable && stream->enable) {
+    if (stream->enable) {
         /* When enabling, we read the UDP IPv4 address and port registers. */
         struct raw_cmd_res *res = ctxn_res(cs->ctl_txns + cs->ctl_cur_txn);
         if (client_res_updates_dnode_addr(res) &&
@@ -1199,25 +1202,27 @@ static void client_process_res_stream(struct control_session *cs)
         }
     }
 
+    /* Are there more transactions? */
     if (!client_start_next_txn(cs)) {
-        return;
+        return;                 /* Yes. */
     }
 
     /*
      * That's the last transaction. Finish up and send the success
      * result.
      */
-    if (stream->has_enable) {
-        if (stream->enable &&
-            sample_set_addr(cs->smpl, (struct sockaddr*)&cpriv->dn_addr_in,
-                            SAMPLE_ADDR_DNODE)) {
-            CLIENT_RES_ERR_DAEMON(cs, "can't configure data node address");
-            return;
-        }
-        if (sample_cfg_subsamples(cs->smpl, stream->enable)) {
-            CLIENT_RES_ERR_DAEMON(cs, "can't configure sample forwarding");
-            return;
-        }
+    if (stream->enable &&
+        sample_set_addr(cs->smpl, (struct sockaddr*)&cpriv->dn_addr_in,
+                        SAMPLE_ADDR_DNODE)) {
+        CLIENT_RES_ERR_DAEMON(cs, "can't configure data node address");
+        return;
+    }
+    enum sample_forward fwd = !stream->enable ? SAMPLE_FWD_NOTHING:
+        (stream->sample_type == SAMPLE_TYPE__BOARD_SAMPLE ?
+         SAMPLE_FWD_BSMP : SAMPLE_FWD_BSUB);
+    if (sample_cfg_forwarding(cs->smpl, fwd)) {
+        CLIENT_RES_ERR_DAEMON(cs, "can't configure data forwarding");
+        return;
     }
     client_send_success(cs);
 }

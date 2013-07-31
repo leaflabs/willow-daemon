@@ -101,6 +101,7 @@ struct sample_session {
     uint32_t c_bsub_chips[RAW_BSUB_NSAMP];
     uint32_t c_bsub_chans[RAW_BSUB_NSAMP];
     uint32_t c_bsub_samps[RAW_BSUB_NSAMP];
+    uint8_t c_bsmp_samps[RAW_BSMP_NSAMP * sizeof(raw_samp_t)];
     uint8_t *c_sample_pbuf_arr;
 
     /* Data socket event. Event loop thread only. */
@@ -118,8 +119,7 @@ struct sample_session {
     struct sockaddr_storage caddr; /* Client address; forward
                                     * subsamples to here. If unset,
                                     * .ss_family==AF_UNSPEC. */
-    int forward_subs;  /* If true, we forward subsamples from data
-                        * node to client. */
+    enum sample_forward forward_what; /**< What kind of packets to forward. */
     sample_bsamp_cb smpl_cb; /**<
                                * Callback function for sample
                                * retrieval and storage. */
@@ -371,9 +371,9 @@ static inline int sample_expecting_bsamps(struct sample_session *smpl)
 }
 
 /* NOT SYNCHRONIZED (smpl_mtx) */
-static inline int sample_expecting_bsubs(struct sample_session *smpl)
+static inline int sample_forwarding_data(struct sample_session *smpl)
 {
-    return (smpl->forward_subs &&
+    return (smpl->forward_what != SAMPLE_FWD_NOTHING &&
             smpl->dnaddr.ss_family != AF_UNSPEC &&
             smpl->caddr.ss_family != AF_UNSPEC);
 }
@@ -540,7 +540,7 @@ static void sample_init(struct sample_session *smpl)
     smpl->ddataevt = NULL;
     smpl->dnaddr.ss_family = AF_UNSPEC;
     smpl->caddr.ss_family = AF_UNSPEC;
-    smpl->forward_subs = 0;
+    smpl->forward_what = SAMPLE_FWD_NOTHING;
     smpl->smpl_cb = NULL;
     smpl->smpl_cb_arg = NULL;
     smpl->smpl_timeout_evt = NULL;
@@ -727,33 +727,41 @@ int sample_set_addr(struct sample_session *smpl,
 }
 
 /* NOT SYNCHRONIZED (smpl_mtx) */
-static int sample_enable_subsamples(struct sample_session *smpl)
+static int sample_enable_forwarding(struct sample_session *smpl,
+                                    enum sample_forward what)
 {
     if (smpl->dnaddr.ss_family == AF_UNSPEC ||
         smpl->caddr.ss_family == AF_UNSPEC) {
         return -1;
     }
-    smpl->forward_subs = 1;
+    smpl->forward_what = what;
+    smpl->debug_last_sub_idx = 0;
     return 0;
 }
 
 /* NOT SYNCHRONIZED (smpl_mtx) */
-static int sample_disable_subsamples(struct sample_session *smpl)
+static int sample_disable_forwarding(struct sample_session *smpl)
 {
-    smpl->forward_subs = 0;
+    smpl->forward_what = SAMPLE_FWD_NOTHING;
     return 0;
 }
 
-int sample_cfg_subsamples(struct sample_session *smpl, int enable)
+int sample_cfg_forwarding(struct sample_session *smpl,
+                          enum sample_forward what)
 {
     int ret;
     sample_must_lock(smpl);
-    ret = (enable ?
-           sample_enable_subsamples(smpl) :
-           sample_disable_subsamples(smpl));
+    ret = (what != SAMPLE_FWD_NOTHING ?
+           sample_enable_forwarding(smpl, what) :
+           sample_disable_forwarding(smpl));
     sample_must_unlock(smpl);
     if (!ret) {
-        log_DEBUG("%s subsample forwarding", enable ? "enabled" : "disabled");
+        if (what == SAMPLE_FWD_NOTHING) {
+            log_DEBUG("disabled sample forwarding");
+        } else {
+            log_DEBUG("enabled board %s forwarding",
+                      what == SAMPLE_FWD_BSMP ? "sample" : "subsample");
+        }
     }
     return ret;
 }
@@ -1218,14 +1226,16 @@ static void sample_ddatafd_store_bsamps(struct sample_session *smpl)
 }
 
 /* NOT SYNCHRONIZED */
-static int sample_get_bsub_packet(struct sample_session *smpl,
-                                  struct sockaddr *dnaddr)
+static int sample_get_data_packet(struct sample_session *smpl)
 {
     struct iovec *iov = &smpl->dpktbuf;
     struct sockaddr_storage sas;
     struct sockaddr *sas_sa = (struct sockaddr*)&sas;
     socklen_t sas_len = sizeof(sas);
     ssize_t s;
+    struct sockaddr *dnaddr = (struct sockaddr*)&smpl->dnaddr;
+    const uint8_t mtype_expected = (smpl->forward_what == SAMPLE_FWD_BSMP ?
+                                    RAW_MTYPE_BSMP : RAW_MTYPE_BSUB);
     assert(iov->iov_base);
     while (1) {
         s = recvfrom(smpl->ddatafd, iov->iov_base, iov->iov_len, 0,
@@ -1266,9 +1276,9 @@ static int sample_get_bsub_packet(struct sample_session *smpl,
         return -1;
     }
     uint8_t mtype = raw_mtype(iov->iov_base);
-    if (mtype != RAW_MTYPE_BSUB) {
-        log_DEBUG("unexpected message type %s (%u) received on data socket",
-                  raw_mtype_str(mtype), mtype);
+    if (mtype != mtype_expected) {
+        log_DEBUG("unexpected data message type %s (%u); expecting %s",
+                  raw_mtype_str(mtype), mtype, raw_mtype_str(mtype_expected));
         return -1;
     }
     return 0;
@@ -1310,9 +1320,9 @@ static void sample_init_pmsg_from_bsub(BoardSubsample *msg_bsub,
 
 /* NOT SYNCHRONIZED */
 static int sample_pack_and_ship_pmsg(struct sample_session *smpl,
-                                     DnodeSample *dnsample,
-                                     struct sockaddr *caddr)
+                                     DnodeSample *dnsample)
 {
+    struct sockaddr *caddr = (struct sockaddr*)&smpl->caddr;
     size_t dnsample_psize = dnode_sample__get_packed_size(dnsample);
     if (dnsample_psize > SAMPLE_PBUF_ARR_SIZE) {
         log_WARNING("packed subsample buffer size %zu exceeds "
@@ -1338,8 +1348,7 @@ static int sample_pack_and_ship_pmsg(struct sample_session *smpl,
 }
 
 /* NOT SYNCHRONIZED */
-static int sample_convert_and_ship_subsample(struct sample_session *smpl,
-                                             struct sockaddr *caddr)
+static int sample_convert_and_ship_subsample(struct sample_session *smpl)
 {
     struct raw_pkt_bsub *bsub = (struct raw_pkt_bsub*)smpl->dpktbuf.iov_base;
     BoardSubsample msg_bsub = BOARD_SUBSAMPLE__INIT;
@@ -1356,23 +1365,94 @@ static int sample_convert_and_ship_subsample(struct sample_session *smpl,
         log_DEBUG("bsub GAP: %u", idx_gap);
     }
     smpl->debug_last_sub_idx = msg_bsub.samp_idx;
-    return sample_pack_and_ship_pmsg(smpl, &dnsample, caddr);
+    return sample_pack_and_ship_pmsg(smpl, &dnsample);
 }
 
 /* NOT SYNCHRONIZED */
-static void sample_ddatafd_bsubs(struct sample_session *smpl)
+static void sample_ddatafd_forward_bsub(struct sample_session *smpl)
 {
-    struct sockaddr *dnaddr = (struct sockaddr*)&smpl->dnaddr;
-    struct sockaddr *caddr = (struct sockaddr*)&smpl->caddr;
+    /* Convert the raw packet to protobuf and ship that to the client. */
+    if (sample_convert_and_ship_subsample(smpl)) {
+        log_DEBUG("%s: can't forward board subsample to client", __func__);
+    }
+}
+
+static void sample_init_pmsg_from_bsmp(BoardSample *msg_bsmp,
+                                       struct raw_pkt_bsmp *bsmp)
+{
+    uint8_t pflags = raw_pflags(bsmp);
+
+    msg_bsmp->has_is_live = 1;
+    msg_bsmp->is_live = !!(pflags & RAW_PFLAG_B_LIVE);
+
+    msg_bsmp->has_is_last = 1;
+    msg_bsmp->is_last = !!(pflags & RAW_PFLAG_B_LAST);
+
+    msg_bsmp->has_is_err = 1;
+    msg_bsmp->is_err = !!raw_pkt_is_err(bsmp);
+
+    msg_bsmp->has_exp_cookie = 1;
+    msg_bsmp->exp_cookie = raw_exp_cookie(bsmp);
+
+    msg_bsmp->has_board_id = 1;
+    msg_bsmp->board_id = bsmp->b_id;
+
+    msg_bsmp->has_samp_idx = 1;
+    msg_bsmp->samp_idx = bsmp->b_sidx;
+
+    msg_bsmp->has_chip_live = 1;
+    msg_bsmp->chip_live = bsmp->b_chip_live;
+
+    msg_bsmp->has_samples = 1;
+    ProtobufCBinaryData *samples = &msg_bsmp->samples;
+    memcpy(samples->data, bsmp->b_samps, samples->len);
+}
+
+static int sample_convert_and_ship_sample(struct sample_session *smpl)
+{
+    struct raw_pkt_bsmp *bsmp = (struct raw_pkt_bsmp*)smpl->dpktbuf.iov_base;
+    BoardSample msg_bsmp = BOARD_SAMPLE__INIT;
+    assert(sizeof(smpl->c_bsmp_samps) >= RAW_BSMP_NSAMP * sizeof(raw_samp_t));
+    msg_bsmp.samples.data = smpl->c_bsmp_samps;
+    msg_bsmp.samples.len = sizeof(smpl->c_bsmp_samps);
+    sample_init_pmsg_from_bsmp(&msg_bsmp, bsmp);
+    DnodeSample dnsample = DNODE_SAMPLE__INIT;
+    dnsample.sample = &msg_bsmp;
+    dnsample.has_type = 1;
+    dnsample.type = DNODE_SAMPLE__TYPE__SAMPLE;
+    uint32_t idx_gap = msg_bsmp.samp_idx - smpl->debug_last_sub_idx - 1;
+    if (idx_gap) {
+        log_DEBUG("bsmp GAP: %u", idx_gap);
+    }
+    smpl->debug_last_sub_idx = msg_bsmp.samp_idx;
+    return sample_pack_and_ship_pmsg(smpl, &dnsample);
+}
+
+static void sample_ddatafd_forward_bsamp(struct sample_session *smpl)
+{
+    if (sample_convert_and_ship_sample(smpl)) {
+        log_DEBUG("%s: can't forward board sample to client", __func__);
+    }
+}
+
+/* NOT SYNCHRONIZED */
+static void sample_ddatafd_forward(struct sample_session *smpl)
+{
     /* Fill the data node sample packet buffer. */
-    if (sample_get_bsub_packet(smpl, dnaddr)) {
-        log_DEBUG("%s: can't get data packet from data node", __func__);
-        recv(smpl->ddatafd, NULL, 0, 0);
+    if (sample_get_data_packet(smpl) == -1) {
         return;
     }
-    /* Convert the raw packet to protobuf and ship that to the client. */
-    if (sample_convert_and_ship_subsample(smpl, caddr)) {
-        log_DEBUG("%s: can't forward data node subsample to client", __func__);
+    /* Forward the packet. */
+    switch (smpl->forward_what) {
+    case SAMPLE_FWD_BSMP:
+        sample_ddatafd_forward_bsamp(smpl);
+        break;
+    case SAMPLE_FWD_BSUB:
+        sample_ddatafd_forward_bsub(smpl);
+        break;
+    default:
+        log_DEBUG("%s: spurious call!", __func__);
+        break;
     }
 }
 
@@ -1403,8 +1483,8 @@ static void sample_ddatafd_callback(evutil_socket_t ddatafd, short events,
     if (sample_expecting_bsamps(smpl)) {
         sample_ddatafd_store_bsamps(smpl);
         smpl->debug_print_ddatafd = 1;
-    } else if (sample_expecting_bsubs(smpl)) {
-        sample_ddatafd_bsubs(smpl);
+    } else if (sample_forwarding_data(smpl)) {
+        sample_ddatafd_forward(smpl);
         smpl->debug_print_ddatafd = 1;
     } else {
         if (smpl->debug_print_ddatafd) {

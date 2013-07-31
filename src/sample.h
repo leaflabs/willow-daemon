@@ -72,14 +72,24 @@ int sample_set_addr(struct sample_session *smpl,
                     struct sockaddr *addr,
                     enum sample_addr what);
 
+/** Sample forwarding configuration */
+enum sample_forward {
+    SAMPLE_FWD_NOTHING = 0,     /**< Forward no packets */
+    SAMPLE_FWD_BSMP = 1,        /**< Forward board subsamples as protobuf */
+    SAMPLE_FWD_BSUB = 2,        /**< Forward board samples as protobuf */
+};
+
 /**
- * Enable or disable subsample forwarding.
+ * Enable or disable live data forwarding.
  *
  * If enabling, you must previously have configured client and data
  * node addresses with sample_set_addr().
+ *
+ * @param smpl Sample handler
+ * @param what What to forward; use SAMPLE_NOTHING to disable.
  */
-int sample_cfg_subsamples(struct sample_session *smpl,
-                          int enable);
+int sample_cfg_forwarding(struct sample_session *smpl,
+                          enum sample_forward what);
 
 struct ch_storage;
 
