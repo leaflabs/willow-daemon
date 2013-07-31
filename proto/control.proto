@@ -259,18 +259,28 @@ message ControlCmdStore {
     optional StorageBackend backend = 17;
 }
 
+// Control acquisition.
+message ControlCmdAcquire {
+    // Experiment cookie; must be present if enable is true
+    optional uint64 exp_cookie = 1;
+    // Enable or disable acquisition. Must be present.
+    optional bool enable = 2;
+}
+
 // Follows union type guidelines as described here:
 // https://developers.google.com/protocol-buffers/docs/techniques#union
 message ControlCommand {
     enum Type {
         STREAM = 1;
         STORE = 2;
+        ACQUIRE = 3;
         REG_IO = 255;
     }
     optional Type type = 1;
 
     optional ControlCmdStream stream = 2;
     optional ControlCmdStore store = 3;
+    optional ControlCmdAcquire acquire = 4;
     optional RegisterIO reg_io = 15;
 }
 
