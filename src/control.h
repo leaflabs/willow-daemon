@@ -15,15 +15,17 @@
 
 /**
  * @file src/control.h
+ * @brief libevent-aware handler for client<->data node control messages.
  *
- * libevent-aware abstract class for client/data node control
- * connections. Basic usage (error handling omitted):
+ * A control_session intermediates between the protocol messages
+ * exchanged on the client control socket and the register I/O
+ * protocol on the data node control socket. It also manages any
+ * internal state (like sample forwarding or storage configuration)
+ * required by client commands.
  *
- *    struct control_session *cs = control_new(base,
- *                                             client_port,
- *                                             dnode_addr,
- *                                             dnode_c_port,
- *                                             sample_port);
+ * Basic usage (error handling omitted):
+ *
+ *    struct control_session *cs = control_new(...);
  *    event_base_dispatch(base);
  *    control_free(cs);
  */
