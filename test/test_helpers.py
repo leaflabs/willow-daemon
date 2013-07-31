@@ -8,30 +8,33 @@ import unittest
 
 import daemon_control
 
+DAEMON_PATH = os.environ['TEST_DAEMON_PATH']
+DNODE_IP = os.environ['TEST_DNODE_IP']
 DO_IT_LIVE = bool(int(os.environ['TEST_DO_IT_LIVE']))
+DUMMY_DNODE_PATH = os.environ['TEST_DUMMY_DNODE_PATH']
+SAMPSTREAMER_PATH = 'sampstreamer'
 
 def daemon_sub(*args, **kwargs):
-    sub = subprocess.Popen([os.environ['TEST_DAEMON_PATH'],
+    sub = subprocess.Popen([DAEMON_PATH,
                             '-N',
-                            '-A', os.environ['TEST_DNODE_IP']] +
+                            '-A', DNODE_IP] +
                            list(args),
                            **kwargs)
     return sub
 
 def dummy_dnode_sub(*args, **kwargs):
-    sub = subprocess.Popen([os.environ['TEST_DUMMY_DNODE_PATH']] + list(args),
-                           **kwargs)
+    sub = subprocess.Popen([DUMMY_DNODE_PATH] + list(args), **kwargs)
     return sub
 
 def sampstreamer_sub(*args, **kwargs):
-    sub = subprocess.Popen(['sampstreamer'] + list(args), **kwargs)
+    sub = subprocess.Popen([SAMPSTREAMER_PATH] + list(args), **kwargs)
     return sub
 
 class DaemonTest(unittest.TestCase):
-    """Parent class for tests which need leafysd and dummy-datanode running.
+    """Parent class for tests which need leafysd and/or other utilities.
 
-    Provides setUp() and tearDown() methods that ensure this
-    happens."""
+    Provides setUp() and tearDown() methods that ensure the needed
+    utilities etc. are available or running."""
 
     def __init__(self, methodName='runTest',
                  start_daemon=True, start_dnode=True,
