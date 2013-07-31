@@ -997,6 +997,30 @@ static void sample_worker_callback(__unused evutil_socket_t ignored,
  * libevent data socket handling
  */
 
+static void sample_log_address_mismatch(struct sample_session *smpl,
+                                        struct sockaddr *got)
+{
+    ssize_t s = sockutil_addrstrlen(got);
+    if (s == -1) {
+        log_DEBUG("ignoring data packet from unexpected address family");
+        return;
+    }
+    size_t got_strlen = (size_t)s;
+    char got_addrstr[got_strlen];
+    if (sockutil_ntop(got, got_addrstr, got_strlen) == -1) {
+        strncpy(got_addrstr, "<unknown>", got_strlen);
+    }
+    assert(smpl->dnaddr.ss_family != AF_UNSPEC);
+    struct sockaddr *dn_sa = (struct sockaddr*)&smpl->dnaddr;
+    size_t dnaddr_strlen = (size_t)sockutil_addrstrlen(dn_sa);
+    char dnaddr_addrstr[dnaddr_strlen];
+    if (sockutil_ntop(dn_sa, dnaddr_addrstr, dnaddr_strlen) == -1) {
+        strncpy(dnaddr_addrstr, "<unknown>", dnaddr_strlen);
+    }
+    log_DEBUG("ignoring data packet: expected source address %s, got %s",
+              dnaddr_addrstr, got_addrstr);
+}
+
 /* NOT SYNCHRONIZED (rd bsamp_mtx) */
 static inline size_t sample_last_sidx(struct sample_session *smpl)
 {
@@ -1073,7 +1097,7 @@ static int sample_ddatafd_grab_bsamps(struct sample_session *smpl)
          */
         if (!sockutil_addr_eq((struct sockaddr*)&smpl->dnaddr,
                               (struct sockaddr*)&sas, 0)) {
-            log_DEBUG("ignoring data socket packet from unexpected address");
+            sample_log_address_mismatch(smpl, (struct sockaddr*)&sas);
             n_bad++;
             continue;
         }
@@ -1236,7 +1260,7 @@ static int sample_get_bsub_packet(struct sample_session *smpl,
         return -1;
     }
     if (!sockutil_addr_eq(dnaddr, sas_sa, 0)) {
-        log_DEBUG("ignoring data packet from unexpected address");
+        sample_log_address_mismatch(smpl, sas_sa);
         return -1;
     }
     if (raw_pkt_ntoh(iov->iov_base)) {
