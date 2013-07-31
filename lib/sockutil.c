@@ -15,6 +15,7 @@
 
 #include "sockutil.h"
 
+#include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -31,6 +32,32 @@
 #include <sys/socket.h>
 
 #include "logging.h"
+
+int sockutil_ntop(struct sockaddr *a, char *dst, socklen_t size)
+{
+    const char *in_s = NULL;
+    switch (a->sa_family) {
+    case AF_INET: {
+        struct sockaddr_in *ain = (struct sockaddr_in*)a;
+        if (size < INET_ADDRSTRLEN) {
+            return -1;
+        }
+        in_s = inet_ntop(AF_INET, &ain->sin_addr, dst, size);
+        break;
+    }
+    case AF_INET6: {
+        struct sockaddr_in6 *ain6 = (struct sockaddr_in6*)a;
+        if (size < INET6_ADDRSTRLEN) {
+            return -1;
+        }
+        in_s = inet_ntop(AF_INET6, &ain6->sin6_addr, dst, size);
+        break;
+    }
+    default:
+        return -1;
+    }
+    return in_s == NULL ? -1 : 0;
+}
 
 static int sockutil_a4_eq(struct sockaddr_in *a, struct sockaddr_in *b,
                           unsigned ignore)

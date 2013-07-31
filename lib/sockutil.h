@@ -49,6 +49,20 @@ static inline ssize_t sockutil_addrstrlen(struct sockaddr *a)
     }
 }
 
+/**
+ * Like inet_ntop(), but address-family-safe.
+ *
+ * Use sockutil_addrstrlen() to calculate a buffer size for dst if
+ * you're unsure.
+ *
+ * @param a Socket address
+ * @param dst String to write a's address to in presentation format
+ * @param size Number of bytes in dst
+ * @return 0 on success, -1 on error
+ * @see sockutil_addrstrlen()
+ */
+int sockutil_ntop(struct sockaddr *a, char *dst, socklen_t size);
+
 #define SOCKUTIL_IGN_PORT 0x2   /* Port */
 #define SOCKUTIL_IGN_ADDR 0x4   /* Address */
 #define SOCKUTIL_IGN_FLOW 0x8   /* IPv6 flow information */
