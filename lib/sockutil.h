@@ -27,7 +27,8 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 
-static inline socklen_t sockutil_addrlen(struct sockaddr *a) {
+static inline socklen_t sockutil_addrlen(struct sockaddr *a)
+{
     switch (a->sa_family) {
     case AF_INET:
         return sizeof(struct sockaddr_in);
