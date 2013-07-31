@@ -3,7 +3,7 @@ from daemon_control import *
 
 class AbstractTestStream(test_helpers.DaemonTest):
 
-    # TODO: start proto2bytes; ensure it yields data
+    # TODO: start proto2bytes when in non-raw mode; ensure it yields data
     # WISHLIST: different port for proto2bytes than default
 
     def __init__(self, *args, **kwargs):
@@ -43,9 +43,15 @@ class TestSubStream(AbstractTestStream):
     def testSubStream(self):
         self.do_test(BOARD_SUBSAMPLE)
 
+    def testSubStreamRaw(self):
+        self.do_test(BOARD_SUBSAMPLE_RAW)
+
 class TestSmpStream(AbstractTestStream):
     """Test that board sample stream enable/disable commands get SUCCESS
     responses."""
 
     def testSmpStream(self):
         self.do_test(BOARD_SAMPLE)
+
+    def testSmpStreamRaw(self):
+        self.do_test(BOARD_SAMPLE_RAW)
