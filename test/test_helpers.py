@@ -13,6 +13,8 @@ DNODE_IP = os.environ['TEST_DNODE_IP']
 DO_IT_LIVE = bool(int(os.environ['TEST_DO_IT_LIVE']))
 DUMMY_DNODE_PATH = os.environ['TEST_DUMMY_DNODE_PATH']
 SAMPSTREAMER_PATH = 'sampstreamer'
+PROTO2BYTES_PATH = 'proto2bytes'
+PROTO2BYTES_DEFAULT_PORT = 7654
 
 def daemon_sub(*args, **kwargs):
     sub = subprocess.Popen([DAEMON_PATH,
@@ -30,6 +32,10 @@ def sampstreamer_sub(*args, **kwargs):
     sub = subprocess.Popen([SAMPSTREAMER_PATH] + list(args), **kwargs)
     return sub
 
+def proto2bytes_sub(*args, **kwargs):
+    sub = subprocess.popen([PROTO2BYTES_PATH] + list(args), **kwargs)
+    return sub
+
 class DaemonTest(unittest.TestCase):
     """Parent class for tests which need leafysd and/or other utilities.
 
@@ -41,6 +47,8 @@ class DaemonTest(unittest.TestCase):
                  daemon_args=[],
                  start_dnode=True,
                  dnode_args=[],
+                 start_proto2bytes=False,
+                 proto2bytes_args=[],
                  start_sampstreamer=False,
                  sampstreamer_args=[]):
         self.longMessage = True
@@ -51,6 +59,8 @@ class DaemonTest(unittest.TestCase):
         self.dnode_args = dnode_args
         self.start_sampstreamer = start_sampstreamer
         self.sampstreamer_args = sampstreamer_args
+        self.start_proto2bytes = start_proto2bytes
+        self.proto2bytes_args = proto2bytes_args
 
     def setUp(self):
 
@@ -65,6 +75,9 @@ class DaemonTest(unittest.TestCase):
         if self.start_sampstreamer and not DO_IT_LIVE:
             self.sampstreamer = sampstreamer_sub(*self.sampstreamer_args,
                                                  **self.sub_kwargs)
+        if self.start_proto2bytes:
+            self.proto2bytes = proto2bytes_sub(*self.proto2bytes_args,
+                                               **self.sub_kwargs)
 
         cmds = [daemon_control.reg_read(daemon_control.MOD_CENTRAL,
                                         daemon_control.CENTRAL_STATE)]
@@ -98,4 +111,7 @@ class DaemonTest(unittest.TestCase):
         if self.start_sampstreamer and not DO_IT_LIVE:
             self.sampstreamer.terminate()
             self.sampstreamer.wait()
+        if self.start_proto2bytes:
+            self.proto2bytes.terminate()
+            self.proto2bytes.wait()
         self.dn.close()
