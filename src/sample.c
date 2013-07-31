@@ -1201,12 +1201,13 @@ static int sample_get_bsub_packet(struct sample_session *smpl,
 {
     struct iovec *iov = &smpl->dpktbuf;
     struct sockaddr_storage sas;
+    struct sockaddr *sas_sa = (struct sockaddr*)&sas;
+    socklen_t sas_len = sizeof(sas);
     ssize_t s;
     assert(iov->iov_base);
     while (1) {
-        socklen_t sas_len = sizeof(sas);
         s = recvfrom(smpl->ddatafd, iov->iov_base, iov->iov_len, 0,
-                     (struct sockaddr*)&sas, &sas_len);
+                     sas_sa, &sas_len);
         if (s == -1) {
             switch (errno) {
 #if EWOULDBLOCK != EAGAIN
@@ -1234,7 +1235,7 @@ static int sample_get_bsub_packet(struct sample_session *smpl,
                     sas.ss_family);
         return -1;
     }
-    if (!sockutil_addr_eq(dnaddr, (struct sockaddr*)&sas, 0)) {
+    if (!sockutil_addr_eq(dnaddr, sas_sa, 0)) {
         log_DEBUG("ignoring data packet from unexpected address");
         return -1;
     }
