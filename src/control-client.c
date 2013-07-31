@@ -973,6 +973,22 @@ static int client_ensure_txn_ok(struct control_session *cs,
 
 typedef void (*cmd_proc_fn)(struct control_session*);
 
+/*
+ * Advance to the next control transaction.
+ *
+ * If there are more transactions to come, set the wake_why flag so
+ * the data node handler knows it's got work to do.
+ */
+static int client_start_next_txn(struct control_session *cs)
+{
+    cs->ctl_cur_txn++;
+    if ((size_t)cs->ctl_cur_txn != cs->ctl_n_txns) {
+        cs->wake_why |= CONTROL_WHY_DNODE_TXN;
+        return 0;
+    }
+    return 1;
+}
+
 /* Handle a client command with embedded RegisterIO */
 static void client_process_cmd_regio(struct control_session *cs)
 {
@@ -1176,13 +1192,7 @@ static void client_process_res_stream(struct control_session *cs)
         }
     }
 
-    /*
-     * OK, that last transaction was a success. If there are more to
-     * come, keep going.
-     */
-    cs->ctl_cur_txn++;
-    if ((size_t)cs->ctl_cur_txn != cs->ctl_n_txns) {
-        cs->wake_why |= CONTROL_WHY_DNODE_TXN;
+    if (!client_start_next_txn(cs)) {
         return;
     }
 
@@ -1402,21 +1412,15 @@ static void client_process_res_store(struct control_session *cs)
     }
 
     /*
-     * OK, that last transaction was a success. If there are more to
-     * come, keep going.
-     */
-    cs->ctl_cur_txn++;
-    if ((size_t)cs->ctl_cur_txn != cs->ctl_n_txns) {
-        cs->wake_why |= CONTROL_WHY_DNODE_TXN;
-        return;
-    }
-
-    /*
+     * Advanced to the next transaction.
+     *
      * If there aren't any more to come, the incoming packets are en
      * route. The sample callback handler we registered with
      * sample_expect_bsamps() will let us know when we need to send
-     * the result to the client.
+     * the result to the client. So either way, there's nothing for us
+     * to send, and we're done here.
      */
+    client_start_next_txn(cs);
 }
 
 static void client_process_cmd(struct control_session *cs)
