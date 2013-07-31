@@ -189,8 +189,6 @@ struct sample_session {
 
 /*
  * pthreads helpers
- *
- * TODO abstract out what's in common with control.c
  */
 
 static void
