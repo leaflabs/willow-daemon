@@ -169,7 +169,7 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
                                          * bit 0 is reset line */
 #define RAW_RADDR_DAQ_BSUB0_CFG    0x80 /* subsample #0 configuration */
     /* ... */
-#define RAW_RADDR_DAQ_BSUB31_CFG   0x80 /* subsample #31 configuration */
+#define RAW_RADDR_DAQ_BSUB31_CFG   (0x80+31) /* subsample #31 configuration */
 #define RAW_RADDR_DAQ_NREGS (RAW_RADDR_DAQ_BSUB31_CFG + 1)
 /* RAW_RTYPE_UDP */
 #define RAW_RADDR_UDP_ERR          0x00 /* Module error flags */
