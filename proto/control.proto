@@ -256,9 +256,7 @@ message ControlCmdStore {
     // will start from the first sample that gets received.
     optional uint32 start_sample = 3;
 
-    // What type of file to store samples into; defaults to HDF5.  If
-    // missing, samples won't be stored. If present, sample_type must
-    // be BOARD_SAMPLE.
+    // What type of file to store samples into; defaults to HDF5.
     optional StorageBackend backend = 17;
 }
 
