@@ -249,7 +249,8 @@ message ControlCmdStore {
     // Where to store samples; must be present.
     optional string path = 1;
 
-    // How many samples to store; must be present.
+    // How many samples to store. If missing, retrieve all stored
+    // samples.
     optional uint32 nsamples = 2;
 
     // What sample index should arrive first. If missing, the count
