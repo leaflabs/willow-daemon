@@ -99,7 +99,9 @@ struct ch_storage;
  * Configuration structure for a future board sample transfer
  */
 struct sample_bsamp_cfg {
-    size_t nsamples;            /**< Number of samples to expect */
+    /**
+     * Number of samples to expect; this must be positive. */
+    size_t nsamples;
 
     /**
      * Index of first sample to expect, or -1.

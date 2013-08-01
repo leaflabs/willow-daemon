@@ -877,6 +877,11 @@ int sample_expect_bsamps(struct sample_session *smpl,
         assert(0);
         return -1;
     }
+    if (cfg->nsamples == 0) {
+        log_ERR("%s: cfg->nsamples==0", __func__);
+        assert(0);
+        return -1;
+    }
 
     log_DEBUG("expecting %zu board samples, start index %zd",
               cfg->nsamples, cfg->start_sample);
