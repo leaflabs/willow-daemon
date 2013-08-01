@@ -1345,6 +1345,9 @@ static void client_process_cmd_store(struct control_session *cs)
         ch_storage_free(chns);
     }
     if (bs_cfg) {
+        if (bs_cfg == cpriv->bs_cfg) {
+            cpriv->bs_cfg = NULL;
+        }
         free(bs_cfg);
     }
 }
