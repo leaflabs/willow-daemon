@@ -100,8 +100,13 @@ struct ch_storage;
  */
 struct sample_bsamp_cfg {
     size_t nsamples;            /**< Number of samples to expect */
-    /** Index of first sample to expect. This currently must be positive. */
+
+    /**
+     * Index of first sample to expect, or -1.
+     *
+     * If -1, start counting from the first board sample received. */
     ssize_t start_sample;
+
     /**
      * Channel storage handler.
      *
