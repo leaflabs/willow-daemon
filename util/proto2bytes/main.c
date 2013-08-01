@@ -31,6 +31,8 @@ static void usage(int exit_status)
 {
     printf("Usage: %s [-d|-c <ch>] [-p <port>] [-s]\n"
            "Options:\n"
+           "  -A, --all-sub"
+           "\tOutput all 32 channels. Implies subsamples.\n"
            "  -c, --channel"
            "\t(16-bit) channel to output\n"
            "  -d, --dac"
@@ -54,6 +56,7 @@ static void usage(int exit_status)
       .channel = -1,               \
       .enable_string = 0,          \
       .board_samples = 0,          \
+      .all_sub_channels = 0,       \
     }
 
 struct arguments {
@@ -62,14 +65,19 @@ struct arguments {
     unsigned channel;
     int enable_string;
     int board_samples;
+    int all_sub_channels;
 };
 
 static void parse_args(struct arguments* args, int argc, char *const argv[])
 {
     int print_usage = 0;
-    const char shortopts[] = "c:dhMp:s";
+    const char shortopts[] = "Ac:dhMp:s";
     struct option longopts[] = {
         /* Keep these sorted with shortopts. */
+        { .name = "all-sub",
+          .has_arg = no_argument,
+          .flag = NULL,
+          .val = 'A' },
         { .name = "channel",
           .has_arg = required_argument,
           .flag = NULL,
@@ -109,6 +117,9 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
             if (print_usage) {
                 usage(EXIT_SUCCESS);
             }
+        case 'A':
+            args->all_sub_channels = 1;
+            break;
         case 'c':
             args->output = OUT_CHANNEL;
             int ch = strtol(optarg, (char**)0, 10);
@@ -146,6 +157,13 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
     if (args->output == OUT_DAC && args->board_samples) {
         fprintf(stderr, "DAC output for board samples is unimplemented\n");
         exit(EXIT_FAILURE);
+    }
+    if (args->all_sub_channels && args->board_samples) {
+        fprintf(stderr, "all-sub and board-samples are mutually exclusive\n");
+        exit(EXIT_FAILURE);
+    }
+    if (args->all_sub_channels) {
+        args->output = OUT_CHANNEL;
     }
 }
 
@@ -185,6 +203,20 @@ uint32_t handle_subsample(DnodeSample *samp, struct arguments *args)
             printf("%u\n", dac);
         } else {
             __unused ssize_t n = write(STDOUT_FILENO, &dac, sizeof(dac));
+        }
+    } else if (args->all_sub_channels) {
+        if (args->enable_string) {
+            for (size_t i = 0; i < samp->subsample->n_samples; i++) {
+                printf("%u%s", samp->subsample->samples[i],
+                       i < samp->subsample->n_samples - 1 ? "," : "\n");
+            }
+        } else {
+            uint16_t samp16[samp->subsample->n_samples];
+            for (size_t i = 0; i < samp->subsample->n_samples; i++) {
+                samp16[i] = (uint16_t)(samp->subsample->samples[i] & 0xFFFF);
+            }
+            size_t s = samp->subsample->n_samples * sizeof(uint16_t);
+            __unused ssize_t n = write(STDOUT_FILENO, samp16, s);
         }
     } else {
         uint16_t chan = (uint16_t)samp->subsample->samples[args->channel];
