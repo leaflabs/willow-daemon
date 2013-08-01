@@ -29,6 +29,23 @@
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 
+#define STRLEN_RAW_RADDR_ 10    /* strlen("RAW_ADDR_") */
+#define DEBUG_LOG_RCMD_IOD(mtype, ph)                           \
+    (mtype == RAW_MTYPE_REQ ?                                   \
+        (((ph)->p_flags & RAW_PFLAG_RIOD) == RAW_PFLAG_RIOD_R ? \
+         "(r)" : "(w)") :                                       \
+     "   ")
+#define DEBUG_LOG_RCMD(mtype, rcmd, ph)                                 \
+    log_DEBUG("%s %u: pflags 0x%x %s, reg=%s, val=%u (0x%x)",           \
+              mtype == RAW_MTYPE_REQ ? "req" : "res",                   \
+              (rcmd)->r_id,                                             \
+              (ph)->p_flags,                                            \
+              DEBUG_LOG_RCMD_IOD(mtype, ph),                            \
+              raw_r_addr_str((rcmd)->r_type,                            \
+                             (rcmd)->r_addr) + STRLEN_RAW_RADDR_,       \
+              (rcmd)->r_val,                                            \
+              (rcmd)->r_val)
+
 struct dnode_priv {
     struct evbuffer *d_rbuf;    /* Buffers control session ->req_pkt */
 };
@@ -181,7 +198,9 @@ static int dnode_read(struct control_session *cs)
                           );
             }
             control_must_lock(cs);
-            memcpy(&cs->ctl_txns[cs->ctl_cur_txn].res_pkt, &pkt, sizeof(pkt));
+            struct raw_pkt_cmd *res = &cs->ctl_txns[cs->ctl_cur_txn].res_pkt;
+            memcpy(res, &pkt, sizeof(pkt));
+            DEBUG_LOG_RCMD(mtype, raw_res(res), &res->ph);
             control_must_unlock(cs);
             ret |= CONTROL_WHY_CLIENT_RES;
             break;
@@ -219,6 +238,7 @@ static void dnode_thread(struct control_session *cs)
     struct raw_pkt_cmd req_copy;
     memcpy(&req_copy, cur_req, sizeof(req_copy));
     if (raw_pkt_hton(&req_copy) == 0) {
+        DEBUG_LOG_RCMD(raw_mtype(cur_req), raw_req(cur_req), &cur_req->ph);
         bufferevent_write(cs->dbev, &req_copy, sizeof(req_copy));
     } else {
         log_ERR("ignoring attempt to send malformed request packet");
