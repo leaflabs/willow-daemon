@@ -29,6 +29,9 @@
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 
+#define LOCAL_DEBUG 0 /* extra-verbose debugging in this translation unit */
+
+#if LOCAL_DEBUG
 #define STRLEN_RAW_RADDR_ 10    /* strlen("RAW_ADDR_") */
 #define DEBUG_LOG_RCMD_IOD(mtype, ph)                           \
     (mtype == RAW_MTYPE_REQ ?                                   \
@@ -45,6 +48,9 @@
                              (rcmd)->r_addr) + STRLEN_RAW_RADDR_,       \
               (rcmd)->r_val,                                            \
               (rcmd)->r_val)
+#else
+#define DEBUG_LOG_RCMD(mtype, rcmd, ph) ((void)0)
+#endif
 
 struct dnode_priv {
     struct evbuffer *d_rbuf;    /* Buffers control session ->req_pkt */
