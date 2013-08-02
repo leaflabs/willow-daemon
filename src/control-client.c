@@ -55,10 +55,13 @@ struct client_priv {
     ControlResponse *c_rsp;     /* Latest response to send, or NULL.
                                  * Worker thread only. */
 
-    struct evbuffer *c_pbuf; /* buffers c_cmd protocol buffer while waiting */
-
-    struct evbuffer *c_cmdlen_buf; /* buffers c_cmdlen while we're waiting */
-    client_cmd_len_t c_cmdlen;     /* length of c_pbuf, NOT length of c_cmd */
+    struct evbuffer *c_pbuf; /* buffers c_cmd's protocol buffer until
+                              * all c_pbuflen bytes of it are received. */
+    struct evbuffer *c_pbuflen_buf; /* buffers c_pbuflen until all
+                                     * sizeof(client_cmd_len_t)
+                                     * bytes are received. */
+    client_cmd_len_t c_pbuflen;     /* length of c_pbuf, which client
+                                     * sends before c_pbuf */
 
     /* Allocate a command and response's worth of contiguous space at
      * client_start() time, rather than using e.g. evbuffer_pullup()
@@ -118,8 +121,8 @@ static void client_free_priv(struct control_session *cs)
     if (cpriv->c_pbuf) {
         evbuffer_free(cpriv->c_pbuf);
     }
-    if (cpriv->c_cmdlen_buf) {
-        evbuffer_free(cpriv->c_cmdlen_buf);
+    if (cpriv->c_pbuflen_buf) {
+        evbuffer_free(cpriv->c_pbuflen_buf);
     }
     client_halt_ongoing_transfer(cs);
     free(cpriv);
@@ -143,7 +146,7 @@ static void client_reset_state_locked(struct control_session *cs)
         control_command__free_unpacked(cpriv->c_cmd, NULL);
     }
     cpriv->c_cmd = NULL;
-    cpriv->c_cmdlen = CLIENT_CMDLEN_WAITING;
+    cpriv->c_pbuflen = CLIENT_CMDLEN_WAITING;
     if (cpriv->c_rsp) {
         control_response__free_unpacked(cpriv->c_rsp, NULL);
     }
@@ -156,7 +159,7 @@ static void client_reset_state_locked(struct control_session *cs)
     cpriv->bs_restarted = 0;
     cpriv->bs_nwritten_cache = 0;
     drain_evbuf(cpriv->c_pbuf);
-    drain_evbuf(cpriv->c_cmdlen_buf);
+    drain_evbuf(cpriv->c_pbuflen_buf);
 }
 
 static struct ch_storage *client_new_ch_storage(const char *path,
@@ -470,7 +473,7 @@ static int client_start(struct control_session *cs)
 {
     struct client_priv *priv = NULL;
     struct evbuffer *c_pbuf = NULL;
-    struct evbuffer *c_cmdlen_buf = NULL;
+    struct evbuffer *c_pbuflen_buf = NULL;
 
     priv = malloc(sizeof(struct client_priv));
     if (!priv) {
@@ -480,15 +483,15 @@ static int client_start(struct control_session *cs)
     if (!c_pbuf) {
         goto bail;
     }
-    c_cmdlen_buf = evbuffer_new();
-    if (!c_cmdlen_buf) {
+    c_pbuflen_buf = evbuffer_new();
+    if (!c_pbuflen_buf) {
         goto bail;
     }
 
     priv->c_cmd = NULL;
     priv->c_rsp = NULL;
     priv->c_pbuf = c_pbuf;
-    priv->c_cmdlen_buf = c_cmdlen_buf;
+    priv->c_pbuflen_buf = c_pbuflen_buf;
     priv->bs_cfg = NULL;
     priv->bs_expecting = 0;
     priv->bs_restarted = 0;
@@ -505,8 +508,8 @@ static int client_start(struct control_session *cs)
     if (c_pbuf) {
         evbuffer_free(c_pbuf);
     }
-    if (c_cmdlen_buf) {
-        evbuffer_free(c_cmdlen_buf);
+    if (c_pbuflen_buf) {
+        evbuffer_free(c_pbuflen_buf);
     }
     return -1;
 }
@@ -526,8 +529,8 @@ static void client_ensure_clean_locked(struct control_session *cs)
     assert(cpriv->c_cmd == NULL);
     assert(cpriv->c_pbuf);
     assert(evbuffer_get_length(cpriv->c_pbuf) == 0);
-    assert(evbuffer_get_length(cpriv->c_cmdlen_buf) == 0);
-    assert(cpriv->c_cmdlen == CLIENT_CMDLEN_WAITING);
+    assert(evbuffer_get_length(cpriv->c_pbuflen_buf) == 0);
+    assert(cpriv->c_pbuflen == CLIENT_CMDLEN_WAITING);
     assert(cs->ctl_txns == NULL);
     assert(cs->ctl_cur_txn == -1);
 }
@@ -558,44 +561,44 @@ static int client_got_entire_pbuf(struct control_session *cs)
     struct client_priv *cpriv = cs->cpriv;
 
     /* If waiting for a length prefix, buffer it into
-     * cpriv->c_cmdlen_buf. If that fills the buffer, unpack it into
-     * cs->c_cmdlen. */
-    if (cpriv->c_cmdlen == CLIENT_CMDLEN_WAITING) {
-        size_t cmdlen_buflen = evbuffer_get_length(cpriv->c_cmdlen_buf);
-        evbuffer_remove_buffer(evb, cpriv->c_cmdlen_buf,
+     * cpriv->c_pbuflen_buf. If that fills the buffer, unpack it into
+     * cs->c_pbuflen. */
+    if (cpriv->c_pbuflen == CLIENT_CMDLEN_WAITING) {
+        size_t cmdlen_buflen = evbuffer_get_length(cpriv->c_pbuflen_buf);
+        evbuffer_remove_buffer(evb, cpriv->c_pbuflen_buf,
                                CLIENT_CMDLEN_SIZE - cmdlen_buflen);
-        assert(evbuffer_get_length(cpriv->c_cmdlen_buf) <= CLIENT_CMDLEN_SIZE);
-        if (evbuffer_get_length(cpriv->c_cmdlen_buf) < CLIENT_CMDLEN_SIZE) {
+        assert(evbuffer_get_length(cpriv->c_pbuflen_buf) <= CLIENT_CMDLEN_SIZE);
+        if (evbuffer_get_length(cpriv->c_pbuflen_buf) < CLIENT_CMDLEN_SIZE) {
             goto out;
-        } else { /* length(cs->c_cmdlen_buf) == CLIENT_CMDLEN_SIZE */
-            evbuffer_remove(cpriv->c_cmdlen_buf, &cpriv->c_cmdlen,
+        } else { /* length(cs->c_pbuflen_buf) == CLIENT_CMDLEN_SIZE */
+            evbuffer_remove(cpriv->c_pbuflen_buf, &cpriv->c_pbuflen,
                             CLIENT_CMDLEN_SIZE);
-            cpriv->c_cmdlen = client_cmd_ntoh(cpriv->c_cmdlen);
+            cpriv->c_pbuflen = client_cmd_ntoh(cpriv->c_pbuflen);
         }
     }
 
     /* Sanity-check the received protocol buffer length. */
-    if (cpriv->c_cmdlen > CLIENT_CMD_MAX_SIZE) {
+    if (cpriv->c_pbuflen > CLIENT_CMD_MAX_SIZE) {
         return -1;              /* Too long; kill the connection. */
     }
 
     /* We've received a complete length prefix, so shove any
      * new/additional bits into cpriv->c_pbuf. */
     size_t pbuf_len = evbuffer_get_length(cpriv->c_pbuf);
-    evbuffer_remove_buffer(evb, cpriv->c_pbuf, cpriv->c_cmdlen - pbuf_len);
+    evbuffer_remove_buffer(evb, cpriv->c_pbuf, cpriv->c_pbuflen - pbuf_len);
 
  out:
-    return (cpriv->c_cmdlen != CLIENT_CMDLEN_WAITING &&
-            evbuffer_get_length(cpriv->c_pbuf) == (unsigned)cpriv->c_cmdlen);
+    return (cpriv->c_pbuflen != CLIENT_CMDLEN_WAITING &&
+            evbuffer_get_length(cpriv->c_pbuf) == (unsigned)cpriv->c_pbuflen);
 }
 
 /* NOT SYNCHRONIZED */
 static void client_reset_for_next_pbuf(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
-    cpriv->c_cmdlen = CLIENT_CMDLEN_WAITING;
+    cpriv->c_pbuflen = CLIENT_CMDLEN_WAITING;
     assert(evbuffer_get_length(cpriv->c_pbuf) == 0);
-    assert(evbuffer_get_length(cpriv->c_cmdlen_buf) == 0);
+    assert(evbuffer_get_length(cpriv->c_pbuflen_buf) == 0);
 }
 
 static int client_read(struct control_session *cs)
