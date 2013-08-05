@@ -230,7 +230,7 @@ message ControlCmdStream {
     optional SampleType sample_type = 4; // default is BOARD_SUBSAMPLE
 }
 
-// Store board samples received from the daemon to disk.
+// Store board samples received from the data node to disk.
 //
 // This command can be used to store live or pre-recorded samples. To
 // store live samples, leave "start_sample" missing. To store
