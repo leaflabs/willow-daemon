@@ -206,12 +206,12 @@ message RegisterIO {
 //
 // In return, you'll get a ControlResult (see below).
 
-// Configure a live stream. Currently, only subsamples are supported.
+// Configure sample forwarding.
 //
 // If you set one of dest_udp_addr4 and dest_udp_port, you must set
 // the other as well.
 //
-// If "enable" is present and true, you'll start to get BoardSubsample
+// If "enable" is present and true, you'll start to get DnodeSample
 // (see data.proto) messages via UDP at IPv4 address "dest_udp_addr4",
 // on port "dest_udp_port". You can omit the address/port if you've
 // previously configured them and just want to turn the stream back on
