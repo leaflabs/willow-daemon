@@ -102,7 +102,7 @@ class DaemonTest(unittest.TestCase):
 
     def bail(self):
         self.tearDown()
-        raise IOError("can't start up necessary processes")
+        raise IOError("can't start up/set up necessary processes")
 
     def tearDown(self):
         if self.start_dnode and not DO_IT_LIVE:
