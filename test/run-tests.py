@@ -53,7 +53,7 @@ tests_to_run = sys.argv[1:]
 if 'DO_IT_LIVE' in os.environ:
     do_it_live = bool(int(os.environ['DO_IT_LIVE']))
 else:
-    do_it_live = False
+    do_it_live = True
 dnode_ip = DEFAULT_LIVE_DNODE_ADDR if do_it_live else 'localhost'
 
 # Find the daemon and the dummy datanode
