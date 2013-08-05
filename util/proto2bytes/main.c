@@ -149,9 +149,11 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
             usage(EXIT_FAILURE);
         }
     }
-    if (args->output == OUT_CHANNEL && (args->channel > RAW_BSUB_NSAMP)) {
+    unsigned max_chan = (args->board_samples ?
+                         RAW_BSMP_NSAMP : RAW_BSUB_NSAMP);
+    if (args->output == OUT_CHANNEL && args->channel > max_chan) {
         fprintf(stderr, "channel %u is out of range (max is %u)\n",
-                args->channel, RAW_BSUB_NSAMP);
+                args->channel, max_chan);
         exit(EXIT_FAILURE);
     }
     if (args->output == OUT_DAC && args->board_samples) {
@@ -258,6 +260,15 @@ int main(int argc, char *argv[])
         DnodeSample *samp = dnode_sample__unpack(NULL, (size_t)n, buf);
         if (!samp) {
             fprintf(stderr, "unpacking failed; skipping packet\n");
+            continue;
+        }
+        if (args.board_samples) {
+            if (samp->sample == NULL && samp->subsample) {
+                fprintf(stderr, "got subsample, but expected board sample\n");
+                continue;
+            }
+        } else if (samp->subsample == NULL && samp->sample) {
+            fprintf(stderr, "got board sample, but expected subsample\n");
             continue;
         }
         uint32_t cur_idx = (args.board_samples ?
