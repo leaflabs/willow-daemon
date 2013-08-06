@@ -232,6 +232,10 @@ static int dnode_read(struct control_session *cs)
     return ret;
 }
 
+static void dnode_partner_closed(__unused struct control_session *ignored)
+{
+}
+
 static void dnode_thread(struct control_session *cs)
 {
     /* We should only wake up when the client handler has a request
@@ -261,6 +265,7 @@ static const struct control_ops dnode_control_operations = {
     .cs_close = dnode_close,
     .cs_read = dnode_read,
     .cs_thread = dnode_thread,
+    .cs_partner_closed = dnode_partner_closed,
 };
 
 const struct control_ops *control_dnode_ops = &dnode_control_operations;

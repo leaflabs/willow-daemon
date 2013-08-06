@@ -192,6 +192,15 @@ struct control_ops {
      * return -1. */
     int (*cs_read)(struct control_session *cs);
 
+    /* Callback for when the other side of the connection closed.
+     *
+     * E.g., if the client socket closes, then the data node's
+     * cs_partner_closed() gets called, and vice-versa.
+     *
+     * This function is called with the control_session mutex held.
+     */
+    void (*cs_partner_closed)(struct control_session *cs);
+
     /* Worker thread callback.
      *
      * This is called with the control_session mutex held. */

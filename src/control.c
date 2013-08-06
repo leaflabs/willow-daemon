@@ -77,6 +77,7 @@ static void control_client_close(struct control_session *cs)
         log_DEBUG("client closing; clearing data node transactions");
         control_clear_transactions(cs, 1);
     }
+    control_dnode_ops->cs_partner_closed(cs);
     control_must_unlock(cs);
     if (control_client_ops->cs_close) {
         control_client_ops->cs_close(cs);
@@ -115,14 +116,7 @@ static void control_dnode_close(struct control_session *cs)
     assert(cs->dbev);           /* or we never opened */
     bufferevent_free(cs->dbev);
     cs->dbev = NULL;
-    if (cs->ctl_txns) {
-        /* FIXME if there are ongoing transactions, then the client
-         * connection should also be open; we should get the
-         * client-side code to send an error response (how?), or a
-         * naive client will block forever. */
-        log_INFO("halting data node I/O due to closed dnode connection");
-        control_clear_transactions(cs, 1);
-    }
+    control_client_ops->cs_partner_closed(cs);
     safe_p_mutex_lock(&cs->dnode_conn_mtx);
     cs->dnode_conn_why |= CONTROL_DCONN_WHY_CONN;
     safe_p_mutex_unlock(&cs->dnode_conn_mtx);

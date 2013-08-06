@@ -667,6 +667,19 @@ static int client_read(struct control_session *cs)
     return ret;
 }
 
+/* NOT SYNCHRONIZED (mtx) */
+static void client_partner_closed(struct control_session *cs)
+{
+    if (cs->ctl_txns) {
+        /* FIXME if there are ongoing transactions, then the client
+         * connection should also be open; we should get the
+         * client-side code to send an error response (how?), or a
+         * naive client will block forever. */
+        log_INFO("halting data node I/O due to closed dnode connection");
+        control_clear_transactions(cs, 1);
+    }
+}
+
 /********************************************************************
  * Worker thread (ControlCommand handling)
  */
@@ -1652,6 +1665,7 @@ static const struct control_ops client_control_operations = {
     .cs_close = client_close,
     .cs_read = client_read,
     .cs_thread = client_thread,
+    .cs_partner_closed = client_partner_closed,
 };
 
 const struct control_ops *control_client_ops = &client_control_operations;
