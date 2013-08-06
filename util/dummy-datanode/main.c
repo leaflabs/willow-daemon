@@ -37,6 +37,7 @@ struct arguments {
 };
 
 static const char* program_name;
+static struct arguments args = DEFAULT_ARGUMENTS;
 
 /*
  * Dummy registers
@@ -138,7 +139,7 @@ static inline struct raw_cmd_req* daemon_res(struct daemon_session *d_session)
     return raw_req(d_session->res);
 }
 
-static void parse_args(struct arguments *args, int argc, char *const argv[])
+static void parse_args(int argc, char *const argv[])
 {
     const char shortopts[] = "c:C:D:H:";
     struct option longopts[] = {
@@ -168,16 +169,16 @@ static void parse_args(struct arguments *args, int argc, char *const argv[])
         }
         switch (c) {
         case 'c':
-            args->chaos = strtol(optarg, (char**)0, 10);
+            args.chaos = strtol(optarg, (char**)0, 10);
             break;
         case 'C':
-            args->cport = strtol(optarg, (char**)0, 10);
+            args.cport = strtol(optarg, (char**)0, 10);
             break;
         case 'D':
-            args->dport = strtol(optarg, (char**)0, 10);
+            args.dport = strtol(optarg, (char**)0, 10);
             break;
         case 'h':
-            args->host = optarg;
+            args.host = optarg;
             break;
         case 0:                 /* fall through */
         case '?':               /* fall through */
@@ -506,7 +507,6 @@ int main(int argc, char *argv[])
 {
     /* Setup */
     int log_to_stderr = 1;
-    struct arguments args = DEFAULT_ARGUMENTS;
     char *pnamep = strrchr(argv[0], '/');
     if (pnamep != NULL) {
         pnamep++;
@@ -519,7 +519,7 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
     logging_init(program_name, LOG_DEBUG, log_to_stderr);
-    parse_args(&args, argc, argv);
+    parse_args(argc, argv);
     log_INFO("remote host: %s, C/C port %u, data port %u, chaos: %s",
              args.host, args.cport, args.dport,
              args.chaos ? "enabled" : "disabled");
