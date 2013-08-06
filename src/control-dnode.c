@@ -52,8 +52,11 @@
 #define DEBUG_LOG_RCMD(mtype, rcmd, ph) ((void)0)
 #endif
 
+/**
+ * Datanode-only struct client_session state.
+ */
 struct dnode_priv {
-    struct evbuffer *d_rbuf;    /* Buffers control session ->req_pkt */
+    struct evbuffer *d_rbuf; /**< Buffers control session ->req_pkt */
 };
 
 /* NOT SYNCHRONIZED */
