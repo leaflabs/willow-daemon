@@ -25,7 +25,9 @@
     { .chaos = 0,                               \
       .cport = 1369,                            \
       .dport = 8881,                            \
-      .host = "127.0.0.1" }
+      .host = "127.0.0.1",                      \
+      .never_reply = 0,                         \
+    }
 
 #define REG_DEFAULT 0xdeadbeef  /* poison value for dummy register init */
 
@@ -34,6 +36,7 @@ struct arguments {
     uint16_t cport;    /* Remote TCP port for command/control */
     uint16_t dport;    /* Remote UDP port listening for data packets */
     int chaos;         /* Chaos mode: randomly fail according to chaos.h */
+    int never_reply;   /* Never send any response packets */
 };
 
 static const char* program_name;
@@ -143,6 +146,8 @@ static void parse_args(int argc, char *const argv[])
 {
     const char shortopts[] = "c:C:D:H:";
     struct option longopts[] = {
+        /* These have matching shortopts; keep this list sorted with
+           respect to shortopts. */
         { .name = "chaos",
           .has_arg = required_argument,
           .flag = 0,
@@ -159,6 +164,13 @@ static void parse_args(int argc, char *const argv[])
           .has_arg = required_argument,
           .flag = 0,
           .val = 'H' },
+
+        /* Long-options only */
+        { .name = "never-reply",
+          .has_arg = no_argument,
+          .flag = &args.never_reply,
+          .val = 1},
+
         {0, 0, 0, 0},
     };
     while (1) {
@@ -180,7 +192,9 @@ static void parse_args(int argc, char *const argv[])
         case 'h':
             args.host = optarg;
             break;
-        case 0:                 /* fall through */
+        case 0:
+            /* Long option with non-null flag; nothing to do. */
+            break;
         case '?':               /* fall through */
         default:
             exit(EXIT_FAILURE);
@@ -213,13 +227,18 @@ static void parse_args(int argc, char *const argv[])
 
 static int send_response(int sockfd, struct raw_pkt_cmd *res)
 {
-    assert(raw_mtype(res) == RAW_MTYPE_RES);
-    DEBUG_LOG_RCMD(RAW_MTYPE_RES, raw_res(res), &res->ph);
-    int ret = raw_cmd_send(sockfd, res, MSG_NOSIGNAL);
-    if (ret == -1) {
-        log_WARNING("can't send response: %m");
+    if (args.never_reply) {
+        log_INFO("not sending a response packet");
+        return 0;
+    } else {
+        assert(raw_mtype(res) == RAW_MTYPE_RES);
+        DEBUG_LOG_RCMD(RAW_MTYPE_RES, raw_res(res), &res->ph);
+        int ret = raw_cmd_send(sockfd, res, MSG_NOSIGNAL);
+        if (ret == -1) {
+            log_WARNING("can't send response: %m");
+        }
+        return ret;
     }
-    return ret;
 }
 
 static int serve_request_error(struct daemon_session *dsess)
