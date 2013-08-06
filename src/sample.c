@@ -941,13 +941,7 @@ static void sample_timeout_callback(__unused evutil_socket_t ignored,
                                     short events, void *smplvp)
 {
     struct sample_session *smpl = smplvp;
-    assert(events & EV_TIMEOUT);
-    if (events != EV_TIMEOUT) {
-        log_WARNING("%s: ignoring additional events:%s%s", __func__,
-                    (events & EV_READ ? " EV_READ" : ""),
-                    (events & EV_WRITE ? " EV_WRITE" : ""));
-        return;
-    }
+    assert(events == EV_TIMEOUT);
     /* Stop the transfer and get the worker to acknowledge it's time
      * to stop. */
     sample_stop_worker(smpl, SAMPLE_STOP_TIMEOUT);
