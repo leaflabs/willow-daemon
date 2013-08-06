@@ -88,12 +88,12 @@ struct control_session {
     /* control_new() caller owns this; we own the rest */
     struct event_base *base;
 
-    /* Client */
+    /* Client control */
     struct evconnlistener *cecl;
     struct bufferevent    *cbev;
     void *cpriv;
 
-    /* Data node */
+    /* Data node control */
     const char         *daddr;  /* Treat as constant */
     uint16_t            dport;  /* Treat as constant */
     struct bufferevent *dbev;   /* Event loop thread,
@@ -105,7 +105,7 @@ struct control_session {
     struct event       *dconn_evt; /* Activated by dnode_conn_t. */
     void               *dpriv;  /* control-dnode.c only */
 
-    /* Data handler */
+    /* Data node sample handling */
     struct sample_session *smpl;
 
     /* Worker thread */
