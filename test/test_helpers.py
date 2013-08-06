@@ -51,7 +51,8 @@ class DaemonTest(unittest.TestCase):
                  proto2bytes_args=[],
                  proto2bytes_popen_kwargs={},
                  start_sampstreamer=False,
-                 sampstreamer_args=[]):
+                 sampstreamer_args=[],
+                 wait_for_connect=True):
         self.longMessage = True
         super(DaemonTest, self).__init__(methodName=methodName)
         self.start_daemon = start_daemon
@@ -63,6 +64,7 @@ class DaemonTest(unittest.TestCase):
         self.start_proto2bytes = start_proto2bytes
         self.proto2bytes_args = proto2bytes_args
         self.proto2bytes_popen_kwargs = proto2bytes_popen_kwargs
+        self.wait_for_connect = wait_for_connect
 
     def setUp(self):
 
@@ -90,7 +92,8 @@ class DaemonTest(unittest.TestCase):
             if resps is None:
                 self.bail()
         # Spin until the daemon and data node connect to each other
-        if self.start_daemon and (self.start_dnode or DO_IT_LIVE):
+        if (self.wait_for_connect and self.start_daemon and
+            (self.start_dnode or DO_IT_LIVE)):
             while (resps is not None and
                    resps[0].type == daemon_control.ControlResponse.ERR and
                    resps[0].err.code == daemon_control.ControlResErr.NO_DNODE):
