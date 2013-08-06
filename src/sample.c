@@ -1563,7 +1563,7 @@ static void sample_ddatafd_callback(evutil_socket_t ddatafd, short events,
         smpl->debug_print_ddatafd = 1;
     } else {
         if (smpl->debug_print_ddatafd) {
-            log_DEBUG("ignoring unwanted activity on data socket");
+            log_DEBUG("ignoring further data socket packets");
             smpl->debug_print_ddatafd = 0;
         }
         sample_ddatafd_empty_recv_queue(smpl);
