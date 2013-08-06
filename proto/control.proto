@@ -313,6 +313,8 @@ message ControlResErr {
         DNODE = 4;
         // Asynchronous data node error
         DNODE_ASYNC = 5;
+        // Data node connection died while processing request
+        DNODE_DIED = 7;
     }
     optional ErrCode code = 1;
     optional string msg = 2;
