@@ -385,7 +385,7 @@ static void
 control_bev_reader(struct control_session *cs,
                    int (*reader)(struct control_session*),
                    void (*closer)(struct control_session*),
-                   const char *log_who)
+                   __unused const char *log_who)
 {
     int read_why_wake = reader(cs);
     switch (read_why_wake) {
