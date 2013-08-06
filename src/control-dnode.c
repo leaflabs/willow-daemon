@@ -103,7 +103,7 @@ static int dnode_start(struct control_session *cs)
 
     priv->d_rbuf = d_rbuf;
     cs->dpriv = priv;
-    dnode_reset_state_locked(cs); /* worker thread isn't running */
+    dnode_reset_state_locked(cs);
     return 0;
 
  bail:
