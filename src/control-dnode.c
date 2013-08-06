@@ -205,10 +205,18 @@ static int dnode_read(struct control_session *cs)
                           raw_r_addr_str(raw_r_type(&pkt), raw_r_addr(&pkt))
                           );
             }
+
+            /*
+             * We've received a well-formed result packet. Copy it
+             * into its slot in cs->ctl_txns, and clear the
+             * transaction timeout.
+             */
             control_must_lock(cs);
             struct raw_pkt_cmd *res = &cs->ctl_txns[cs->ctl_cur_txn].res_pkt;
             memcpy(res, &pkt, sizeof(pkt));
             DEBUG_LOG_RCMD(mtype, raw_res(res), &res->ph);
+            assert(cs->txn_timeout_evt);
+            control_clear_txn_timeout(cs);
             control_must_unlock(cs);
             ret |= CONTROL_WHY_CLIENT_RES;
             break;
@@ -252,6 +260,7 @@ static void dnode_thread(struct control_session *cs)
     if (raw_pkt_hton(&req_copy) == 0) {
         DEBUG_LOG_RCMD(raw_mtype(cur_req), raw_req(cur_req), &cur_req->ph);
         bufferevent_write(cs->dbev, &req_copy, sizeof(req_copy));
+        control_start_txn_timeout(cs);
     } else {
         log_ERR("ignoring attempt to send malformed request packet");
     }

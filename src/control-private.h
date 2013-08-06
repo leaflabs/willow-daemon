@@ -148,6 +148,11 @@ struct control_session {
     ssize_t ctl_cur_txn;        /* Current transaction, or -1 if not
                                  * performing one. */
     uint16_t ctl_cur_rid;       /* Current raw packet request ID; wraps. */
+
+    /* Transaction timeout
+     *
+     * We protect against a hosed data node with this. */
+    struct event *txn_timeout_evt; /* Data node transaction timed out */
 };
 
 /**
@@ -266,5 +271,33 @@ static inline void control_clear_transactions(struct control_session *cs,
         control_must_unlock(cs);
     }
 }
+
+/*
+ * Transaction timeout
+ */
+
+/**
+ * Start a new transaction timeout.
+ *
+ * NOT SYNCHRONIZED, cs->mtx must be held.
+ *
+ * Start the timeout when a transaction begins. If the timeout
+ * expires, the data node is assumed to be hosed, and its connection
+ * will be forcibly closed. You must thus clear the timeout when the
+ * transaction is complete.
+ *
+ * @param cs Control session.
+ * @return
+ */
+int control_start_txn_timeout(struct control_session *cs);
+
+/**
+ * Clear any ongoing transaction timeout.
+ *
+ * NOT SYNCHRONIZED, cs->mtx must be held.
+ *
+ * @param cs Control session.
+ */
+void control_clear_txn_timeout(struct control_session *cs);
 
 #endif

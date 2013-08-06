@@ -33,6 +33,9 @@
 #include "control-client.h"
 #include "control-dnode.h"
 
+#define CONTROL_TXN_TIMEOUT_SEC 1
+#define CONTROL_TXN_TIMEOUT_USEC 750000
+
 static void
 control_fatal_err(const char *message, int code) /* code==-1 for "no code" */
 {
@@ -117,6 +120,7 @@ static void control_dnode_close(struct control_session *cs)
     bufferevent_free(cs->dbev);
     cs->dbev = NULL;
     control_client_ops->cs_partner_closed(cs);
+    control_clear_txn_timeout(cs);
     safe_p_mutex_lock(&cs->dnode_conn_mtx);
     cs->dnode_conn_why |= CONTROL_DCONN_WHY_CONN;
     safe_p_mutex_unlock(&cs->dnode_conn_mtx);
@@ -197,6 +201,15 @@ static void control_must_wake(struct control_session *cs,
 {
     control_set_wake(cs, why);
     control_must_signal(cs);
+}
+
+static void control_txn_timeout_callback(__unused evutil_socket_t ignored,
+                                         __unused short events,
+                                         void *csvp)
+{
+    assert(events == EV_TIMEOUT);
+    log_WARNING("data node transaction timed out; opening new connection");
+    control_dnode_close((struct control_session*)csvp);
 }
 
 /*
@@ -443,6 +456,7 @@ static void control_init_cs(struct control_session *cs)
     cs->ctl_n_txns = 0;
     cs->ctl_cur_txn = -1;
     cs->ctl_cur_rid = 0;
+    cs->txn_timeout_evt = NULL;
 }
 
 struct control_session* control_new(struct event_base *base,
@@ -619,6 +633,7 @@ void control_free(struct control_session *cs)
     if (cs->ctl_txns) {
         free(cs->ctl_txns);
     }
+    control_clear_txn_timeout(cs);
 
     free(cs);
 }
@@ -664,3 +679,31 @@ void control_set_transactions(struct control_session *cs,
     }
 }
 
+/* NOT SYNCHRONIZED (mtx) */
+int control_start_txn_timeout(struct control_session *cs)
+{
+    struct timeval timeout = {
+        .tv_sec = CONTROL_TXN_TIMEOUT_SEC,
+        .tv_usec = CONTROL_TXN_TIMEOUT_USEC,
+    };
+    assert(!cs->txn_timeout_evt);
+    cs->txn_timeout_evt =
+        evtimer_new(cs->base, control_txn_timeout_callback, cs);
+    if (!cs->txn_timeout_evt) {
+        return -1;
+    }
+    if (evtimer_add(cs->txn_timeout_evt, &timeout) == -1) {
+        event_free(cs->txn_timeout_evt);
+        return -1;
+    }
+    return 0;
+}
+
+/* NOT SYNCHRONIZED (mtx) */
+void control_clear_txn_timeout(struct control_session *cs)
+{
+    if (cs->txn_timeout_evt) {
+        event_free(cs->txn_timeout_evt);
+        cs->txn_timeout_evt = NULL;
+    }
+}

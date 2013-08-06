@@ -295,6 +295,11 @@ static void client_send_success(struct control_session *cs)
         client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__DNODE_ASYNC,    \
                         "data node async error"); } while (0)
 
+#define CLIENT_RES_ERR_DNODE_DIED(cs) do {                              \
+        client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__DNODE_DIED,      \
+                        "data node connection closed unexpectedly");    \
+    } while (0)
+
 static void client_send_store_res(struct control_session *cs,
                                   short events, size_t nwritten)
 {
@@ -671,12 +676,8 @@ static int client_read(struct control_session *cs)
 static void client_partner_closed(struct control_session *cs)
 {
     if (cs->ctl_txns) {
-        /* FIXME if there are ongoing transactions, then the client
-         * connection should also be open; we should get the
-         * client-side code to send an error response (how?), or a
-         * naive client will block forever. */
-        log_INFO("halting data node I/O due to closed dnode connection");
         control_clear_transactions(cs, 1);
+        CLIENT_RES_ERR_DNODE_DIED(cs);
     }
 }
 
