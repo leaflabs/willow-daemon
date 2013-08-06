@@ -50,28 +50,19 @@ control_fatal_err(const char *message, int code) /* code==-1 for "no code" */
  * Client/dnode ops helpers
  */
 
-static int control_client_start(struct control_session *cs)
+static inline int control_client_start(struct control_session *cs)
 {
-    if (!control_client_ops->cs_start) {
-        return 0;
-    }
     return control_client_ops->cs_start(cs);
 }
 
-static void control_client_stop(struct control_session *cs)
+static inline void control_client_stop(struct control_session *cs)
 {
-    if (!control_client_ops->cs_stop) {
-        return;
-    }
     control_client_ops->cs_stop(cs);
 }
 
-static int control_client_open(struct control_session *cs,
-                               evutil_socket_t sockfd)
+static inline int control_client_open(struct control_session *cs,
+                                      evutil_socket_t sockfd)
 {
-    if (!control_client_ops->cs_open) {
-        return 0;
-    }
     return control_client_ops->cs_open(cs, sockfd);
 }
 
@@ -92,44 +83,29 @@ static void control_client_close(struct control_session *cs)
     }
 }
 
-static int control_client_read(struct control_session *cs)
+static inline int control_client_read(struct control_session *cs)
 {
-    if (!control_client_ops->cs_read) {
-        return CONTROL_WHY_NONE;
-    }
     return control_client_ops->cs_read(cs);
 }
 
-static void control_client_thread(struct control_session *cs)
+static inline void control_client_thread(struct control_session *cs)
 {
-    if (!control_client_ops->cs_thread) {
-        return;
-    }
     control_client_ops->cs_thread(cs);
 }
 
-static int control_dnode_start(struct control_session *cs)
+static inline int control_dnode_start(struct control_session *cs)
 {
-    if (!control_dnode_ops->cs_start) {
-        return 0;
-    }
     return control_dnode_ops->cs_start(cs);
 }
 
-static void control_dnode_stop(struct control_session *cs)
+static inline void control_dnode_stop(struct control_session *cs)
 {
-    if (!control_dnode_ops->cs_stop) {
-        return;
-    }
     control_dnode_ops->cs_stop(cs);
 }
 
-static int control_dnode_open(struct control_session *cs,
-                              evutil_socket_t sockfd)
+static inline int control_dnode_open(struct control_session *cs,
+                                     evutil_socket_t sockfd)
 {
-    if (!control_dnode_ops->cs_open) {
-        return 0;
-    }
     return control_dnode_ops->cs_open(cs, sockfd);
 }
 
@@ -157,19 +133,13 @@ static void control_dnode_close(struct control_session *cs)
     }
 }
 
-static int control_dnode_read(struct control_session *cs)
+static inline int control_dnode_read(struct control_session *cs)
 {
-    if (!control_dnode_ops->cs_read) {
-        return CONTROL_WHY_NONE;
-    }
     return control_dnode_ops->cs_read(cs);
 }
 
-static void control_dnode_thread(struct control_session *cs)
+static inline void control_dnode_thread(struct control_session *cs)
 {
-    if (!control_dnode_ops->cs_thread) {
-        return;
-    }
     control_dnode_ops->cs_thread(cs);
 }
 
