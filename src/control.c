@@ -147,7 +147,11 @@ static void control_dnode_close(struct control_session *cs)
         log_INFO("halting data node I/O due to closed dnode connection");
         control_clear_transactions(cs, 1);
     }
+    safe_p_mutex_lock(&cs->dnode_conn_mtx);
+    cs->dnode_conn_why |= CONTROL_DCONN_WHY_CONN;
+    safe_p_mutex_unlock(&cs->dnode_conn_mtx);
     control_must_unlock(cs);
+    safe_p_cond_signal(&cs->dnode_conn_cv);
     if (control_dnode_ops->cs_close) {
         control_dnode_ops->cs_close(cs);
     }
@@ -332,10 +336,6 @@ static void control_dnode_event(__unused struct bufferevent *bev,
     struct control_session *cs = csessvp;
     assert(bev == cs->dbev);
     control_bevt_handler(cs, events, control_dnode_close, "data node");
-    safe_p_mutex_lock(&cs->dnode_conn_mtx);
-    cs->dnode_conn_why |= CONTROL_DCONN_WHY_CONN;
-    safe_p_mutex_unlock(&cs->dnode_conn_mtx);
-    safe_p_cond_signal(&cs->dnode_conn_cv);
 }
 
 static void refuse_connection(evutil_socket_t fd,
