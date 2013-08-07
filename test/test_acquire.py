@@ -10,7 +10,7 @@ import os
 import test_helpers
 from daemon_control import *
 
-SLEEP_TIME_SEC = 60. * 5
+SLEEP_TIME_SEC = 60. * 0.2
 
 class TestAcquire(test_helpers.DaemonTest):
 
