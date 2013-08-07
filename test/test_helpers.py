@@ -121,11 +121,17 @@ class DaemonTest(unittest.TestCase):
         # Spin until the daemon and data node connect to each other
         if (self.wait_for_connect and self.start_daemon and
             (self.start_dnode or DO_IT_LIVE)):
-            if (resps is not None and
-                resps[0].type == daemon_control.ControlResponse.ERR and
-                resps[0].err.code == daemon_control.ControlResErr.NO_DNODE):
-                resps = daemon_control.do_control_cmds(cmds, retry=True,
-                                                       max_retries=50)
+            attempt = 0
+            err_type = daemon_control.ControlResponse.ERR
+            no_dnode_code = daemon_control.ControlResErr.NO_DNODE
+            while attempt < 50:
+                if (resps is not None and resps[0].type == err_type and
+                    resps[0].err.code == no_dnode_code):
+                    resps = daemon_control.do_control_cmds(cmds, retry=False)
+                    time.sleep(1.0)
+                    attempt += 1
+                else:
+                    break
             if (resps is None or
                 resps[0].type == daemon_control.ControlResponse.ERR):
                 self.bail()
