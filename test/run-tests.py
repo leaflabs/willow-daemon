@@ -4,8 +4,10 @@
 #
 # This is a hack, but it works.
 #
-# If you want to use the real WiredLeaf board, set DO_IT_LIVE=1 in the
-# environment. If you don't, leave it out or set DO_IT_LIVE=0.
+# This expects a WiredLeaf board listening at DEFAULT_LIVE_DNODE_ADDR,
+# port 1369. To run tests against dummy-datanode, set DO_IT_LIVE=0 in
+# the environment. Note that some tests only run against the
+# dummy-datanode.
 #
 # XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #
