@@ -44,11 +44,6 @@
 #define HDF5_DATASET_NAME "wired-dataset"
 #define DEFAULT_STORAGE_BACKEND STORAGE_BACKEND__STORE_HDF5
 
-/* FIXME:
- * - add timeouts when processing commands
- * - send error to client on timeout?
- */
-
 struct client_priv {
     ControlCommand *c_cmd; /* Latest unpacked protocol message, or
                             * NULL. Shared with worker thread. */
