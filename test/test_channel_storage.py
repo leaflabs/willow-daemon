@@ -33,12 +33,12 @@ class TestChannelStorage(test_helpers.DaemonTest):
         super(TestChannelStorage, self).__init__(*args, **kwargs)
 
     def setUp(self):
-        super(TestChannelStorage, self).setUp()
         self.tmpdir = tempfile.mkdtemp()
+        super(TestChannelStorage, self).setUp()
 
     def tearDown(self):
-        super(TestChannelStorage, self).tearDown()
         shutil.rmtree(self.tmpdir)
+        super(TestChannelStorage, self).tearDown()
 
     def testSingleStorage(self):
         path = os.path.join(self.tmpdir, "singleStorage.h5")
