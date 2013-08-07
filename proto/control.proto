@@ -311,6 +311,8 @@ message ControlResErr {
         DAEMON = 1;
         // Daemon I/O error
         DAEMON_IO = 6;
+        // Invalid arguments on client control socket
+        C_VALUE = 8;
         // Protocol error on client control socket
         C_PROTO = 2;
         // Protocol error on data node control socket
