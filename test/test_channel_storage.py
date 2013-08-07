@@ -7,23 +7,8 @@ import os.path
 import shutil
 import tempfile
 
-import h5py
-import numpy
-
 import test_helpers
 from daemon_control import *
-
-PH_FLAGS = 0
-SAMP_INDEX = 1
-CHIP_LIVE = 2
-SAMPLES = 3
-expected_dset_name = 'wired-dataset'
-expected_dtype = numpy.dtype([('ph_flags', '|u1'),
-                              ('samp_index', '<u4'),
-                              ('chip_live', '<u4'),
-                              ('samples', '<u2', (1120,))])
-
-PH_ERRFLAG = 0x80
 
 class TestChannelStorage(test_helpers.DaemonTest):
 
@@ -93,21 +78,3 @@ class TestChannelStorage(test_helpers.DaemonTest):
         self.assertEqual(store.status, ControlResStore.DONE)
         self.assertEqual(store.path, path)
         self.assertEqual(store.nsamples, nsamples)
-
-    def ensureHDF5OK(self, hdf5_path, nsamples):
-        """Open an HDF5 file and do a cursory check of what's inside."""
-        h5f = h5py.File(hdf5_path)
-        with closing(h5f) as h5f:
-            self.assertIn(expected_dset_name, h5f)
-            dset = h5f[expected_dset_name]
-            # Ensure the datatype matches our expectations
-            self.assertEqual(dset.dtype, expected_dtype)
-            self.assertEqual(len(dset), nsamples)
-            last_sidx = None
-            for data in dset:
-                # Ensure sample indices increment properly
-                if last_sidx is not None:
-                    self.assertEqual(last_sidx + 1, data[SAMP_INDEX])
-                last_sidx = data[SAMP_INDEX]
-                # Ensure error flags aren't set
-                self.assertNotEqual(data[PH_FLAGS] & PH_ERRFLAG, PH_ERRFLAG)
