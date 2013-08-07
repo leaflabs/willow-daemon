@@ -1245,9 +1245,17 @@ static void client_process_res_stream(struct control_session *cs)
         CLIENT_RES_ERR_DAEMON(cs, "can't configure data node address");
         return;
     }
-    enum sample_forward fwd = !stream->enable ? SAMPLE_FWD_NOTHING:
-        (stream->sample_type == SAMPLE_TYPE__BOARD_SAMPLE ?
-         SAMPLE_FWD_BSMP : SAMPLE_FWD_BSUB);
+    SampleType stype = stream->sample_type;
+    enum sample_forward fwd = !stream->enable ? SAMPLE_FWD_NOTHING :
+        (stype == SAMPLE_TYPE__BOARD_SAMPLE ? SAMPLE_FWD_BSMP :
+         stype == SAMPLE_TYPE__BOARD_SUBSAMPLE ? SAMPLE_FWD_BSUB :
+         stype == SAMPLE_TYPE__BOARD_SUBSAMPLE_RAW ? SAMPLE_FWD_BSUB_RAW :
+         stype == SAMPLE_TYPE__BOARD_SAMPLE_RAW ? SAMPLE_FWD_BSMP_RAW :
+         SAMPLE_FWD_NOTHING);
+    if (fwd == SAMPLE_FWD_NOTHING && stream->enable) {
+        CLIENT_RES_ERR_C_PROTO(cs, "unknown sample_type");
+        return;
+    }
     if (sample_cfg_forwarding(cs->smpl, fwd)) {
         CLIENT_RES_ERR_DAEMON(cs, "can't configure data forwarding");
         return;

@@ -1350,7 +1350,7 @@ static void sample_forward_raw_packet(struct sample_session *smpl)
         assert(0);
     }
     memcpy(copy, smpl->dpktbuf.iov_base, copylen);
-    __unused int rph = raw_pkt_hton(&copy);
+    __unused int rph = raw_pkt_hton(copy);
     assert(rph == 0);
     __unused ssize_t n = sendto(smpl->ddatafd, copy, sizeof(copy), 0,
                                 caddr, caddr_len);
@@ -1528,9 +1528,11 @@ static void sample_ddatafd_forward(struct sample_session *smpl)
     }
     /* Forward the packet. */
     switch (smpl->forward_what) {
+    case SAMPLE_FWD_BSMP_RAW:
     case SAMPLE_FWD_BSMP:
         sample_ddatafd_forward_bsamp(smpl);
         break;
+    case SAMPLE_FWD_BSUB_RAW:
     case SAMPLE_FWD_BSUB:
         sample_ddatafd_forward_bsub(smpl);
         break;
