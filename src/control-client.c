@@ -1417,6 +1417,7 @@ static void client_process_res_store(struct control_session *cs)
     /*
      * Deal with the transaction's result.
      */
+    struct raw_pkt_cmd *req_pkt = &cs->ctl_txns[cs->ctl_cur_txn].req_pkt;
     struct raw_cmd_res *res = ctxn_res(cs->ctl_txns + cs->ctl_cur_txn);
     if (client_res_updates_dnode_addr(res)) {
         switch (client_update_dnode_addr_storage(cs, res)) {
@@ -1462,8 +1463,7 @@ static void client_process_res_store(struct control_session *cs)
      *
      * so this doesn't seem worth trying to fix right now. */
     if (res->r_type == RAW_RTYPE_UDP && res->r_addr == RAW_RADDR_UDP_ENABLE &&
-        raw_req_is_write(&cs->ctl_txns[cs->ctl_cur_txn].req_pkt) &&
-        res->r_val == 1) {
+        raw_req_is_write(req_pkt) && res->r_val == 1) {
         if (sample_expect_bsamps(cs->smpl, cpriv->bs_cfg,
                                  client_sample_store_callback, cs) == -1) {
             CLIENT_RES_ERR_DAEMON(cs, "can't configure sample forwarding");
