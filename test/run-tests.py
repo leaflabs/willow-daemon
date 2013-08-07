@@ -107,6 +107,12 @@ def fresh_test_env():
              'TEST_DNODE_IP': dnode_ip,
              'LD_LIBRARY_PATH': build_libsng_dir }
 
+def kill_stray(proc):
+    if subprocess.call(['killall', proc],
+                       stderr=subprocess.STDOUT,
+                       stdout=subprocess.PIPE) == 0:
+        print('Oops: killed a stray %s' % proc)
+
 oldcwd = os.getcwd()
 os.chdir(build_dir)
 try:
@@ -135,3 +141,5 @@ try:
                             env=fresh_test_env())
 finally:
     os.chdir(oldcwd)
+    kill_stray('leafysd')
+    kill_stray('dummy-datanode')
