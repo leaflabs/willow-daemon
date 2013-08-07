@@ -96,19 +96,11 @@ class AbstractTestSubStream(AbstractTestStream):
         kwargs['sampstreamer_args'] = ['-s']
         super(AbstractTestSubStream, self).__init__(*args, **kwargs)
 
-class AbstractTestSmpStream(AbstractTestStream):
-    """Parent class for board sample streaming test cases."""
-
-    def __init__(self, *args, **kwargs):
-        kwargs['start_proto2bytes'] = True
-        kwargs['proto2bytes_args'] = ['-M', '-c']
-        kwargs['proto2bytes_popen_kwargs'] = { 'stdout' : subprocess.PIPE }
-        super(AbstractTestSmpStream, self).__init__(*args, **kwargs)
-
 class TestProtoSubStream(ProtoDataMixin, AbstractTestSubStream):
 
     def __init__(self, *args, **kwargs):
         kwargs['start_proto2bytes'] = True
+        kwargs['proto2bytes_args'] = ['-M', '-c']
         kwargs['proto2bytes_popen_kwargs'] = { 'stdout' : subprocess.PIPE }
         super(TestProtoSubStream, self).__init__(*args, **kwargs)
 
@@ -124,7 +116,13 @@ class TestRawSubStream(RawDataMixin, AbstractTestSubStream):
         finally:
             self.raw_stop()
 
-class TestProtoSmpStream(ProtoDataMixin, AbstractTestSmpStream):
+class TestProtoSmpStream(ProtoDataMixin, AbstractTestStream):
+
+    def __init__(self, *args, **kwargs):
+        kwargs['start_proto2bytes'] = True
+        kwargs['proto2bytes_args'] = ['-M', '-c']
+        kwargs['proto2bytes_popen_kwargs'] = { 'stdout' : subprocess.PIPE }
+        super(TestProtoSmpStream, self).__init__(*args, **kwargs)
 
     def testProtoSmpStream(self):
         self.do_test(BOARD_SAMPLE)
