@@ -93,6 +93,7 @@ class DaemonTest(unittest.TestCase):
             resps = daemon_control.do_control_cmds(cmds, retry=True)
             if resps is None:
                 self.bail()
+
         # Spin until the daemon and data node connect to each other
         if (self.wait_for_connect and self.start_daemon and
             (self.start_dnode or DO_IT_LIVE)):
