@@ -33,7 +33,7 @@ def sampstreamer_sub(*args, **kwargs):
     return sub
 
 def proto2bytes_sub(*args, **kwargs):
-    sub = subprocess.popen([PROTO2BYTES_PATH] + list(args), **kwargs)
+    sub = subprocess.Popen([PROTO2BYTES_PATH] + list(args), **kwargs)
     return sub
 
 class DaemonTest(unittest.TestCase):
