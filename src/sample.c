@@ -763,6 +763,34 @@ static int sample_disable_forwarding(struct sample_session *smpl)
     return 0;
 }
 
+__unused
+static const char* sample_forward_what_str(enum sample_forward what)
+{
+    static const char *ret = NULL;
+    switch (what) {
+    case SAMPLE_FWD_BSMP:
+        ret = "board sample";
+        break;
+    case SAMPLE_FWD_BSUB:
+        ret = "board subsample";
+        break;
+    case SAMPLE_FWD_BSMP_RAW:
+        ret = "raw board sample";
+        break;
+    case SAMPLE_FWD_BSUB_RAW:
+        ret = "raw board subsample";
+        break;
+    case SAMPLE_FWD_NOTHING:
+        ret = "nothing";
+        break;
+    default:
+        assert(0);
+        ret = "";
+        break;
+    }
+    return ret;
+}
+
 int sample_cfg_forwarding(struct sample_session *smpl,
                           enum sample_forward what)
 {
@@ -776,26 +804,7 @@ int sample_cfg_forwarding(struct sample_session *smpl,
         if (what == SAMPLE_FWD_NOTHING) {
             log_DEBUG("disabled sample forwarding");
         } else {
-            __unused const char *what_str = "";
-            switch (what) {
-            case SAMPLE_FWD_BSMP:
-                what_str = "board sample";
-                break;
-            case SAMPLE_FWD_BSUB:
-                what_str = "board subsample";
-                break;
-            case SAMPLE_FWD_BSMP_RAW:
-                what_str = "raw board sample";
-                break;
-            case SAMPLE_FWD_BSUB_RAW:
-                what_str = "raw board subsample";
-                break;
-            case SAMPLE_FWD_NOTHING: /* can't happen; fall through */
-            default:
-                assert(0);
-                break;
-            }
-            log_DEBUG("enabled %s forwarding", what_str);
+            log_DEBUG("enabled %s forwarding", sample_forward_what_str(what));
         }
     }
     return ret;
