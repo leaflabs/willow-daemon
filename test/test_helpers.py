@@ -16,6 +16,7 @@ SAMPSTREAMER_PATH = 'sampstreamer'
 PROTO2BYTES_PATH = 'proto2bytes'
 PROTO2BYTES_DEFAULT_PORT = 7654
 RAW_MAGIC = '\x5a'
+SAMPLE_RATE_HZ = 30000
 
 def daemon_sub(*args, **kwargs):
     sub = subprocess.Popen([DAEMON_PATH,
