@@ -6,7 +6,6 @@ from contextlib import closing
 import os.path
 import shutil
 import tempfile
-import unittest
 
 import h5py
 import numpy
