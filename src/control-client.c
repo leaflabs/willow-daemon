@@ -44,6 +44,12 @@
 #define HDF5_DATASET_NAME "wired-dataset"
 #define DEFAULT_STORAGE_BACKEND STORAGE_BACKEND__STORE_HDF5
 
+/* If we restart a sample storage request at the same index this many
+ * times, then we've failed to actually write anything to disk over
+ * too many attempts, and will send an error response to the
+ * client. */
+#define MAX_FAILED_STORAGE_RETRIES 20
+
 struct client_priv {
     ControlCommand *c_cmd; /* Latest unpacked protocol message, or
                             * NULL. Shared with worker thread. */
@@ -72,7 +78,12 @@ struct client_priv {
     struct sample_bsamp_cfg *bs_cfg;
     int bs_expecting;        /* Are we currently expecting samples? */
     int bs_restarted;        /* Are we handling a restarted storage of
-                              * canned board samples? */
+                              * canned board samples?
+                              *
+                              * If not, this equals zero. If so, it's
+                              * the number of times we've restarted
+                              * since the last time we actually wrote
+                              * anything to disk. */
     size_t bs_nwritten_cache; /* Cached number of written samples,
                                * for handling restarts. */
 };
@@ -443,8 +454,6 @@ static void client_sample_store_callback(short events, size_t nwritten,
         /* If we're storing canned samples and we dropped a packet,
          * then update and restart the transfer.
          *
-         * TODO: abort if nwritten==0 too many times in a row.
-         *
          * Since this is the callback we gave sample_expect_bsamps(),
          * we can't call it again ourselves. Instead, update
          * cpriv->bs_cfg and related fields, set the restart flag, and
@@ -455,9 +464,21 @@ static void client_sample_store_callback(short events, size_t nwritten,
         cpriv->bs_nwritten_cache += nwritten;
         cpriv->bs_cfg->nsamples -= nwritten;
         cpriv->bs_cfg->start_sample += nwritten;
-        cpriv->bs_restarted = 1;
-        cs->wake_why |= CONTROL_WHY_CLIENT_CMD;
-        control_must_signal(cs);
+        if (nwritten || !cpriv->bs_restarted) {
+            cpriv->bs_restarted = 1;
+        } else {
+            cpriv->bs_restarted++;
+        }
+        if (cpriv->bs_restarted > MAX_FAILED_STORAGE_RETRIES) {
+            /* Actually, that's too many retry attempts; sample
+             * storage is apparently hosed. Cut this off now. */
+            log_WARNING("restarted storage %u times; not retrying again.",
+                        MAX_FAILED_STORAGE_RETRIES);
+            client_send_store_res(cs, events, nwritten);
+        } else {
+            cs->wake_why |= CONTROL_WHY_CLIENT_CMD;
+            control_must_signal(cs);
+        }
     } else {
         /* Otherwise, we're done with this command. */
         client_send_store_res(cs, events, nwritten);
