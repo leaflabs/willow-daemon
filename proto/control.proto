@@ -234,8 +234,14 @@ message ControlCmdStream {
 //
 // This command can be used to store live or pre-recorded samples. To
 // store live samples, leave "start_sample" missing. To store
-// pre-recorded samples, specify "start_sample". You can't store
-// pre-recorded samples while a live capture is ongoing.
+// pre-recorded samples, specify "start_sample".
+//
+// Restrictions:
+//
+// - You can't store pre-recorded samples while a live capture is
+//   ongoing.
+//
+// - You can't leave both "nsamples" and "start_sample" missing
 //
 // If any samples get stored, you'll get a ControlResponse with
 // type==SUCCESS and an embedded ControlResStore in return. The
