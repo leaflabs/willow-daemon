@@ -285,6 +285,10 @@ static void client_send_success(struct control_session *cs)
                         "internal daemon error: out of memory");        \
  } while (0)
 
+#define CLIENT_RES_ERR_C_VALUE(cs, msg) do {                           \
+        client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__C_VALUE,        \
+                        "client value error: " msg); } while (0)
+
 #define CLIENT_RES_ERR_C_PROTO(cs, msg) do {                           \
         client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__C_PROTO,        \
                         "client protocol error: " msg); } while (0)
@@ -941,7 +945,7 @@ static int client_start_txns_stream(struct control_session *cs,
 static int client_start_txns_store(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
-    const size_t ntxns = CLIENT_N_NET_TXNS + 11;
+    const size_t ntxns = CLIENT_N_NET_TXNS + 12;
     struct control_txn *txns = malloc(ntxns * sizeof(struct control_txn));
     size_t txno = 0;
     if (!txns) {
@@ -960,6 +964,15 @@ static int client_start_txns_store(struct control_session *cs)
         return -1;
     }
     txno = (size_t)nstat;
+
+    /* XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+     *
+     * THE REST OF THE STORAGE PROCESSING CODE RELIES ON THESE
+     * TRANSACTIONS TAKING PLACE IN THE GIVEN ORDER. DO NOT CHANGE IT.
+     *
+     * XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+     */
+
     /* Stop SATA, DAQ, and UDP modules. */
     client_sata_w(txns + txno++, RAW_RADDR_SATA_MODE, RAW_SATA_MODE_WAIT);
     client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 0);
@@ -969,9 +982,16 @@ static int client_start_txns_store(struct control_session *cs)
     client_sata_w(txns + txno++, RAW_RADDR_SATA_UDP_FIFO_RST, 0);
     /* Check SATA device ready flag */
     client_sata_r(txns + txno++, RAW_RADDR_SATA_STATUS);
-    /* Set SATA read index and length */
+    /* Set SATA read index and length.
+     *
+     * If the user wants all the samples, ensure that we read how many
+     * there are first. We'll overwrite the incorrect nsamples
+     * transaction request when handling responses in that case. */
     client_sata_w(txns + txno++,
                   RAW_RADDR_SATA_R_IDX, cpriv->bs_cfg->start_sample);
+    if (cpriv->bs_cfg->nsamples == 0) {
+        client_sata_r(txns + txno++, RAW_RADDR_SATA_W_IDX);
+    }
     client_sata_w(txns + txno++,
                   RAW_RADDR_SATA_R_LEN, cpriv->bs_cfg->nsamples);
     /* Configure UDP to stream from SATA */
@@ -1283,8 +1303,6 @@ static void client_process_cmd_store(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
     ControlCmdStore *store = cpriv->c_cmd->store;
-    ssize_t start_sample;
-    size_t nsamples;
     struct ch_storage *chns = NULL;
     int chns_is_open = 0;
     struct sample_bsamp_cfg *bs_cfg = NULL;
@@ -1300,9 +1318,8 @@ static void client_process_cmd_store(struct control_session *cs)
         CLIENT_RES_ERR_C_PROTO(cs, "missing path field");
         goto bail;
     }
-    if (!store->has_nsamples) {
-        assert(!cpriv->bs_restarted);
-        CLIENT_RES_ERR_C_PROTO(cs, "missing nsamples field");
+    if (!store->has_nsamples && !store->has_start_sample) {
+        CLIENT_RES_ERR_C_PROTO(cs, "nsamples and start_sample both omitted");
         goto bail;
     }
 
@@ -1312,14 +1329,19 @@ static void client_process_cmd_store(struct control_session *cs)
         store->backend = DEFAULT_STORAGE_BACKEND;
     }
 
-    /* Pull the fields we need out of the command. */
-    nsamples = store->nsamples;
-    start_sample = store->has_start_sample ? (ssize_t)store->start_sample : -1;
-
     if (!cpriv->bs_restarted) {
         /* If this isn't a restarted storage operation, then create
          * the channel storage object, and initialize the board sample
          * configuration. */
+
+        /* Pull the fields we need out of the command.
+         *
+         * nsamples == 0 is illegal, so we use that to indicate that we
+         * need to use the total number of samples available. */
+        size_t nsamples = store->has_nsamples ? store->nsamples : 0;
+        ssize_t start_sample = (store->has_start_sample ?
+                                (ssize_t)store->start_sample : -1);
+
         assert(!cpriv->bs_cfg);
         chns = client_new_ch_storage(store->path, store->backend);
         if (!chns) {
@@ -1442,6 +1464,43 @@ static void client_process_res_store(struct control_session *cs)
         !(res->r_val & RAW_SATA_STATUS_DEVICE_READY)) {
         CLIENT_RES_ERR_DNODE(cs, "SATA device is not ready");
         return;
+    }
+
+    /* If the client asked us to read all the samples, we'll have
+     * nsamples==0 in our bs_cfg. That's invalid, so we ask for the
+     * value to put in it as part of setting up the storage.
+     *
+     * That value just came back, so update the next transaction,
+     * where we set it.
+     */
+    if (res->r_type == RAW_RTYPE_SATA && res->r_addr == RAW_RADDR_SATA_W_IDX &&
+        raw_req_is_read(req_pkt) && cpriv->bs_cfg->nsamples == 0) {
+        struct control_txn *r_len_txn = cs->ctl_txns + cs->ctl_cur_txn + 1;
+        struct raw_pkt_cmd *r_len_pkt = &r_len_txn->req_pkt;
+        struct raw_cmd_req *r_len = raw_req(r_len_pkt);
+        size_t sata_w_idx = (size_t)res->r_val;
+
+        /* Sanity check everything, since this is so brittle. */
+        /* FIXME what if nothing was written? We can't detect it yet. */
+        assert(raw_req_is_write(r_len_pkt));
+        assert(r_len->r_type == RAW_RTYPE_SATA);
+        assert(r_len->r_addr == RAW_RADDR_SATA_R_LEN);
+        assert(r_len->r_val == 0);
+        assert(cpriv->bs_cfg->start_sample != -1);
+
+        /* Don't let the client ask for samples that don't exist. */
+        size_t start_sample = (size_t)cpriv->bs_cfg->start_sample;
+        if (sata_w_idx < start_sample) {
+            CLIENT_RES_ERR_C_VALUE(cs,
+                                   "start_sample exceeds number of "
+                                   "existing samples");
+            return;
+        }
+
+        /* Set the number of packets to read. */
+        size_t nsamples = sata_w_idx - start_sample + 1;
+        r_len->r_val = (uint32_t)nsamples;
+        cpriv->bs_cfg->nsamples = nsamples;
     }
 
     /* If we just successfully enabled the UDP module, it's time to
