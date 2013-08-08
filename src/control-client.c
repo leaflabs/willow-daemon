@@ -1538,7 +1538,7 @@ static void client_process_res_store(struct control_session *cs)
     }
 
     /*
-     * Advanced to the next transaction.
+     * Advance to the next transaction.
      *
      * If there aren't any more to come, the incoming packets are en
      * route. The sample callback handler we registered with
