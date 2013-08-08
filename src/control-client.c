@@ -348,16 +348,20 @@ static void client_send_success(struct control_session *cs)
                         "data node connection closed unexpectedly");    \
     } while (0)
 
-static void client_send_store_res(struct control_session *cs,
-                                  short events, size_t nwritten)
+static void client_send_store_res(struct control_session *cs, short events)
 {
-    struct client_priv *cpriv;
+    struct client_priv *cpriv = cs->cpriv;
+
     ControlCmdStore *store;
     ControlResponse cr = CONTROL_RESPONSE__INIT;
     ControlResStore res_store = CONTROL_RES_STORE__INIT;
 
+    /* Decide how many samples we stored. */
+    size_t nsamples = (cpriv->bs_nwritten_cache +
+                       (client_is_restart_pending(cs) ?
+                        (size_t)cpriv->bs_restart_pending : 0));
+
     /* Reset sample storage state to prepare for next storage command */
-    cpriv = cs->cpriv;
     store = cpriv->c_cmd->store;
     assert(cpriv->bs_cfg);
     assert(store);
@@ -376,7 +380,7 @@ static void client_send_store_res(struct control_session *cs,
     /* Send the result. */
     res_store.has_status = 1;
     res_store.has_nsamples = 1;
-    res_store.nsamples = nwritten;
+    res_store.nsamples = nsamples;
     res_store.path = cpriv->c_cmd->store->path;
     if (events & SAMPLE_BS_DONE) {
         res_store.status = CONTROL_RES_STORE__STATUS__DONE;
@@ -478,7 +482,7 @@ static int client_update_dnode_addr_storage(struct control_session *cs,
 }
 
 /********************************************************************
- * Sample handler storage callback
+ * Sample handler storage callbacks
  */
 
 /* For the sample.h API. */
@@ -511,7 +515,7 @@ static void client_schedule_sample_store_restart(struct control_session *cs,
                                            client_sample_restart_callback, cs);
     if (!cpriv->bs_restart_pend_evt) {
         log_ERR("out of memory; can't alloc sample restart event");
-        client_send_store_res(cs, SAMPLE_BS_ERR, nwritten);
+        client_send_store_res(cs, SAMPLE_BS_ERR);
     }
 }
 
@@ -553,7 +557,7 @@ static void client_do_sample_store_restart(struct control_session *cs,
          * storage is apparently hosed. Cut this off now. */
         log_WARNING("restarted storage %u times; not retrying again.",
                     MAX_FAILED_STORAGE_RETRIES);
-        client_send_store_res(cs, SAMPLE_BS_ERR, cpriv->bs_nwritten_cache);
+        client_send_store_res(cs, SAMPLE_BS_ERR);
     } else {
         log_DEBUG("restarting sample storage: "
                   "nwritten=%zu, nsamples=%zu, start_sample=%zd",
@@ -607,7 +611,8 @@ static void client_sample_store_callback(short events, size_t nwritten,
         }
     } else {
         /* Otherwise, we're done with this command. */
-        client_send_store_res(cs, events, nwritten);
+        cpriv->bs_nwritten_cache += nwritten;
+        client_send_store_res(cs, events);
     }
     control_must_unlock(cs);
 }
@@ -833,8 +838,7 @@ static void client_partner_closed(struct control_session *cs)
         struct client_priv *cpriv = cs->cpriv;
         assert(cpriv->c_cmd);
         assert(cpriv->c_cmd->store);
-        client_send_store_res(cs, SAMPLE_BS_PKTDROP,
-                              cpriv->bs_restart_pending);
+        client_send_store_res(cs, SAMPLE_BS_PKTDROP);
     } else {
         CLIENT_RES_ERR_DNODE_DIED(cs);
     }
@@ -1524,8 +1528,7 @@ static void client_process_cmd_store(struct control_session *cs)
             if (cpriv->bs_restarted) {
                 /* If we failed to restart the storage, the client needs
                  * to know how far along we got. */
-                client_send_store_res(cs, SAMPLE_BS_ERR,
-                                      cpriv->bs_nwritten_cache);
+                client_send_store_res(cs, SAMPLE_BS_ERR);
             } else {
                 /* Otherwise, report failure to start the storage. */
                 CLIENT_RES_ERR_DAEMON(cs, "can't set up storage transactions");
@@ -1564,7 +1567,7 @@ static void client_process_res_store(struct control_session *cs)
         if (!client_last_txn_succeeded(cs)) {
             /* We failed a restart. The client still need to know how
              * many samples we successfully saved. */
-            client_send_store_res(cs, SAMPLE_BS_ERR, cpriv->bs_nwritten_cache);
+            client_send_store_res(cs, SAMPLE_BS_ERR);
             return;
         }
     } else if (client_ensure_txn_ok(cs, "ControlCmdStore") == -1) {
