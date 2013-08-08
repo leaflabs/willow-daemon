@@ -361,7 +361,7 @@ static void* sample_worker_main(void *smplvp)
 static const char* sample_stop_why_str(enum sample_stop_why why)
 {
     switch (why) {
-    case SAMPLE_STOP_NONE: return "no reason";
+    case SAMPLE_STOP_NONE: return "no reason for alarm";
     case SAMPLE_STOP_TIMEOUT: return "timeout while waiting for packet";
     case SAMPLE_STOP_PKTDROP: return "dropped packet";
     case SAMPLE_STOP_NET_ERR: return "network error";
@@ -476,7 +476,7 @@ static void __sample_reject_bsamps_internal(struct sample_session *smpl)
 static void sample_stop_worker(struct sample_session *smpl,
                                enum sample_stop_why why)
 {
-    log_ERR("halting sample storage due to %s", sample_stop_why_str(why));
+    log_WARNING("%s during sample storage", sample_stop_why_str(why));
     smpl->smpl_stop_why = why;
     sample_must_lock_worker(smpl);
     smpl->worker_why |= SAMPLE_WHY_STOP;
