@@ -1665,8 +1665,7 @@ static void client_process_cmd(struct control_session *cs)
         CLIENT_RES_ERR_C_PROTO(cs, "unknown command type");
         return;
     }
-    log_DEBUG("%s: handling protocol message, type %s (%d)", __func__,
-              type, cmd->type);
+    log_DEBUG("handling %s command (%d)", type, cmd->type);
     proc(cs);
 }
 
