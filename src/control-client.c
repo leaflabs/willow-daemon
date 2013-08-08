@@ -20,6 +20,7 @@
 
 #include <stdlib.h>
 
+#include <event2/event.h>
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 
@@ -77,6 +78,20 @@ struct client_priv {
     /* For configuring sample storage */
     struct sample_bsamp_cfg *bs_cfg;
     int bs_expecting;        /* Are we currently expecting samples? */
+    ssize_t bs_restart_pending;  /* If we're not pending a restart,
+                                  * this is -1.
+                                  *
+                                  * Otherwise, it's the number of
+                                  * samples written during the last
+                                  * time we wanted to restart a sample
+                                  * storage operation, but had to wait
+                                  * for the transactions from the
+                                  * previous one to complete. */
+    struct event *bs_restart_pend_evt; /* For the background thread to
+                                        * let main thread know it's
+                                        * safe to actually do a
+                                        * restart that couldn't go
+                                        * forward previously. */
     int bs_restarted;        /* Are we handling a restarted storage of
                               * canned board samples?
                               *
@@ -91,6 +106,28 @@ struct client_priv {
 /********************************************************************
  * Miscellaneous helpers
  */
+
+static inline struct client_priv* cpriv(struct control_session *cs)
+{
+    return (struct client_priv*)cs->cpriv;
+}
+
+/* NOT SYNCHRONIZED */
+static inline int client_is_restart_pending(struct control_session *cs)
+{
+    return cpriv(cs)->bs_restart_pending != -1;
+}
+
+/* NOT SYNCHRONIZED */
+static void client_unpend_restart(struct control_session *cs)
+{
+    struct client_priv *cpriv = cs->cpriv;
+    cpriv->bs_restart_pending = -1;
+    if (cpriv->bs_restart_pend_evt) {
+        event_free(cpriv->bs_restart_pend_evt);
+        cpriv->bs_restart_pend_evt = NULL;
+    }
+}
 
 /* NOT SYNCHRONIZED
  *
@@ -163,6 +200,7 @@ static void client_reset_state_locked(struct control_session *cs)
     cpriv->bs_cfg = NULL;
     cpriv->bs_expecting = 0;
     cpriv->bs_restarted = 0;
+    client_unpend_restart(cs);
     cpriv->bs_nwritten_cache = 0;
     drain_evbuf(cpriv->c_pbuf);
     drain_evbuf(cpriv->c_pbuflen_buf);
@@ -332,6 +370,7 @@ static void client_send_store_res(struct control_session *cs,
     cpriv->bs_cfg = NULL;
     cpriv->bs_expecting = 0;
     cpriv->bs_restarted = 0;
+    client_unpend_restart(cs);
     cpriv->bs_nwritten_cache = 0;
 
     /* Send the result. */
@@ -442,6 +481,86 @@ static int client_update_dnode_addr_storage(struct control_session *cs,
  * Sample handler storage callback
  */
 
+/* For the sample.h API. */
+static void client_sample_store_callback(short events, size_t nwritten,
+                                         void *csvp);
+
+/* For activating a restart from the background thread. */
+static void client_sample_restart_callback(__unused evutil_socket_t ignored,
+                                           short events, void *csvp)
+{
+    struct control_session *cs = csvp;
+    assert(events == SAMPLE_BS_PKTDROP);
+    client_sample_store_callback(events, cpriv(cs)->bs_restart_pending, csvp);
+}
+
+/* Postpone a sample storage restart until after a pending
+ * transaction's response is received.
+ *
+ * NOT SYNCHRONIZED (mtx) */
+static void client_schedule_sample_store_restart(struct control_session *cs,
+                                                 size_t nwritten)
+{
+    log_DEBUG("%s: waiting to begin restart", __func__);
+    struct client_priv *cpriv = cs->cpriv;
+    assert(!client_is_restart_pending(cs));
+    assert(control_is_txn_timeout_pending(cs));
+    assert(!cpriv->bs_restart_pend_evt);
+    cpriv->bs_restart_pending = nwritten;
+    cpriv->bs_restart_pend_evt = event_new(cs->base, -1, SAMPLE_BS_PKTDROP,
+                                           client_sample_restart_callback, cs);
+    if (!cpriv->bs_restart_pend_evt) {
+        log_ERR("out of memory; can't alloc sample restart event");
+        client_send_store_res(cs, SAMPLE_BS_ERR, nwritten);
+    }
+}
+
+/* Restart a sample storage operation which dropped a packet.
+ *
+ * NOT SYNCHRONIZED (mtx) */
+static void client_do_sample_store_restart(struct control_session *cs,
+                                           size_t nwritten)
+{
+    assert(!cs->ctl_txns && cs->ctl_cur_txn == -1 &&
+           !control_is_txn_timeout_pending(cs) &&
+           "you can't call this while transactions are ongoing");
+
+    /*
+     * Since this is invoked from the callback we gave
+     * sample_expect_bsamps(), we can't call it again
+     * ourselves. Instead, update cpriv->bs_cfg and related fields,
+     * update the restart count, clear the restart pending flag if
+     * necessary, and get the worker to restart the transfer for
+     * us.
+     */
+    struct client_priv *cpriv = cs->cpriv;
+    assert(nwritten < cpriv->bs_cfg->nsamples);
+    assert(cpriv->bs_cfg->start_sample >= 0);
+    cpriv->bs_nwritten_cache += nwritten;
+    cpriv->bs_cfg->nsamples -= nwritten;
+    cpriv->bs_cfg->start_sample += nwritten;
+    if (nwritten || !cpriv->bs_restarted) {
+        cpriv->bs_restarted = 1;
+    } else {
+        cpriv->bs_restarted++;
+    }
+    if (client_is_restart_pending(cs)) {
+        assert(cpriv->bs_restart_pend_evt);
+        client_unpend_restart(cs);
+    }
+    if (cpriv->bs_restarted > MAX_FAILED_STORAGE_RETRIES) {
+        /* Actually, that's too many retry attempts; sample
+         * storage is apparently hosed. Cut this off now. */
+        log_WARNING("restarted storage %u times; not retrying again.",
+                    MAX_FAILED_STORAGE_RETRIES);
+        client_send_store_res(cs, SAMPLE_BS_ERR, nwritten);
+    } else {
+        cs->wake_why |= CONTROL_WHY_CLIENT_CMD;
+        control_must_signal(cs);
+    }
+}
+
+/* Used so the sample.h API can report sample storage results.  */
 static void client_sample_store_callback(short events, size_t nwritten,
                                          void *csvp)
 {
@@ -454,34 +573,33 @@ static void client_sample_store_callback(short events, size_t nwritten,
     assert(cpriv->c_cmd);
     store = cpriv->c_cmd->store;
     assert(store);
-    if (store->has_start_sample && (events & SAMPLE_BS_PKTDROP)) {
-        /* If we're storing canned samples and we dropped a packet,
-         * then update and restart the transfer.
-         *
-         * Since this is the callback we gave sample_expect_bsamps(),
-         * we can't call it again ourselves. Instead, update
-         * cpriv->bs_cfg and related fields, set the restart flag, and
-         * get the worker to restart the transfer for us. */
-        control_clear_transactions(cs, 1);
-        assert(nwritten < cpriv->bs_cfg->nsamples);
-        assert(cpriv->bs_cfg->start_sample >= 0);
-        cpriv->bs_nwritten_cache += nwritten;
-        cpriv->bs_cfg->nsamples -= nwritten;
-        cpriv->bs_cfg->start_sample += nwritten;
-        if (nwritten || !cpriv->bs_restarted) {
-            cpriv->bs_restarted = 1;
+
+    if (client_is_restart_pending(cs)) {
+        /* We're being called again after a previous restart attempt
+         * couldn't go forward due to the condition discussed
+         * below. */
+        assert(!cs->ctl_txns);
+        assert(!control_is_txn_timeout_pending(cs));
+        client_do_sample_store_restart(cs, nwritten);
+    } else if (store->has_start_sample && (events & SAMPLE_BS_PKTDROP)) {
+        /* We're storing canned samples and we dropped a packet.
+         * Update and restart the transfer. */
+        if (control_is_txn_timeout_pending(cs)) {
+            /* First, though, handle a race condition. Samples can
+             * (and do) start coming in before we've received the
+             * response to the last control_txn. Thus, if e.g. packet
+             * loss or a network error occurs early, we'll still have
+             * some pending transactions, and may be waiting for a
+             * result.
+             *
+             * That just happened. We'll now wait for the transaction
+             * to complete or time out, so we don't confuse its
+             * response with that for the first request in the
+             * restart. */
+            client_schedule_sample_store_restart(cs, nwritten);
         } else {
-            cpriv->bs_restarted++;
-        }
-        if (cpriv->bs_restarted > MAX_FAILED_STORAGE_RETRIES) {
-            /* Actually, that's too many retry attempts; sample
-             * storage is apparently hosed. Cut this off now. */
-            log_WARNING("restarted storage %u times; not retrying again.",
-                        MAX_FAILED_STORAGE_RETRIES);
-            client_send_store_res(cs, events, nwritten);
-        } else {
-            cs->wake_why |= CONTROL_WHY_CLIENT_CMD;
-            control_must_signal(cs);
+            control_clear_transactions(cs, 1);
+            client_do_sample_store_restart(cs, nwritten);
         }
     } else {
         /* Otherwise, we're done with this command. */
@@ -520,6 +638,8 @@ static int client_start(struct control_session *cs)
     priv->bs_cfg = NULL;
     priv->bs_expecting = 0;
     priv->bs_restarted = 0;
+    priv->bs_restart_pending = -1;
+    priv->bs_restart_pend_evt = NULL;
     priv->bs_nwritten_cache = 0;
     cs->cpriv = priv;
     client_reset_state_locked(cs); /* worker isn't started; don't
@@ -695,8 +815,23 @@ static int client_read(struct control_session *cs)
 /* NOT SYNCHRONIZED (mtx) */
 static void client_partner_closed(struct control_session *cs)
 {
-    if (cs->ctl_txns) {
-        control_clear_transactions(cs, 1);
+    if (!cs->ctl_txns) {
+        /* We weren't in the middle of anything, so there's nothing to do. */
+        return;
+    }
+
+    control_clear_transactions(cs, 1);
+    if (client_is_restart_pending(cs)) {
+        /* We were waiting for a transaction to finish so we could
+         * restart some storage, but the data node connection died
+         * (e.g. due to timeout). The client still needs to know the
+         * result. */
+        struct client_priv *cpriv = cs->cpriv;
+        assert(cpriv->c_cmd);
+        assert(cpriv->c_cmd->store);
+        client_send_store_res(cs, SAMPLE_BS_PKTDROP,
+                              cpriv->bs_restart_pending);
+    } else {
         CLIENT_RES_ERR_DNODE_DIED(cs);
     }
 }
@@ -1419,7 +1554,13 @@ static void client_process_res_store(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
 
-    if (cpriv->bs_restarted) {
+    if (client_is_restart_pending(cs)) {
+        log_DEBUG("%s: no transactions pending; doing pending restart",
+                  __func__);
+        control_clear_transactions(cs, 1);
+        event_active(cpriv->bs_restart_pend_evt, SAMPLE_BS_PKTDROP, 0);
+        return;
+    } else if (cpriv->bs_restarted) {
         if (!client_last_txn_succeeded(cs)) {
             /* We failed a restart. The client still need to know how
              * many samples we successfully saved. */
@@ -1720,7 +1861,7 @@ static void client_thread(struct control_session *cs)
         /* There should be no ongoing transactions */
         assert(!cs->ctl_txns);
         /* There should be a command waiting for us */
-        assert(((struct client_priv*)cs->cpriv)->c_cmd);
+        assert(cpriv(cs)->c_cmd);
 
         if (!cs->dbev) {     /* TODO fix this abstraction violation */
             CLIENT_RES_ERR_NO_DNODE(cs);
