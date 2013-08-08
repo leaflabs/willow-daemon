@@ -661,6 +661,7 @@ void control_set_transactions(struct control_session *cs,
             cs->ctl_n_txns == 0) ||
            (txns == NULL && n_txns == 0));
     if (cs->ctl_txns) {
+        control_clear_txn_timeout(cs); /* new txns need a fresh timeout */
         free(cs->ctl_txns);
     }
     cs->ctl_txns = txns;
