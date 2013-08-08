@@ -26,7 +26,7 @@ class TestChannelStorage(test_helpers.DaemonTest):
 
     def testSingleStorage(self):
         path = os.path.join(self.tmpdir, "singleStorage.h5")
-        nsamples = 300
+        nsamples = 30000
 
         # Do the storage
         cmd = self.getStoreCmd(path, nsamples)
@@ -42,7 +42,7 @@ class TestChannelStorage(test_helpers.DaemonTest):
 
     def testDoubleStorage(self):
         path = os.path.join(self.tmpdir, "doubleStorage.h5")
-        nsamples = 300
+        nsamples = 30000
 
         # Do the storage twice, to ensure files get truncated properly
         cmds = [self.getStoreCmd(path, nsamples)]
