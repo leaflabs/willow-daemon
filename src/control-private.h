@@ -287,10 +287,10 @@ static inline int control_is_txn_timeout_pending(struct control_session *cs)
  *
  * NOT SYNCHRONIZED, cs->mtx must be held.
  *
- * Start the timeout when a transaction begins. If the timeout
- * expires, the data node is assumed to be hosed, and its connection
- * will be forcibly closed. You must thus clear the timeout when the
- * transaction is complete.
+ * Start the timeout when a transaction begins, after you've sent the
+ * request. If the timeout expires, the data node is assumed to be
+ * hosed, and its connection will be forcibly closed. You must thus
+ * clear the timeout when the transaction is complete.
  *
  * @param cs Control session.
  * @return
