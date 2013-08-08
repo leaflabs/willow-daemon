@@ -1,0 +1,10 @@
+#!/bin/sh
+
+pid=`pgrep leafysd`
+if [ "xx" = "x${pid}x" ] ; then
+    echo "No daemon running"
+    exit 1
+fi
+
+sudo chrt -a --fifo -p 99 $pid
+sudo ionice -c 1 -p $pid
