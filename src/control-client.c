@@ -48,7 +48,7 @@
  * times, then we've failed to actually write anything to disk over
  * too many attempts, and will send an error response to the
  * client. */
-#define MAX_FAILED_STORAGE_RETRIES 20
+#define MAX_FAILED_STORAGE_RETRIES 5
 
 struct client_priv {
     ControlCommand *c_cmd; /* Latest unpacked protocol message, or
