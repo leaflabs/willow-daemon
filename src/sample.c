@@ -36,6 +36,14 @@
 #include "proto/control.pb-c.h"
 #include "proto/data.pb-c.h"
 
+#define LOCAL_DEBUG_LOGV 0
+
+#if LOCAL_DEBUG_LOGV
+#define LOCAL_DEBUG log_DEBUG
+#else
+#define LOCAL_DEBUG(...) ((void)0)
+#endif
+
 static void sample_ddatafd_callback(evutil_socket_t, short, void*);
 static void sample_timeout_callback(evutil_socket_t, short, void*);
 #define SAMPLE_THREAD_DONE EV_READ /* hack? */
@@ -457,7 +465,7 @@ static void __sample_reject_bsamps_internal(struct sample_session *smpl)
  * SEE IMPORTANT COMMENTS ABOVE sample_finished_with_bsamps()
  */
 #define sample_reject_bsamps_internal(smpl) do {                        \
-        log_DEBUG("%s: rejecting further board samples", __func__);     \
+        LOCAL_DEBUG("%s: rejecting further board samples", __func__);   \
         __sample_reject_bsamps_internal(smpl);                          \
     } while (0)
 
@@ -1574,7 +1582,7 @@ static void sample_ddatafd_callback(evutil_socket_t ddatafd, short events,
         smpl->debug_print_ddatafd = 1;
     } else {
         if (smpl->debug_print_ddatafd) {
-            log_DEBUG("ignoring further data socket packets");
+            LOCAL_DEBUG("ignoring further data socket packets");
             smpl->debug_print_ddatafd = 0;
         }
         sample_ddatafd_empty_recv_queue(smpl);
