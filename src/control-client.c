@@ -1567,7 +1567,9 @@ static void client_process_cmd_acquire(struct control_session *cs)
         CLIENT_RES_ERR_C_PROTO(cs, "missing acquire command");
         return;
     }
-    if (!acquire->has_exp_cookie) {
+    if (!acquire->has_exp_cookie
+            && acquire->has_enable
+            && acquire->enable) {
         CLIENT_RES_ERR_C_PROTO(cs, "missing experiment cookie");
         return;
     }
