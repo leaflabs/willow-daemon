@@ -82,6 +82,7 @@ enum sample_stop_why {
 #define SAMPLE_BSAMP_MAXLEN (SAMPLE_BSAMP_KHZ * 1000 * SAMPLE_BSAMP_SEC_P_BUF)
 #define SAMPLE_BSAMP_TIMEOUT_SEC 3 /* WISHLIST: be smarter */
 #define SAMPLE_BSAMP_TIMEOUT_USEC 0
+#define SAMPLE_MAX_CONSECUTIVE_BAD_PKTS 20
 struct sample_session {
     /*
      * Lock ordering: smpl_mtx, then worker_mtx, then bsamp_mtx.
@@ -1120,12 +1121,11 @@ static int sample_ddatafd_grab_bsamps(struct sample_session *smpl)
     const size_t b_start = smpl->bsamp_buflen[myidx];
     const size_t b_avail = SAMPLE_BSAMP_MAXLEN - b_start;
     const size_t b_end = b_start + (b_avail > s_left ? s_left : b_avail);
-    const size_t max_bad_packets = 20;
 
     size_t i = b_start;
     size_t n_bad = 0; /* number of bad packets since last good packet. */
     while (i < b_end) {
-        if (n_bad > max_bad_packets) {
+        if (n_bad > SAMPLE_MAX_CONSECUTIVE_BAD_PKTS) {
             log_WARNING("%s: too many bad packets; returning early", __func__);
             break;
         }
