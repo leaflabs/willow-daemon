@@ -553,7 +553,7 @@ static void client_do_sample_store_restart(struct control_session *cs,
          * storage is apparently hosed. Cut this off now. */
         log_WARNING("restarted storage %u times; not retrying again.",
                     MAX_FAILED_STORAGE_RETRIES);
-        client_send_store_res(cs, SAMPLE_BS_ERR, nwritten);
+        client_send_store_res(cs, SAMPLE_BS_ERR, cpriv->bs_nwritten_cache);
     } else {
         log_DEBUG("restarting sample storage: "
                   "nwritten=%zu, nsamples=%zu, start_sample=%zd",
