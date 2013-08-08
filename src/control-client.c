@@ -555,6 +555,10 @@ static void client_do_sample_store_restart(struct control_session *cs,
                     MAX_FAILED_STORAGE_RETRIES);
         client_send_store_res(cs, SAMPLE_BS_ERR, nwritten);
     } else {
+        log_DEBUG("restarting sample storage: "
+                  "nwritten=%zu, nsamples=%zu, start_sample=%zd",
+                  cpriv->bs_nwritten_cache, cpriv->bs_cfg->nsamples,
+                  cpriv->bs_cfg->start_sample);
         cs->wake_why |= CONTROL_WHY_CLIENT_CMD;
         control_must_signal(cs);
     }
@@ -1503,10 +1507,6 @@ static void client_process_cmd_store(struct control_session *cs)
          * that dropped a packet. */
         assert(cpriv->bs_cfg);
         chns_is_open = 1;       /* it was opened previously. */
-        log_DEBUG("restarting sample storage: "
-                  "nwritten=%zu, nsamples=%zu, start_sample=%zd",
-                  cpriv->bs_nwritten_cache, cpriv->bs_cfg->nsamples,
-                  cpriv->bs_cfg->start_sample);
     }
 
     /* Set up storage for the data node address, which we'll read
