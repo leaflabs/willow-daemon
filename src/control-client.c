@@ -1721,7 +1721,7 @@ static void client_thread(struct control_session *cs)
         /* There should be a command waiting for us */
         assert(((struct client_priv*)cs->cpriv)->c_cmd);
 
-        if (!cs->dbev) {
+        if (!cs->dbev) {     /* TODO fix this abstraction violation */
             CLIENT_RES_ERR_NO_DNODE(cs);
         } else {
             client_process_cmd(cs);
