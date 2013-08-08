@@ -276,6 +276,12 @@ static inline void control_clear_transactions(struct control_session *cs,
  * Transaction timeout
  */
 
+/* NOT SYNCHRONIZED */
+static inline int control_is_txn_timeout_pending(struct control_session *cs)
+{
+    return cs->txn_timeout_evt != NULL;
+}
+
 /**
  * Start a new transaction timeout.
  *
