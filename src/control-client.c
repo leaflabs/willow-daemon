@@ -611,6 +611,15 @@ static void client_sample_store_callback(short events, size_t nwritten,
         }
     } else {
         /* Otherwise, we're done with this command. */
+
+        /* FIXME: remove this by generalizing the deferred-response
+         * mechanism we use to delay restarts */
+        if (cs->ctl_txns) {
+            log_WARNING("sample storage finished before all transactions "
+                        "completed; hackishly ignoring the rest");
+            control_clear_transactions(cs, 1);
+        }
+
         cpriv->bs_nwritten_cache += nwritten;
         client_send_store_res(cs, events);
     }
