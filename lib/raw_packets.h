@@ -150,7 +150,10 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_SATA_DSECT_L       0x0F /* Disk sector, low */
 #define RAW_RADDR_SATA_DELAY_FREQ_HZ 0x10 /* Delay clock frequency in HZ */
 #define RAW_RADDR_SATA_READ_SLOWDOWN 0x11 /* Read slowdown in clock cycles */
-#define RAW_RADDR_SATA_NREGS (RAW_RADDR_SATA_READ_SLOWDOWN + 1)
+#define RAW_RADDR_SATA_WRITE_DELAY   0x12 /* SATA Write Delay Cycles */
+#define RAW_RADDR_SATA_FEEDBACK_COUNT 0x13 /* DAQ-SATA FIFO Count for Feedback */
+#define RAW_RADDR_SATA_WRITE_START_INDEX 0x14 /* Write Starting Sample Index */
+#define RAW_RADDR_SATA_NREGS (RAW_RADDR_SATA_WRITE_START_INDEX + 1)
 /* RAW_RTYPE_DAQ */
 #define RAW_RADDR_DAQ_ERR          0x00 /* Module error flags */
 #define RAW_RADDR_DAQ_ENABLE       0x01 /* Module enable */

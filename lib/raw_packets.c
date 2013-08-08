@@ -410,6 +410,9 @@ const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr)
         case CASE_STRINGIFY(RAW_RADDR_SATA_DSECT_L);
         case CASE_STRINGIFY(RAW_RADDR_SATA_DELAY_FREQ_HZ);
         case CASE_STRINGIFY(RAW_RADDR_SATA_READ_SLOWDOWN);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_WRITE_DELAY);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_FEEDBACK_COUNT);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_WRITE_START_INDEX);
         default: return "<UNKNOWN_SATA_R_ADDR>";
         }
     case RAW_RTYPE_DAQ:

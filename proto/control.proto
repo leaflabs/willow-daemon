@@ -84,6 +84,9 @@ enum SataAddr {
     SATA_DSECT_L = 15;
     SATA_DELAY_FREQ_HZ = 16;
     SATA_READ_SLOWDOWN = 17;
+    SATA_WRITE_DELAY = 18;
+    SATA_FEEDBACK_COUNT = 19;
+    SATA_WRITE_START_INDEX = 20;
 }
 
 enum DaqAddr {
