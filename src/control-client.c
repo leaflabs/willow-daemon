@@ -391,8 +391,8 @@ static void client_send_store_res(struct control_session *cs, short events)
     } else if (events & SAMPLE_BS_TIMEOUT) {
         res_store.status = CONTROL_RES_STORE__STATUS__TIMEOUT;
     } else {
-        assert(0);
         CLIENT_RES_ERR_DAEMON(cs, "can't determine storage result");
+        assert(0);
         return;
     }
     cr.has_type = 1;
