@@ -10,6 +10,8 @@ import tempfile
 import test_helpers
 from daemon_control import *
 
+NSAMPLES = 30000
+
 class TestChannelStorage(test_helpers.DaemonTest):
 
     def __init__(self, *args, **kwargs):
@@ -26,10 +28,9 @@ class TestChannelStorage(test_helpers.DaemonTest):
 
     def testSingleStorage(self):
         path = os.path.join(self.tmpdir, "singleStorage.h5")
-        nsamples = 30000
 
         # Do the storage
-        cmd = self.getStoreCmd(path, nsamples)
+        cmd = self.getStoreCmd(path, NSAMPLES)
         resps = do_control_cmds([cmd])
 
         # Make sure the response is well-formed and what we asked for.
@@ -37,15 +38,14 @@ class TestChannelStorage(test_helpers.DaemonTest):
         self.assertEqual(resps[0].type, ControlResponse.STORE_FINISHED,
                          msg='\nresponse:\n' + str(resps[0]))
         self.assertEqual(len(resps), 1)
-        self.ensureStoreOK(resps[0].store, path, nsamples)
-        self.ensureHDF5OK(path, nsamples)
+        self.ensureStoreOK(resps[0].store, path, NSAMPLES)
+        self.ensureHDF5OK(path, NSAMPLES)
 
     def testDoubleStorage(self):
         path = os.path.join(self.tmpdir, "doubleStorage.h5")
-        nsamples = 30000
 
         # Do the storage twice, to ensure files get truncated properly
-        cmds = [self.getStoreCmd(path, nsamples)]
+        cmds = [self.getStoreCmd(path, NSAMPLES)]
         sckt = get_daemon_control_sock()
         with closing(sckt) as sckt:
             resp1 = do_control_cmds(cmds, control_socket=sckt)
@@ -62,9 +62,9 @@ class TestChannelStorage(test_helpers.DaemonTest):
                          msg='\nresponse 2:\n' + str(resp2[0]))
         store1 = resp1[0].store
         store2 = resp2[0].store
-        self.ensureStoreOK(store1, path, nsamples)
-        self.ensureStoreOK(store2, path, nsamples)
-        self.ensureHDF5OK(path, nsamples)
+        self.ensureStoreOK(store1, path, NSAMPLES)
+        self.ensureStoreOK(store2, path, NSAMPLES)
+        self.ensureHDF5OK(path, NSAMPLES)
 
     def getStoreCmd(self, path, nsamples, backend=STORE_HDF5):
         cmd = ControlCommand()
