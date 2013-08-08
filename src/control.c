@@ -293,7 +293,7 @@ static void control_bevt_handler(struct control_session *cs, short events,
 {
     if (events & BEV_EVENT_EOF || events & BEV_EVENT_ERROR) {
         on_close(cs);
-        log_INFO("%s connection closed", log_who);
+        log_INFO("%s disconnected", log_who);
     } else {
         log_WARNING("unhandled %s event; flags %d", log_who, events);
     }
@@ -355,7 +355,7 @@ control_conn_open(struct control_session *cs,
     } else {
         bufferevent_enable(bev, EV_READ | EV_WRITE);
     }
-    log_INFO("%s connection established", log_who);
+    log_INFO("%s connected", log_who);
 }
 
 static void
