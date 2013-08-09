@@ -75,6 +75,7 @@ enum SataAddr {
     SATA_R_IDX = 5;
     SATA_R_LEN = 6;
     SATA_W_IDX = 7;
+    SATA_R_FIFO_RST = 8;
     SATA_FIFO_ST = 9;
     SATA_FIFO_CT = 10;
     SATA_UDP_FIFO_RST = 11;

@@ -140,7 +140,7 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_SATA_R_IDX         0x05 /* Next read index */
 #define RAW_RADDR_SATA_R_LEN         0x06 /* Read length */
 #define RAW_RADDR_SATA_W_IDX         0x07 /* Last write index */
-                                     /* 0x08 is unused */
+#define RAW_RADDR_SATA_R_FIFO_RST    0x08 /* Read FIFO reset */
 #define RAW_RADDR_SATA_FIFO_ST       0x09 /* FIFO status */
 #define RAW_RADDR_SATA_FIFO_CT       0x0A /* FIFO count */
 #define RAW_RADDR_SATA_UDP_FIFO_RST  0x0B /* UDP FIFO reset */

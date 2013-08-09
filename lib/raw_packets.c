@@ -401,6 +401,7 @@ const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr)
         case CASE_STRINGIFY(RAW_RADDR_SATA_R_IDX);
         case CASE_STRINGIFY(RAW_RADDR_SATA_R_LEN);
         case CASE_STRINGIFY(RAW_RADDR_SATA_W_IDX);
+        case CASE_STRINGIFY(RAW_RADDR_SATA_R_FIFO_RST);
         case CASE_STRINGIFY(RAW_RADDR_SATA_FIFO_ST);
         case CASE_STRINGIFY(RAW_RADDR_SATA_FIFO_CT);
         case CASE_STRINGIFY(RAW_RADDR_SATA_UDP_FIFO_RST);
