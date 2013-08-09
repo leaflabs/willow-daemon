@@ -1033,8 +1033,6 @@ static ssize_t client_add_network_txns(struct control_session *cs,
 {
     struct client_priv *cpriv = cs->cpriv;
 
-    client_clear_dnode_addr_storage(cs);
-
     /* IMPORTANT: the callers of this function (and their callers)
      * rely on the order in which these transactions are set. Don't
      * change it! */
@@ -1064,6 +1062,7 @@ static ssize_t client_add_network_txns(struct control_session *cs,
     client_udp_w(txns + txoff++, RAW_RADDR_UDP_DST_MAC_L, m48l);
 
     assert(txoff == CLIENT_N_NET_TXNS);
+    client_clear_dnode_addr_storage(cs);
     return (ssize_t)txoff;
 }
 
