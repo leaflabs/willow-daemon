@@ -39,6 +39,8 @@ def stream(args):
         cmd.stream.sample_type = BOARD_SAMPLE
     else:
         cmd.stream.sample_type = BOARD_SUBSAMPLE
+    if args.force_daq_reset:
+        cmd.stream.force_daq_reset = True
     try:
         aton = socket.inet_aton(args.address)
     except socket.error:
@@ -73,6 +75,11 @@ DEFAULT_STREAM_TYPE = 'sample'
 stream_parser = argparse.ArgumentParser(
     prog='stream',
     description='Control live stream behavior')
+stream_parser.add_argument(
+    '-f', '--force-daq-reset',
+    default=False,
+    action='store_true',
+    help='[DANGEROUS] force DAQ module reset before streaming')
 stream_parser.add_argument(
     '-t', '--type',
     choices=['sample', 'subsample'],
