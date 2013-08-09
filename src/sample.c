@@ -939,6 +939,11 @@ ssize_t sample_reject_bsamps(struct sample_session *smpl)
 {
     ssize_t ret;
     sample_must_lock(smpl);
+    if (!sample_expecting_bsamps(smpl)) {
+        log_WARNING("%s: invoked while not expecting samples", __func__);
+        sample_must_unlock(smpl);
+        return -1;
+    }
     sample_reject_bsamps_internal(smpl);
     sample_must_unlock(smpl);
     sample_must_lock_worker(smpl);
