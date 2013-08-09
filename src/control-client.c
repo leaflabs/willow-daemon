@@ -459,15 +459,24 @@ static int client_res_updates_dnode_addr(struct raw_cmd_res *res)
              res->r_addr == RAW_RADDR_UDP_SRC_IP4_PORT));
 }
 
-#define GOT_DNODE_IP 1
-#define GOT_DNODE_PORT 2
+/* NOT SYNCHRONIZED
+ *
+ * For commands which call client_add_network_txns(), update data node
+ * address storage when the appropriate responses are received. If an
+ * attempt to do so fails, send an error result and return -1. */
 static int client_update_dnode_addr_storage(struct control_session *cs,
-                                            struct raw_cmd_res *res)
+                                            size_t txn)
 {
     struct client_priv *cpriv = cs->cpriv;
+    struct raw_cmd_res *res = ctxn_res(cs->ctl_txns + txn);
+
+    if (!client_res_updates_dnode_addr(res)) {
+        return 0;
+    }
+
     if (res->r_addr == RAW_RADDR_UDP_SRC_IP4) {
         cpriv->dn_addr_in.sin_addr.s_addr = htonl(res->r_val);
-        return GOT_DNODE_IP;
+        return 0;
     } else if (res->r_addr == RAW_RADDR_UDP_SRC_IP4_PORT) {
         if (res->r_val > UINT16_MAX) {
             log_WARNING("data node source IPv4 port %u is invalid",
@@ -476,7 +485,31 @@ static int client_update_dnode_addr_storage(struct control_session *cs,
             return -1;
         }
         cpriv->dn_addr_in.sin_port = htons((uint16_t)res->r_val);
-        return GOT_DNODE_PORT;
+
+        /* client_add_network_txns() gets address, then port, so we've
+         * got the entire address now. */
+        if (sample_set_addr(cs->smpl, (struct sockaddr*)&cpriv->dn_addr_in,
+                            SAMPLE_ADDR_DNODE)) {
+            CLIENT_RES_ERR_DAEMON(cs, "can't configure data node address");
+            return -1;
+        }
+    }
+    return 0;
+}
+
+/* NOT SYNCHRONIZED
+ *
+ * For commands which check SATA status, ensure that SATA status
+ * reports RAW_SATA_STATUS_DEVICE_READY. If not, return -1.
+ */
+static int client_check_sata_device_ready(struct control_session *cs, size_t txn)
+{
+    struct raw_cmd_res *res = ctxn_res(cs->ctl_txns + txn);
+    if (res->r_type == RAW_RTYPE_SATA &&
+        res->r_addr == RAW_RADDR_SATA_STATUS &&
+        !(res->r_val & RAW_SATA_STATUS_DEVICE_READY)) {
+        CLIENT_RES_ERR_DNODE(cs, "SATA device is not ready");
+        return -1;
     }
     return 0;
 }
@@ -1409,13 +1442,9 @@ static void client_process_res_stream(struct control_session *cs)
     /*
      * Deal with any register values we needed to read.
      */
-    if (stream->enable) {
-        /* When enabling, we read the UDP IPv4 address and port registers. */
-        struct raw_cmd_res *res = ctxn_res(cs->ctl_txns + cs->ctl_cur_txn);
-        if (client_res_updates_dnode_addr(res) &&
-            client_update_dnode_addr_storage(cs, res) == -1) {
-            return;
-        }
+    if (stream->enable &&
+        client_update_dnode_addr_storage(cs, cs->ctl_cur_txn) == -1) {
+        return;
     }
 
     /* Are there more transactions? */
@@ -1592,30 +1621,10 @@ static void client_process_res_store(struct control_session *cs)
     /*
      * Deal with the transaction's result.
      */
-    struct raw_pkt_cmd *req_pkt = &cs->ctl_txns[cs->ctl_cur_txn].req_pkt;
-    struct raw_cmd_res *res = ctxn_res(cs->ctl_txns + cs->ctl_cur_txn);
-    if (client_res_updates_dnode_addr(res)) {
-        switch (client_update_dnode_addr_storage(cs, res)) {
-        case GOT_DNODE_PORT:
-            /* client_start_txns_stream() gets address, then port, so
-             * we've got the entire address now. */
-            if (sample_set_addr(cs->smpl, (struct sockaddr*)&cpriv->dn_addr_in,
-                                SAMPLE_ADDR_DNODE)) {
-                CLIENT_RES_ERR_DAEMON(cs, "can't configure data node address");
-                return;
-            }
-            break;
-        case -1:
-            /* Error trying to parse the result */
-            return;
-        default:
-            break;
-        }
+    if (client_update_dnode_addr_storage(cs, cs->ctl_cur_txn) == -1) {
+        return;
     }
-    if (res->r_type == RAW_RTYPE_SATA &&
-        res->r_addr == RAW_RADDR_SATA_STATUS &&
-        !(res->r_val & RAW_SATA_STATUS_DEVICE_READY)) {
-        CLIENT_RES_ERR_DNODE(cs, "SATA device is not ready");
+    if (client_check_sata_device_ready(cs, cs->ctl_cur_txn) == -1) {
         return;
     }
 
@@ -1626,6 +1635,8 @@ static void client_process_res_store(struct control_session *cs)
      * That value just came back, so update the next transaction,
      * where we set it.
      */
+    struct raw_pkt_cmd *req_pkt = &cs->ctl_txns[cs->ctl_cur_txn].req_pkt;
+    struct raw_cmd_res *res = ctxn_res(cs->ctl_txns + cs->ctl_cur_txn);
     if (res->r_type == RAW_RTYPE_SATA && res->r_addr == RAW_RADDR_SATA_W_IDX &&
         raw_req_is_read(req_pkt) && cpriv->bs_cfg->nsamples == 0) {
         struct control_txn *r_len_txn = cs->ctl_txns + cs->ctl_cur_txn + 1;
