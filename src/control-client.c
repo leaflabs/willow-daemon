@@ -638,17 +638,9 @@ static void client_sample_store_callback(short events, size_t nwritten,
         /* We're storing canned samples and we dropped a packet.
          * Update and restart the transfer. */
         if (control_is_txn_timeout_pending(cs)) {
-            /* First, though, handle a race condition. Samples can
-             * (and do) start coming in before we've received the
-             * response to the last control_txn. Thus, if e.g. packet
-             * loss or a network error occurs early, we'll still have
-             * some pending transactions, and may be waiting for a
-             * result.
-             *
-             * That just happened. We'll now wait for the transaction
-             * to complete or time out, so we don't confuse its
-             * response with that for the first request in the
-             * restart. */
+            /* Actually, wait for the transaction to complete or time
+             * out, so we don't get confused when we get its
+             * response. */
             client_schedule_sample_store_restart(cs, nwritten);
         } else {
             control_clear_transactions(cs, 1);
