@@ -199,3 +199,9 @@ class DaemonTest(unittest.TestCase):
 
                     self.ensureDsetChunkOK(dset, idx0, idxN, start_idx)
 
+    def getAcquireCommand(self, enable=True):
+        cmd = daemon_control.ControlCommand()
+        cmd.type = daemon_control.ControlCommand.ACQUIRE
+        cmd.acquire.exp_cookie = 0xcafebabe12345678L
+        cmd.acquire.enable = enable
+        return cmd

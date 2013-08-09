@@ -25,12 +25,10 @@ class TestAcquire(test_helpers.DaemonTest):
     def testAcquire(self):
         if not test_helpers.DO_IT_LIVE:
             raise unittest.SkipTest()
-        cmd = ControlCommand()
-        cmd.type = ControlCommand.ACQUIRE
-        cmd.acquire.exp_cookie = 0xcafebabe12345678L
+
+        cmd = self.getAcquireCommand(enable=True)
 
         # Start acquisition
-        cmd.acquire.enable = True
         responses = do_control_cmds([cmd])
         self.assertIsNotNone(responses)
         resp = responses[0]
