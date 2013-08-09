@@ -1086,11 +1086,12 @@ static void client_start_txns(struct control_session *cs,
 
 /* NOT SYNCHRONIZED */
 static int client_start_txns_stream(struct control_session *cs,
+                                    int force_daq_reset,
                                     uint32_t daq_udp_mode)
 {
-    const size_t ntxns = CLIENT_N_NET_TXNS + 10;
+    const size_t max_ntxns = CLIENT_N_NET_TXNS + 10;
 
-    struct control_txn *txns = malloc(ntxns * sizeof(struct control_txn));
+    struct control_txn *txns = malloc(max_ntxns * sizeof(struct control_txn));
     size_t txno = 0;
     if (!txns) {
         CLIENT_RES_ERR_DAEMON_OOM(cs);
@@ -1098,31 +1099,44 @@ static int client_start_txns_stream(struct control_session *cs,
     }
 
     /* Read/write the various daemon/data node network addresses. */
-    ssize_t nstat = client_add_network_txns(cs, txns, ntxns);
+    ssize_t nstat = client_add_network_txns(cs, txns, max_ntxns);
     if (nstat == -1) {
         return -1;
     }
     txno = (size_t)nstat;
-    /* Write 0 (STOP) to UDP and DAQ enable registers */
-    client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 0);
-    client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 0);
-    client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 0);
-    /* Toggle reset line by writing 1/0 to DAQ FIFO flags register
-     * (bring reset line high/low) */
-    client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 1);
-    client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 0);
-    /* Setup payload length (packet type) for UDP core */
-    client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_MODE, daq_udp_mode);
-    /* Set UDP module to stream from DAQ (not SATA) */
-    client_udp_w(txns + txno++, RAW_RADDR_UDP_MODE, 0); // 0x0D==13; 0
-    /* Enable UDP module */
-    client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 1);
-    /* Enable DAQ module */
-    client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 1);
-    client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 1);
+    if (force_daq_reset) {
+        /* Write 0 (STOP) to UDP and DAQ enable registers */
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 0);
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 0);
+        client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 0);
+        /* Toggle reset line by writing 1/0 to DAQ FIFO flags register
+         * (bring reset line high/low) */
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 1);
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 0);
+        /* Setup payload length (packet type) for UDP core */
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_MODE, daq_udp_mode);
+        /* Set UDP module to stream from DAQ (not SATA) */
+        client_udp_w(txns + txno++,
+                     RAW_RADDR_UDP_MODE, RAW_UDP_MODE_UDP);
+        /* Enable UDP module */
+        client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 1);
+        /* Enable DAQ module */
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 1);
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 1);
+    } else {
+        client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 0);
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 0);
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 1);
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 0);
+        client_udp_w(txns + txno++,
+                     RAW_RADDR_UDP_MODE, RAW_UDP_MODE_UDP);
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_MODE, daq_udp_mode);
+        client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 1);
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 1);
+    }
 
     /* Enable the deferred work. */
-    client_start_txns(cs, txns, txno, ntxns);
+    client_start_txns(cs, txns, txno, max_ntxns);
     return 0;
 }
 
@@ -1413,7 +1427,9 @@ static void client_process_cmd_stream(struct control_session *cs)
             CLIENT_RES_ERR_C_PROTO(cs, "unknown sample_type");
             return;
         }
-        client_start_txns_stream(cs, daq_udp_mode);
+        int force_daq_reset = (stream->has_force_daq_reset ?
+                               stream->force_daq_reset : 0);
+        client_start_txns_stream(cs, force_daq_reset, daq_udp_mode);
     } else {
         /* Note: these transactions allow live storage to continue. */
         const size_t ntxns = 4;
@@ -1559,7 +1575,9 @@ static void client_process_cmd_store(struct control_session *cs)
     /* Prepare the transactions. */
     int storing_live_data = !store->has_start_sample;
     if (storing_live_data) {
-        if (client_start_txns_stream(cs, RAW_DAQ_UDP_MODE_BSMP) == -1) {
+        const int force_daq_reset = 0;
+        if (client_start_txns_stream(cs, force_daq_reset,
+                                     RAW_DAQ_UDP_MODE_BSMP) == -1) {
             goto bail;
         }
     } else {

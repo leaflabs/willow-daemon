@@ -30,22 +30,22 @@ class TestChannelStorage(test_helpers.DaemonTest):
         path = os.path.join(self.tmpdir, "singleStorage.h5")
 
         # Do the storage
-        cmd = self.getStoreCmd(path, NSAMPLES)
-        resps = do_control_cmds([cmd])
+        cmds = self.getStoreCmds(path, NSAMPLES)
+        resps = do_control_cmds(cmds)
 
         # Make sure the response is well-formed and what we asked for.
         self.assertIsNotNone(resps)
-        self.assertEqual(resps[0].type, ControlResponse.STORE_FINISHED,
+        self.assertEqual(len(resps), 3)
+        self.assertEqual(resps[1].type, ControlResponse.STORE_FINISHED,
                          msg='\nresponse:\n' + str(resps[0]))
-        self.assertEqual(len(resps), 1)
-        self.ensureStoreOK(resps[0].store, path, NSAMPLES)
+        self.ensureStoreOK(resps[1].store, path, NSAMPLES)
         self.ensureHDF5OK(path, NSAMPLES)
 
     def testDoubleStorage(self):
         path = os.path.join(self.tmpdir, "doubleStorage.h5")
 
         # Do the storage twice, to ensure files get truncated properly
-        cmds = [self.getStoreCmd(path, NSAMPLES)]
+        cmds = self.getStoreCmds(path, NSAMPLES)
         sckt = get_daemon_control_sock()
         with closing(sckt) as sckt:
             resp1 = do_control_cmds(cmds, control_socket=sckt)
@@ -54,25 +54,27 @@ class TestChannelStorage(test_helpers.DaemonTest):
         # Make sure both results were good
         self.assertIsNotNone(resp1)
         self.assertIsNotNone(resp2)
-        self.assertEqual(len(resp1), 1)
-        self.assertEqual(len(resp2), 1)
-        self.assertEqual(resp1[0].type, ControlResponse.STORE_FINISHED,
-                         msg='\nresponse 1:\n' + str(resp1[0]))
-        self.assertEqual(resp2[0].type, ControlResponse.STORE_FINISHED,
-                         msg='\nresponse 2:\n' + str(resp2[0]))
-        store1 = resp1[0].store
-        store2 = resp2[0].store
+        self.assertEqual(len(resp1), 3)
+        self.assertEqual(len(resp2), 3)
+        self.assertEqual(resp1[1].type, ControlResponse.STORE_FINISHED,
+                         msg='\nresponse 1:\n' + str(resp1[1]))
+        self.assertEqual(resp2[1].type, ControlResponse.STORE_FINISHED,
+                         msg='\nresponse 2:\n' + str(resp2[1]))
+        store1 = resp1[1].store
+        store2 = resp2[1].store
         self.ensureStoreOK(store1, path, NSAMPLES)
         self.ensureStoreOK(store2, path, NSAMPLES)
         self.ensureHDF5OK(path, NSAMPLES)
 
-    def getStoreCmd(self, path, nsamples, backend=STORE_HDF5):
+    def getStoreCmds(self, path, nsamples, backend=STORE_HDF5):
+        acq = self.getAcquireCommand(enable=True)
         cmd = ControlCommand()
         cmd.type = ControlCommand.STORE
         cmd.store.path = path
         cmd.store.nsamples = nsamples
         cmd.store.backend = backend
-        return cmd
+        nacq = self.getAcquireCommand(enable=False)
+        return [acq, cmd, nacq]
 
     def ensureStoreOK(self, store, path, nsamples):
         msg = '\nstore:\n' + str(store)

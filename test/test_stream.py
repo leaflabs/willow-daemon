@@ -60,7 +60,8 @@ class AbstractTestStream(test_helpers.DaemonTest):
         cmd_stream = ControlCmdStream(dest_udp_addr4=0x7f000001,
                                       dest_udp_port=DST_PORT,
                                       enable=True,
-                                      sample_type=sample_type)
+                                      sample_type=sample_type,
+                                      force_daq_reset=True)
         cmd = ControlCommand(type=ControlCommand.STREAM,
                              stream=cmd_stream)
 

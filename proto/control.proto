@@ -232,6 +232,17 @@ message ControlCmdAcquire {
 
 // Configure sample forwarding.
 //
+// The proper way to use this is with force_daq_reset MISSING, _AFTER_
+// issuing a ControlCmdAcquire with enable=true.
+//
+// EXTREMELY IMPORTANT:
+//
+//     - If "force_daq_reset" is true during acquisition, YOU WILL
+//       LOSE DATA (and probably cause other errors).
+//
+//     - If "force_daq_reset" is absent or false, acquisition must
+//       have already started, or you'll get nothing.
+//
 // If you set one of dest_udp_addr4 and dest_udp_port, you must set
 // the other as well.
 //
@@ -252,9 +263,20 @@ message ControlCmdStream {
     optional uint32 dest_udp_port = 2;
     optional bool enable = 3;
     optional SampleType sample_type = 4; // default is BOARD_SUBSAMPLE
+
+    // SETTING THIS TO TRUE CAN LOSE DATA. SEE NOTES ABOVE. YOU'VE
+    // BEEN WARNED.
+    optional bool force_daq_reset = 15;  // forcibly stop/start DAQ module
 }
 
 // Store board samples received from the data node to disk.
+//
+// IMPORTANT: If the data node isn't streaming data to the daemon
+//            already, this will always time out.
+//
+//            To ensure streaming, use (safer) ControlCmdAcquire or
+//            (DANGEROUS! SEE NOTES ABOVE) ControlCmdStream with
+//            force_daq_reset=true.
 //
 // This command can be used to store live or pre-recorded samples. To
 // store live samples, leave "start_sample" missing. To store
