@@ -1230,6 +1230,8 @@ static int client_start_txns_store(struct control_session *cs)
     client_sata_w(txns + txno++, RAW_RADDR_SATA_MODE, RAW_SATA_MODE_WAIT);
     client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 0);
     client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 0);
+    /* Configure UDP to stream from SATA */
+    client_udp_w(txns + txno++, RAW_RADDR_UDP_MODE, RAW_UDP_MODE_SATA);
     /* Reset SATA-UDP and SATA read FIFOs by toggling reset line */
     client_sata_w(txns + txno++, RAW_RADDR_SATA_UDP_FIFO_RST, 1);
     client_sata_w(txns + txno++, RAW_RADDR_SATA_UDP_FIFO_RST, 0);
@@ -1249,8 +1251,6 @@ static int client_start_txns_store(struct control_session *cs)
     }
     client_sata_w(txns + txno++,
                   RAW_RADDR_SATA_R_LEN, cpriv->bs_cfg->nsamples);
-    /* Configure UDP to stream from SATA */
-    client_udp_w(txns + txno++, RAW_RADDR_UDP_MODE, RAW_UDP_MODE_SATA);
     /* Enable UDP module. */
     client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 1);
     /* Enable SATA reads */
