@@ -1033,6 +1033,8 @@ static ssize_t client_add_network_txns(struct control_session *cs,
 {
     struct client_priv *cpriv = cs->cpriv;
 
+    client_clear_dnode_addr_storage(cs);
+
     /* IMPORTANT: the callers of this function (and their callers)
      * rely on the order in which these transactions are set. Don't
      * change it! */
@@ -1550,10 +1552,6 @@ static void client_process_cmd_store(struct control_session *cs)
         assert(cpriv->bs_cfg);
         chns_is_open = 1;       /* it was opened previously. */
     }
-
-    /* Set up storage for the data node address, which we'll read
-     * regardless of whether we're capturing live or canned data. */
-    client_clear_dnode_addr_storage(cs);
 
     /* Prepare the transactions. */
     int storing_live_data = !store->has_start_sample;
