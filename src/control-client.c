@@ -45,6 +45,10 @@
 #define HDF5_DATASET_NAME "wired-dataset"
 #define DEFAULT_STORAGE_BACKEND STORAGE_BACKEND__STORE_HDF5
 
+/* Workaround for FPGA issues. == 30 * 1120. */
+#define DAQ_MAGIC_MODULUS 1920
+#define DAQ_MAGIC_MODULUS_STR "1920"
+
 /* If we restart a sample storage request at the same index this many
  * times, then we've failed to actually write anything to disk over
  * too many attempts, and will send an error response to the
@@ -1411,14 +1415,14 @@ static void client_process_cmd_stream(struct control_session *cs)
         }
         client_start_txns_stream(cs, daq_udp_mode);
     } else {
-        const size_t ntxns = 5;
+        /* Note: these transactions allow live storage to continue. */
+        const size_t ntxns = 4;
         struct control_txn *txns = malloc(ntxns * sizeof(struct control_txn));
         size_t txno = 0;
         if (!txns) {
             CLIENT_RES_ERR_DAEMON(cs, "out of memory");
             return;
         }
-        client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 0);
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 0);
         client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 0);
         /* Toggle reset line by writing 1/0 to DAQ FIFO flags register
@@ -1723,7 +1727,11 @@ static void client_process_cmd_acquire(struct control_session *cs)
     assert(!cpriv->bs_expecting);
     assert(!cpriv->bs_restarted);
 
-    /* Check that the command is well formed. */
+    /* Check that the command is well formed, setting optional fields
+     * to default values. */
+    if (!acquire->has_start_sample) {
+        acquire->start_sample = 0;
+    }
     if (!acquire) {
         CLIENT_RES_ERR_C_PROTO(cs, "missing acquire command");
         return;
@@ -1738,13 +1746,23 @@ static void client_process_cmd_acquire(struct control_session *cs)
         CLIENT_RES_ERR_C_PROTO(cs, "missing enable");
         return;
     }
+    if (acquire->start_sample % DAQ_MAGIC_MODULUS != 0) {
+        CLIENT_RES_ERR_C_VALUE(cs, "start_sample is not divisible by "
+                                   DAQ_MAGIC_MODULUS_STR);
+        return;
+    }
+    if (UINT32_MAX - acquire->start_sample < DAQ_MAGIC_MODULUS) {
+        CLIENT_RES_ERR_C_VALUE(cs, "start sample is too close to maximum; "
+                                   "choose something smaller.");
+        return;
+    }
 
     /* Pull the fields we need out of the command. */
     exp_ck_h = (uint32_t)(acquire->exp_cookie >> 32);
     exp_ck_l = (uint32_t)(acquire->exp_cookie & 0xFFFFFFFF);
     enable = acquire->enable;
 
-    const size_t max_ntxns = 11;
+    const size_t max_ntxns = 15 + CLIENT_N_NET_TXNS;
     struct control_txn *txns = malloc(max_ntxns * sizeof(struct control_txn));
     size_t txno = 0;
     if (!txns) {
@@ -1753,42 +1771,91 @@ static void client_process_cmd_acquire(struct control_session *cs)
     }
 
     if (enable) {
-        /* Stop SATA module and DAQ-SATA output */
-        client_sata_w(txns + txno++, RAW_RADDR_SATA_MODE, RAW_SATA_MODE_WAIT);
+        uint32_t start = acquire->start_sample;
+
+        /* Our data sockets must know one another for streaming to
+         * work. */
+        ssize_t net = client_add_network_txns(cs, txns, max_ntxns);
+        if (net == -1) {
+            return;
+        }
+        txno = (size_t)net;
+        /* Stop DAQ-UDP and DAQ-SATA output, then stop the DAQ module */
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 0);
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_SATA_ENABLE, 0);
-        /* Toggle acquisition */
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 0);
-        client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 1);
-        /* Set experiment cookie */
-        client_central_w(txns + txno++, RAW_RADDR_CENTRAL_EXP_CK_H, exp_ck_h);
-        client_central_w(txns + txno++, RAW_RADDR_CENTRAL_EXP_CK_L, exp_ck_l);
+        /* Stop SATA */
+        client_sata_w(txns + txno++, RAW_RADDR_SATA_MODE, RAW_SATA_MODE_WAIT);
         /* Toggle DAQ-SATA FIFO flag reset bit */
         client_daq_w(txns + txno++,
                      RAW_RADDR_DAQ_SATA_FIFO_FL, RAW_DAQ_SATA_FIFO_FL_RST);
         client_daq_w(txns + txno++,
                      RAW_RADDR_DAQ_SATA_FIFO_FL, 0);
-        /* Set up SATA module to write incoming DAQ data */
+        /* Set experiment cookie */
+        client_central_w(txns + txno++, RAW_RADDR_CENTRAL_EXP_CK_H, exp_ck_h);
+        client_central_w(txns + txno++, RAW_RADDR_CENTRAL_EXP_CK_L, exp_ck_l);
+        /* Set SATA start index, and follow recipe to sent DAQ start
+         * index past start */
+        client_sata_w(txns + txno++,
+                      RAW_RADDR_SATA_WRITE_START_INDEX, start);
+        client_daq_w(txns + txno++,
+                     RAW_RADDR_DAQ_BSMP_START, start + DAQ_MAGIC_MODULUS);
+        /* Configure SATA to write from DAQ */
         client_sata_w(txns + txno++, RAW_RADDR_SATA_MODE, RAW_SATA_MODE_WRITE);
-        /* Enable DAQ writes to SATA
-         * FIXME bnewbold calls this 'weird "zero only" mode'; why? fix it! */
+        /* Enable DAQ acquisition, and DAQ-SATA weird/hack mode */
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 1);
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_SATA_ENABLE, 3);
-        /* Set board sample index to zero (this actually starts the
-         * writes, so do it last) */
-        client_daq_w(txns + txno++, RAW_RADDR_DAQ_BSMP_START, 0);
+        /* Ensure SATA reports device ready. */
+        client_sata_r(txns + txno++, RAW_RADDR_SATA_STATUS);
+        /* Reset the board sample index to zero (this actually starts
+         * the writes, so do it last) */
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_BSMP_START, start);
     } else {
         /* Disable DAQ-SATA stream */
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_SATA_ENABLE, 0);
-        /* Disable SATA */
+        /* Disable SATA writes */
         client_sata_w(txns + txno++, RAW_RADDR_SATA_MODE, RAW_SATA_MODE_WAIT);
+        /* Disable DAQ-UDP stream */
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 0);
+        /* Disable UDP output */
+        client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 0);
+        /* Disable DAQ */
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 0);
+        /* Reset DAQ-UDP FIFO */
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 1);
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 0);
+        /* Reset DAQ-SATA FIFO */
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_SATA_FIFO_FL, 1);
+        client_daq_w(txns + txno++, RAW_RADDR_DAQ_SATA_FIFO_FL, 0);
     }
     client_start_txns(cs, txns, txno, max_ntxns);
 }
 
 static void client_process_res_acquire(struct control_session *cs)
 {
+    struct client_priv *cpriv = cs->cpriv;
+    ControlCmdAcquire *acquire = cpriv->c_cmd->acquire;
+
     if (client_ensure_txn_ok(cs, "ControlCmdAcquire") == -1) {
         return;
     }
+
+    /*
+     * If enabling acquisition:
+     *
+     * - deal with network transactions which pair the daemon/dnode
+     *   data sockets.
+     *
+     * - check SATA device ready status
+     */
+    if (acquire->has_enable && acquire->enable) {
+        size_t txn = cs->ctl_cur_txn;
+        if (client_update_dnode_addr_storage(cs, txn) == -1 ||
+            client_check_sata_device_ready(cs, txn) == -1) {
+            return;
+        }
+    }
+
     if (!client_start_next_txn(cs)) {
         return;
     }

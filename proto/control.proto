@@ -205,9 +205,30 @@ message RegisterIO {
 // - send that prefixed by its length as a uint32 to the daemon's
 //   client control socket.
 //
-// See the script 'util/do-pbuf-cmd' for an example.
+// See the script 'util/acquire.py' for examples.
 //
 // In return, you'll get a ControlResult (see below).
+
+// Start/stop acquiring to disk.
+//
+// You must start acquisition before configuring sample forwarding
+// (see ControlCmdStream, below).
+//
+// Stopping acquisition also halts live streaming.
+message ControlCmdAcquire {
+    // Experiment cookie; must be present if enable is true
+    optional uint64 exp_cookie = 1;
+    // Enable or disable acquisition. Must be present.
+    optional bool enable = 2;
+    // Optional board sample start index.
+    //
+    // YOU WILL OVERWRITE ANY DATA ALREADY AT THAT INDEX (indexes
+    // determine disk storage locations).
+    //
+    // Defaults to zero; if present, must be divisible by 1920 (you'll
+    // get an error otherwise).
+    optional uint32 start_sample = 3;
+}
 
 // Configure sample forwarding.
 //
@@ -268,14 +289,6 @@ message ControlCmdStore {
 
     // What type of file to store samples into; defaults to HDF5.
     optional StorageBackend backend = 17;
-}
-
-// Control acquisition.
-message ControlCmdAcquire {
-    // Experiment cookie; must be present if enable is true
-    optional uint64 exp_cookie = 1;
-    // Enable or disable acquisition. Must be present.
-    optional bool enable = 2;
 }
 
 // Follows union type guidelines as described here:
