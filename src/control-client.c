@@ -1729,8 +1729,10 @@ static void client_process_res_store(struct control_session *cs)
             return;
         }
 
-        /* Set the number of packets to read. */
-        size_t nsamples = sata_w_idx - start_sample + 1;
+        /* Set the number of packets to read; nsamples should really
+         * be one larger, but we're covering for a potential
+         * off-by-one in the HDL here. */
+        size_t nsamples = sata_w_idx - start_sample;
         r_len->r_val = (uint32_t)nsamples;
         cpriv->bs_cfg->nsamples = nsamples;
     }
