@@ -164,7 +164,7 @@ class DaemonTest(unittest.TestCase):
             self.assertFalse(board_sample[PH_FLAGS] & PH_ERRFLAG,
                              msg=str(i))
 
-    def ensureHDF5OK(self, hdf5_path, nsamples):
+    def ensureHDF5OK(self, hdf5_path, nsamples, exp_cookie=None):
         """Open an HDF5 file and do a cursory check of what's inside."""
         h5f = h5py.File(hdf5_path)
         with closing(h5f) as h5f:
@@ -173,6 +173,11 @@ class DaemonTest(unittest.TestCase):
             # Ensure the datatype matches our expectations
             self.assertEqual(dset.dtype, expected_dtype)
             self.assertEqual(len(dset), nsamples)
+
+            # If there's an experiment cookie to check, then do so.
+            if exp_cookie is not None:
+                self.assertEqual(dset.attrs['experiment_cookie'],
+                                 exp_cookie)
 
             # If the file's empty, that's all.
             if nsamples == 0:
@@ -199,10 +204,11 @@ class DaemonTest(unittest.TestCase):
 
                     self.ensureDsetChunkOK(dset, idx0, idxN, start_idx)
 
-    def getAcquireCommand(self, enable=True, start_sample=None):
+    def getAcquireCommand(self, enable=True, start_sample=None,
+                          exp_cookie=0xcafebabe12345678L):
         cmd = daemon_control.ControlCommand()
         cmd.type = daemon_control.ControlCommand.ACQUIRE
-        cmd.acquire.exp_cookie = 0xcafebabe12345678L
+        cmd.acquire.exp_cookie = exp_cookie
         cmd.acquire.enable = enable
         if start_sample is not None:
             cmd.acquire.start_sample = start_sample
