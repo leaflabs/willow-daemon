@@ -75,6 +75,7 @@ class TestChannelStorage(test_helpers.DaemonTest):
         return cmd
 
     def ensureStoreOK(self, store, path, nsamples):
-        self.assertEqual(store.status, ControlResStore.DONE)
-        self.assertEqual(store.path, path)
-        self.assertEqual(store.nsamples, nsamples)
+        msg = '\nstore:\n' + str(store)
+        self.assertEqual(store.status, ControlResStore.DONE, msg=msg)
+        self.assertEqual(store.path, path, msg=msg)
+        self.assertEqual(store.nsamples, nsamples, msg=msg)
