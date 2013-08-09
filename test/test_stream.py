@@ -100,7 +100,7 @@ class TestProtoSubStream(ProtoDataMixin, AbstractTestSubStream):
 
     def __init__(self, *args, **kwargs):
         kwargs['start_proto2bytes'] = True
-        kwargs['proto2bytes_args'] = ['-M', '-c']
+        kwargs['proto2bytes_args'] = ['-c', '0', '-s']
         kwargs['proto2bytes_popen_kwargs'] = { 'stdout' : subprocess.PIPE }
         super(TestProtoSubStream, self).__init__(*args, **kwargs)
 
@@ -120,7 +120,7 @@ class TestProtoSmpStream(ProtoDataMixin, AbstractTestStream):
 
     def __init__(self, *args, **kwargs):
         kwargs['start_proto2bytes'] = True
-        kwargs['proto2bytes_args'] = ['-M', '-c']
+        kwargs['proto2bytes_args'] = ['-M', '-c', '0', '-s']
         kwargs['proto2bytes_popen_kwargs'] = { 'stdout' : subprocess.PIPE }
         super(TestProtoSmpStream, self).__init__(*args, **kwargs)
 
