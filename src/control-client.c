@@ -152,6 +152,7 @@ static void client_halt_ongoing_transfer(struct control_session *cs)
         ch_storage_free(cpriv->bs_cfg->chns);
         free(cpriv->bs_cfg);
         cpriv->bs_cfg = NULL;
+        client_unpend_restart(cs);
     }
 }
 
