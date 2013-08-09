@@ -22,11 +22,12 @@ class TestAcquire(test_helpers.DaemonTest):
         shutil.rmtree(self.tmpdir)
         super(TestAcquire, self).tearDown()
 
-    def testAcquire(self):
+    def do_testAcquire(self, start_sample):
         if not test_helpers.DO_IT_LIVE:
             raise unittest.SkipTest()
 
-        cmd = self.getAcquireCommand(enable=True)
+        cmd = self.getAcquireCommand(enable=True, start_sample=start_sample,
+                                     exp_cookie=start_sample)
 
         # Start acquisition
         responses = do_control_cmds([cmd])
@@ -53,7 +54,7 @@ class TestAcquire(test_helpers.DaemonTest):
         store_path = os.path.join(self.tmpdir, "all_samples.h5")
         cs = ControlCommand(type=ControlCommand.STORE)
         cs.store.path = store_path
-        cs.store.start_sample = 0
+        cs.store.start_sample = start_sample
         cs.store.backend = STORE_HDF5
         responses = do_control_cmds([cs])
         self.assertIsNotNone(responses)
@@ -68,4 +69,13 @@ class TestAcquire(test_helpers.DaemonTest):
         self.assertTrue(rs.nsamples > fudge_factor * min_nsamples_expected)
 
         # Ensure the data looks ok
-        self.ensureHDF5OK(rs.path, rs.nsamples)
+        self.ensureHDF5OK(rs.path, rs.nsamples, exp_cookie=start_sample)
+
+    def testAcquire0(self):
+        self.do_testAcquire(0)
+
+    def testAcquire1920(self):
+        self.do_testAcquire(1920)
+
+    def testAcquire192000(self):
+        self.do_testAcquire(192000)
