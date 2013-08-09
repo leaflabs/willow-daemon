@@ -1473,7 +1473,7 @@ static void client_process_cmd_stream(struct control_session *cs)
             daq_udp_mode = RAW_DAQ_UDP_MODE_BSMP;
             break;
         default:
-            CLIENT_RES_ERR_C_PROTO(cs, "unknown sample_type");
+            CLIENT_RES_ERR_C_VALUE(cs, "unknown sample_type");
             return;
         }
         int force_daq_reset = (stream->has_force_daq_reset ?
