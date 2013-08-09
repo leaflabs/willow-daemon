@@ -91,11 +91,12 @@ struct client_priv {
                                   * storage operation, but had to wait
                                   * for the transactions from the
                                   * previous one to complete. */
-    struct event *bs_restart_pend_evt; /* For the background thread to
+    struct event *bs_response_pend_evt; /* For the background thread to
                                         * let main thread know it's
                                         * safe to actually do a
                                         * restart that couldn't go
                                         * forward previously. */
+    short bs_pending_events; /* The short events we're pending on */
     int bs_restarted;        /* Are we handling a restarted storage of
                               * canned board samples?
                               *
@@ -117,9 +118,9 @@ static inline struct client_priv* cpriv(struct control_session *cs)
 }
 
 /* NOT SYNCHRONIZED */
-static inline int client_is_restart_pending(struct control_session *cs)
+static inline int client_is_response_pending(struct control_session *cs)
 {
-    return cpriv(cs)->bs_restart_pending != -1;
+    return cpriv(cs)->bs_response_pend_evt != NULL;
 }
 
 /* NOT SYNCHRONIZED */
@@ -127,9 +128,9 @@ static void client_unpend_restart(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
     cpriv->bs_restart_pending = -1;
-    if (cpriv->bs_restart_pend_evt) {
-        event_free(cpriv->bs_restart_pend_evt);
-        cpriv->bs_restart_pend_evt = NULL;
+    if (cpriv->bs_response_pend_evt) {
+        event_free(cpriv->bs_response_pend_evt);
+        cpriv->bs_response_pend_evt = NULL;
     }
 }
 
@@ -205,6 +206,7 @@ static void client_reset_state_locked(struct control_session *cs)
     cpriv->bs_cfg = NULL;
     cpriv->bs_expecting = 0;
     cpriv->bs_restarted = 0;
+    cpriv->bs_pending_events = 0;
     client_unpend_restart(cs);
     cpriv->bs_nwritten_cache = 0;
     drain_evbuf(cpriv->c_pbuf);
@@ -363,7 +365,7 @@ static void client_send_store_res(struct control_session *cs, short events)
 
     /* Decide how many samples we stored. */
     size_t nsamples = (cpriv->bs_nwritten_cache +
-                       (client_is_restart_pending(cs) ?
+                       (cpriv->bs_restart_pending != -1 ?
                         (size_t)cpriv->bs_restart_pending : 0));
 
     /* Reset sample storage state to prepare for next storage command */
@@ -521,6 +523,11 @@ static int client_check_sata_device_ready(struct control_session *cs, size_t txn
 
 /********************************************************************
  * Sample handler storage callbacks
+ *
+ * TODO: these are messy; clean them up. In particular, we don't need
+ * bs_restart_pending and bs_pending_events -- we can tell the former
+ * from the latter, e.g. This would also let us go down to a single
+ * schedule function, etc.
  */
 
 /* For the sample.h API. */
@@ -538,11 +545,40 @@ static void client_update_bs_status(struct control_session *cs,
 
 /* For activating a restart from the background thread. */
 static void client_sample_restart_callback(__unused evutil_socket_t ignored,
-                                           short events, void *csvp)
+                                           __unused short events_ignored,
+                                           void *csvp)
 {
+    log_DEBUG("%s", __func__);
     struct control_session *cs = csvp;
-    assert(events == SAMPLE_BS_PKTDROP);
-    client_sample_store_callback(events, cpriv(cs)->bs_restart_pending, csvp);
+    struct client_priv *cpriv = cs->cpriv;
+    assert(client_is_response_pending(cs));
+    assert(cpriv->bs_restart_pending != -1);
+    short events = cpriv->bs_pending_events;
+    cpriv->bs_pending_events = 0;
+    client_sample_store_callback(events, cpriv->bs_restart_pending, csvp);
+}
+
+/* For activating a response from the background thread. */
+static void client_sample_done_callback(__unused evutil_socket_t ignored,
+                                        __unused short events_ignored,
+                                        void *csvp)
+{
+    log_DEBUG("%s", __func__);
+    struct control_session *cs = csvp;
+    struct client_priv *cpriv = cs->cpriv;
+    assert(client_is_response_pending(cs));
+    assert(cpriv->bs_restart_pending == -1);
+    short events = cpriv->bs_pending_events;
+    cpriv->bs_pending_events = 0;
+    client_sample_store_callback(events, 0, csvp);
+}
+
+static inline void client_do_schedule_prechecks(struct control_session *cs)
+{
+    assert(!client_is_response_pending(cs));
+    assert(control_is_txn_timeout_pending(cs));
+    assert(!cpriv(cs)->bs_response_pend_evt);
+    assert(cpriv(cs)->bs_pending_events == 0);
 }
 
 /* Postpone a sample storage restart until after a pending
@@ -550,19 +586,38 @@ static void client_sample_restart_callback(__unused evutil_socket_t ignored,
  *
  * NOT SYNCHRONIZED (mtx) */
 static void client_schedule_sample_store_restart(struct control_session *cs,
+                                                 short events,
                                                  size_t nwritten)
 {
-    log_DEBUG("%s: waiting to begin restart", __func__);
     struct client_priv *cpriv = cs->cpriv;
-    assert(!client_is_restart_pending(cs));
-    assert(control_is_txn_timeout_pending(cs));
-    assert(!cpriv->bs_restart_pend_evt);
+    client_do_schedule_prechecks(cs);
+    log_DEBUG("%s: waiting to begin restart", __func__);
     cpriv->bs_restart_pending = nwritten;
-    cpriv->bs_restart_pend_evt = event_new(cs->base, -1, SAMPLE_BS_PKTDROP,
+    cpriv->bs_response_pend_evt = event_new(cs->base, -1, SAMPLE_BS_PKTDROP,
                                            client_sample_restart_callback, cs);
-    if (!cpriv->bs_restart_pend_evt) {
+    cpriv->bs_pending_events = events;
+    if (!cpriv->bs_response_pend_evt) {
         log_ERR("out of memory; can't alloc sample restart event");
-        client_send_store_res(cs, SAMPLE_BS_ERR);
+        exit(EXIT_FAILURE);     /* FIXME allocate at start time instead */
+    }
+}
+
+/* Postpone a sample storage restart until after a pending
+ * transaction's response is received.
+ *
+ * NOT SYNCHRONIZED (mtx) */
+static void client_schedule_sample_store_finished(struct control_session *cs,
+                                                  short events)
+{
+    struct client_priv *cpriv = cs->cpriv;
+    client_do_schedule_prechecks(cs);
+    log_DEBUG("%s: waiting to send store response", __func__);
+    cpriv->bs_response_pend_evt = event_new(cs->base, -1, 0,
+                                            client_sample_done_callback, cs);
+    cpriv->bs_pending_events = events;
+    if (!cpriv->bs_response_pend_evt) {
+        log_ERR("out of memory, can't alloc sample restart event");
+        exit(EXIT_FAILURE);     /* FIXME allocate at start time instead */
     }
 }
 
@@ -572,9 +627,7 @@ static void client_schedule_sample_store_restart(struct control_session *cs,
 static void client_do_sample_store_restart(struct control_session *cs,
                                            size_t nwritten)
 {
-    assert(!cs->ctl_txns && cs->ctl_cur_txn == -1 &&
-           !control_is_txn_timeout_pending(cs) &&
-           "you can't call this while transactions are ongoing");
+    /* You can't call this while transactions are ongoing. */
 
     /*
      * Since this is invoked from the callback we gave
@@ -588,13 +641,15 @@ static void client_do_sample_store_restart(struct control_session *cs,
     assert(nwritten < cpriv->bs_cfg->nsamples);
     assert(cpriv->bs_cfg->start_sample >= 0);
     client_update_bs_status(cs, nwritten);
+    control_clear_transactions(cs, 1);
     if (nwritten || !cpriv->bs_restarted) {
         cpriv->bs_restarted = 1;
     } else {
         cpriv->bs_restarted++;
     }
-    if (client_is_restart_pending(cs)) {
-        assert(cpriv->bs_restart_pend_evt);
+    if (client_is_response_pending(cs)) {
+        assert(cpriv->bs_restart_pending != -1);
+        assert(cpriv->bs_response_pend_evt);
         client_unpend_restart(cs);
     }
     if (cpriv->bs_restarted > MAX_FAILED_STORAGE_RETRIES) {
@@ -627,12 +682,11 @@ static void client_sample_store_callback(short events, size_t nwritten,
     store = cpriv->c_cmd->store;
     assert(store);
 
-    if (client_is_restart_pending(cs)) {
+    if (client_is_response_pending(cs) && cpriv->bs_restart_pending != -1) {
         /* We're being called again after a previous restart attempt
-         * couldn't go forward due to the condition discussed
-         * below. */
-        assert(!cs->ctl_txns);
+         * couldn't go forward due to an unfinished transaction. */
         assert(!control_is_txn_timeout_pending(cs));
+        assert((size_t)(cpriv->bs_restart_pending) == nwritten);
         client_do_sample_store_restart(cs, nwritten);
     } else if (store->has_start_sample && (events & SAMPLE_BS_PKTDROP)) {
         /* We're storing canned samples and we dropped a packet.
@@ -641,24 +695,20 @@ static void client_sample_store_callback(short events, size_t nwritten,
             /* Actually, wait for the transaction to complete or time
              * out, so we don't get confused when we get its
              * response. */
-            client_schedule_sample_store_restart(cs, nwritten);
+            client_schedule_sample_store_restart(cs, events, nwritten);
         } else {
-            control_clear_transactions(cs, 1);
             client_do_sample_store_restart(cs, nwritten);
         }
     } else {
-        /* Otherwise, we're done with this command. */
-
-        /* FIXME: remove this by generalizing the deferred-response
-         * mechanism we use to delay restarts */
-        if (cs->ctl_txns) {
-            log_WARNING("sample storage finished before all transactions "
-                        "completed; hackishly ignoring the rest");
-            control_clear_transactions(cs, 1);
-        }
-
+        /* Otherwise, we're done with this command. Send the response
+         * now if we can, or after we've finished our next register
+         * I/O transaction otherwise. */
         cpriv->bs_nwritten_cache += nwritten;
-        client_send_store_res(cs, events);
+        if (control_is_txn_timeout_pending(cs)) {
+            client_schedule_sample_store_finished(cs, events);
+        } else {
+            client_send_store_res(cs, events);
+        }
     }
     control_must_unlock(cs);
 }
@@ -694,7 +744,8 @@ static int client_start(struct control_session *cs)
     priv->bs_expecting = 0;
     priv->bs_restarted = 0;
     priv->bs_restart_pending = -1;
-    priv->bs_restart_pend_evt = NULL;
+    priv->bs_response_pend_evt = NULL;
+    priv->bs_pending_events = 0;
     priv->bs_nwritten_cache = 0;
     cs->cpriv = priv;
     client_reset_state_locked(cs); /* worker isn't started; don't
@@ -876,15 +927,13 @@ static void client_partner_closed(struct control_session *cs)
     }
 
     control_clear_transactions(cs, 1);
-    if (client_is_restart_pending(cs)) {
+    if (client_is_response_pending(cs)) {
         /* We were waiting for a transaction to finish so we could
          * restart some storage, but the data node connection died
          * (e.g. due to timeout). The client still needs to know the
          * result. */
         struct client_priv *cpriv = cs->cpriv;
-        assert(cpriv->c_cmd);
-        assert(cpriv->c_cmd->store);
-        client_send_store_res(cs, SAMPLE_BS_PKTDROP);
+        event_active(cpriv->bs_response_pend_evt, 0, 0);
     } else {
         CLIENT_RES_ERR_DNODE_DIED(cs);
     }
@@ -1614,11 +1663,11 @@ static void client_process_res_store(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
 
-    if (client_is_restart_pending(cs)) {
-        log_DEBUG("%s: no transactions pending; doing pending restart",
+    if (client_is_response_pending(cs)) {
+        log_DEBUG("%s: transaction finished, handling pending callback",
                   __func__);
         control_clear_transactions(cs, 1);
-        event_active(cpriv->bs_restart_pend_evt, SAMPLE_BS_PKTDROP, 0);
+        event_active(cpriv->bs_response_pend_evt, 0, 0);
         return;
     } else if (cpriv->bs_restarted) {
         if (!client_last_txn_succeeded(cs)) {
