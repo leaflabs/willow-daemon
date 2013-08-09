@@ -527,6 +527,15 @@ static int client_check_sata_device_ready(struct control_session *cs, size_t txn
 static void client_sample_store_callback(short events, size_t nwritten,
                                          void *csvp);
 
+static void client_update_bs_status(struct control_session *cs,
+                                    size_t nwritten)
+{
+    struct client_priv *cpriv = cs->cpriv;
+    cpriv->bs_nwritten_cache += nwritten;
+    cpriv->bs_cfg->nsamples -= nwritten;
+    cpriv->bs_cfg->start_sample += nwritten;
+}
+
 /* For activating a restart from the background thread. */
 static void client_sample_restart_callback(__unused evutil_socket_t ignored,
                                            short events, void *csvp)
@@ -578,9 +587,7 @@ static void client_do_sample_store_restart(struct control_session *cs,
     struct client_priv *cpriv = cs->cpriv;
     assert(nwritten < cpriv->bs_cfg->nsamples);
     assert(cpriv->bs_cfg->start_sample >= 0);
-    cpriv->bs_nwritten_cache += nwritten;
-    cpriv->bs_cfg->nsamples -= nwritten;
-    cpriv->bs_cfg->start_sample += nwritten;
+    client_update_bs_status(cs, nwritten);
     if (nwritten || !cpriv->bs_restarted) {
         cpriv->bs_restarted = 1;
     } else {
