@@ -29,24 +29,25 @@ static const char* out_type_str(enum out_type type)
 
 static void usage(int exit_status)
 {
-    printf("Usage: %s [-d|-c <ch>] [-p <port>] [-s]\n"
-           "Options:\n"
-           "  -A, --all-sub"
-           "\tOutput all 32 channels. Implies subsamples.\n"
-           "  -c, --channel"
-           "\t(16-bit) channel to output\n"
-           "  -d, --dac"
-           "\tOutput DAC channel (this is the default)\n"
-           "  -h, --help"
-           "\tPrint this message\n"
-           "  -M, --board-samples"
-           "\tExpect board samples instead of subsamples\n"
-           "  -p, --port"
-           "\tListen to daemon at this address, default %d\n"
-           "  -s, --string"
-           "\tOutput values as strings on stdout instead of bytes\n"
-           ,
-           PROGRAM_NAME, DAEMON_PORT);
+    fprintf(exit_status == EXIT_SUCCESS ? stdout : stderr,
+            "Usage: %s [-d|-c <ch>] [-p <port>] [-s]\n"
+            "Options:\n"
+            "  -A, --all-sub"
+            "\tOutput all 32 channels. Implies subsamples.\n"
+            "  -c, --channel"
+            "\t(16-bit) channel to output\n"
+            "  -d, --dac"
+            "\tOutput DAC channel (this is the default)\n"
+            "  -h, --help"
+            "\tPrint this message\n"
+            "  -M, --board-samples"
+            "\tExpect board samples instead of subsamples\n"
+            "  -p, --port"
+            "\tListen to daemon at this address, default %d\n"
+            "  -s, --string"
+            "\tOutput values as strings on stdout instead of bytes\n"
+            ,
+            PROGRAM_NAME, DAEMON_PORT);
     exit(exit_status);
 }
 
