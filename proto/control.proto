@@ -321,6 +321,7 @@ message ControlCommand {
         STREAM = 1;
         STORE = 2;
         ACQUIRE = 3;
+        PING_DNODE = 15;
         REG_IO = 255;
     }
     optional Type type = 1;
@@ -328,6 +329,7 @@ message ControlCommand {
     optional ControlCmdStream stream = 2;
     optional ControlCmdStore store = 3;
     optional ControlCmdAcquire acquire = 4;
+    // (nothing more needed for PING_DNODE)
     optional RegisterIO reg_io = 15;
 }
 
