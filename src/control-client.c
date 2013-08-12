@@ -424,7 +424,6 @@ static void client_send_success(struct control_session *cs)
 }
 
 #define CLIENT_RES_ERR_NO_DNODE(cs) do {                                \
-        log_DEBUG("got client command, but no data node is connected"); \
         client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__NO_DNODE,        \
                         "not connected to data node");                  \
     } while (0)
@@ -2148,6 +2147,7 @@ static void client_thread(struct control_session *cs)
         assert(cpriv(cs)->c_cmd);
 
         if (!cs->dbev) {     /* TODO fix this abstraction violation */
+            client_log_command(cpriv(cs)->c_cmd);
             CLIENT_RES_ERR_NO_DNODE(cs);
         } else {
             client_process_cmd(cs);
