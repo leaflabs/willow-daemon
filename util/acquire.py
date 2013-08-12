@@ -19,6 +19,9 @@ def acquire(enable):
     cmd.acquire.enable = enable
     return [cmd]
 
+def err_regs(args):
+    return read_err_regs()
+
 def start(args):
     return acquire(True)
 
@@ -103,6 +106,9 @@ def nop_resp_filter(resps):
     return resps
 
 COMMAND_HANDLING = {
+    'err_regs': (err_regs,
+                 no_arg_parser('err_regs', 'Print nonzero error registers'),
+                 lambda resps: [r for r in resps if r.reg_io.val != 0]),
     'start': (start, no_arg_parser('start', 'Start acquiring to disk'),
               nop_resp_filter),
     'stop': (stop, no_arg_parser('stop', 'Stop acquiring to disk'),
