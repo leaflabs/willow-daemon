@@ -40,10 +40,8 @@ while True:
         print("nonzero error register response:", hex(val), file=sys.stderr)
         print(str(ping_res[0]), file=sys.stderr)
         print("other nonzero error registers:")
-        for i in xrange(1, 32):
-            if (1 << i) & val:
-                i_err = reg_read(i, 0)
-                print(str(do_control_cmds([i_err])[0]))
+        for r in get_err_regs():
+            print(r)
         sys.exit(1)
     else:
         print("OK:", time.time() - start)
