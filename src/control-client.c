@@ -1310,7 +1310,7 @@ static int client_start_txns_stream(struct control_session *cs,
 static int client_start_txns_store(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
-    const size_t ntxns = CLIENT_N_NET_TXNS + 14;
+    const size_t ntxns = CLIENT_N_NET_TXNS + 12;
     struct control_txn *txns = malloc(ntxns * sizeof(struct control_txn));
     size_t txno = 0;
     if (!txns) {
@@ -1338,6 +1338,8 @@ static int client_start_txns_store(struct control_session *cs)
      * XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
      */
 
+    /* FIXME XXX this needs to reset SATA read FIFO, but doesn't. */
+
     /* Stop SATA, DAQ, and UDP modules. */
     client_sata_w(txns + txno++, RAW_RADDR_SATA_MODE, RAW_SATA_MODE_WAIT);
     client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 0);
@@ -1347,8 +1349,6 @@ static int client_start_txns_store(struct control_session *cs)
     /* Reset SATA-UDP and SATA read FIFOs by toggling reset line */
     client_sata_w(txns + txno++, RAW_RADDR_SATA_UDP_FIFO_RST, 1);
     client_sata_w(txns + txno++, RAW_RADDR_SATA_UDP_FIFO_RST, 0);
-    client_sata_w(txns + txno++, RAW_RADDR_SATA_R_FIFO_RST, 1);
-    client_sata_w(txns + txno++, RAW_RADDR_SATA_R_FIFO_RST, 0);
     /* Check SATA device ready flag */
     client_sata_r(txns + txno++, RAW_RADDR_SATA_STATUS);
     /* Set SATA read index and length.
