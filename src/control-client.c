@@ -2088,7 +2088,6 @@ static void client_process_cmd(struct control_session *cs)
         return;
     }
     assert(proc);
-    client_log_command(cmd);
     proc(cs);
 }
 
@@ -2146,8 +2145,8 @@ static void client_thread(struct control_session *cs)
         /* There should be a command waiting for us */
         assert(cpriv(cs)->c_cmd);
 
+        client_log_command(cpriv(cs)->c_cmd);
         if (!cs->dbev) {     /* TODO fix this abstraction violation */
-            client_log_command(cpriv(cs)->c_cmd);
             CLIENT_RES_ERR_NO_DNODE(cs);
         } else {
             client_process_cmd(cs);
