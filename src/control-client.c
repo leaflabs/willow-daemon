@@ -322,6 +322,8 @@ static void client_log_command(ControlCommand *cmd)
         }
         break;
     }
+    case CONTROL_COMMAND__TYPE__PING_DNODE:
+        break;
     default:
         snprintf(sub_msg, sizeof(sub_msg), " %s", "unknown command type");
         break;
@@ -2027,6 +2029,34 @@ static void client_process_res_acquire(struct control_session *cs)
     client_send_success(cs);
 }
 
+static void client_process_cmd_ping_dnode(struct control_session *cs)
+{
+    /* Just read CENTRAL_STATE. */
+    struct control_txn *txn = malloc(sizeof(struct control_txn));
+    if (!txn) {
+        CLIENT_RES_ERR_DAEMON_OOM(cs);
+        return;
+    }
+    client_central_r(txn, RAW_RADDR_CENTRAL_STATE);
+    client_start_txns(cs, txn, 1, 1);
+}
+
+static void client_process_res_ping_dnode(struct control_session *cs)
+{
+    static const char *who_on_err = "ControlCommand with type==PING_DNODE";
+    if (client_ensure_txn_ok(cs, who_on_err) == -1) {
+        return;
+    }
+    if (!client_start_next_txn(cs)) { /* Are there more transactions? */
+        /* Yes? Really? There shouldn't be. */
+        CLIENT_RES_ERR_DAEMON(cs, "can't happen");
+        assert(0);
+        return;
+    } else {
+        client_send_success(cs);
+    }
+}
+
 static void client_process_cmd(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
@@ -2050,6 +2080,9 @@ static void client_process_cmd(struct control_session *cs)
         break;
     case CONTROL_COMMAND__TYPE__ACQUIRE:
         proc = client_process_cmd_acquire;
+        break;
+    case CONTROL_COMMAND__TYPE__PING_DNODE:
+        proc = client_process_cmd_ping_dnode;
         break;
     default:
         CLIENT_RES_ERR_C_PROTO(cs, "unknown command type");
@@ -2081,6 +2114,9 @@ static void client_process_res(struct control_session *cs)
         break;
     case CONTROL_COMMAND__TYPE__ACQUIRE:
         client_process_res_acquire(cs);
+        break;
+    case CONTROL_COMMAND__TYPE__PING_DNODE:
+        client_process_res_ping_dnode(cs);
         break;
     default:
         log_ERR("got result for unhandled command type; ignoring it");
