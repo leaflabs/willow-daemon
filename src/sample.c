@@ -310,8 +310,8 @@ static void* sample_worker_main(void *smplvp)
             smpl->worker_using_buf[i] = 0;
             if (!write_err) {
                 smpl->worker_nwritten += len;
-                log_DEBUG("%s: stored %zu new board samples, total %zu",
-                          __func__, len, smpl->worker_nwritten);
+                log_DEBUG("%s: stored %zu samples, total %zu", __func__,
+                          len, smpl->worker_nwritten);
             } else {
                 log_DEBUG("%s: ERROR storing packets: %m", __func__);
             }
