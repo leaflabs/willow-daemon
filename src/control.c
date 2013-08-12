@@ -289,11 +289,13 @@ static void* control_dn_conn_main(void *csessvp)
 
 static void control_bevt_handler(struct control_session *cs, short events,
                                  void (*on_close)(struct control_session*),
-                                 const char *log_who)
+                                 const char *log_who, int log_disconn)
 {
     if (events & BEV_EVENT_EOF || events & BEV_EVENT_ERROR) {
         on_close(cs);
-        log_INFO("%s disconnected", log_who);
+        if (log_disconn) {
+            log_INFO("%s disconnected", log_who);
+        }
     } else {
         log_WARNING("unhandled %s event; flags %d", log_who, events);
     }
@@ -304,7 +306,7 @@ static void control_client_event(__unused struct bufferevent *bev,
 {
     struct control_session *cs = csessvp;
     assert(bev == cs->cbev);
-    control_bevt_handler(cs, events, control_client_close, "client");
+    control_bevt_handler(cs, events, control_client_close, "client", 0);
 }
 
 static void control_dnode_event(__unused struct bufferevent *bev,
@@ -312,7 +314,7 @@ static void control_dnode_event(__unused struct bufferevent *bev,
 {
     struct control_session *cs = csessvp;
     assert(bev == cs->dbev);
-    control_bevt_handler(cs, events, control_dnode_close, "data node");
+    control_bevt_handler(cs, events, control_dnode_close, "data node", 1);
 }
 
 static void refuse_connection(evutil_socket_t fd,
@@ -334,7 +336,7 @@ control_conn_open(struct control_session *cs,
                   bufferevent_event_cb event,
                   int (*on_open)(struct control_session*,
                                  evutil_socket_t),
-                  const char *log_who)
+                  const char *log_who, int log_conn)
 {
     if (*bevp) {
         refuse_connection(fd, log_who, "another is ongoing");
@@ -355,7 +357,9 @@ control_conn_open(struct control_session *cs,
     } else {
         bufferevent_enable(bev, EV_READ | EV_WRITE);
     }
-    log_INFO("%s connected", log_who);
+    if (log_conn) {
+        log_INFO("%s connected", log_who);
+    }
 }
 
 static void
@@ -408,7 +412,7 @@ static void client_ecl(__unused struct evconnlistener *ecl, evutil_socket_t fd,
     struct control_session *cs = csessvp;
     control_must_lock(cs);
     control_conn_open(cs, &cs->cbev, fd, control_client_bev_read, NULL,
-                      control_client_event, control_client_open, "client");
+                      control_client_event, control_client_open, "client", 0);
     control_must_unlock(cs);
 }
 
@@ -427,7 +431,7 @@ static void control_dn_conn_cb(__unused evutil_socket_t fd_ignored,
     assert(cs->dcontrolfd != -1);
     control_conn_open(cs, &cs->dbev, cs->dcontrolfd, control_dnode_bev_read,
                       NULL, control_dnode_event, control_dnode_open,
-                      "data node");
+                      "data node", 0);
     control_must_unlock(cs);
 }
 
