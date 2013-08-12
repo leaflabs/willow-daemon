@@ -75,6 +75,11 @@ def reg_write(module, register, value):
         reg_io.gpio = register
     return ControlCommand(type=ControlCommand.REG_IO, reg_io=reg_io)
 
+def read_err_regs():
+    """Create and return protocol messages for reading error registers."""
+    return [reg_read(mod, 0) for mod in
+            (MOD_ERR, MOD_CENTRAL, MOD_SATA, MOD_DAQ, MOD_UDP, MOD_GPIO)]
+
 def get_daemon_control_sock(addr=('127.0.0.1', 1371), retry=False,
                             max_retries=100):
     tries = max_retries if retry else 1
@@ -134,3 +139,11 @@ def do_control_cmds(commands, retry=False, max_retries=100,
     finally:
         if control_socket is None:
             sckt.close()
+
+def get_err_regs(**kwargs):
+    """Read error registers; return reg_io of results with nonzero values."""
+    results = do_control_cmds(read_err_regs(), **kwargs)
+    if results is None:
+        return results
+    else:
+        return [r.reg_io for r in results if r.reg_io.val != 0]
