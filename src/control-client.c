@@ -252,6 +252,122 @@ static int client_open_ch_storage(struct ch_storage *chns,
     return 0;
 }
 
+/* The corresponding raw_packets.h r_addr for a reg_io (fits in a
+ * uint16), or -1 on error.  */
+static int32_t client_r_addr_for_reg_io(RegisterIO *reg_io)
+{
+    uint16_t reg_addr;
+    /* A little evil macro to save typing. */
+#define REG_IO_CASE(lcase, ucase)                                       \
+    MODULE__MOD_ ## ucase:                                              \
+        if (!reg_io->has_ ## lcase) {                                   \
+            return -1;                                                  \
+        }                                                               \
+        reg_addr = reg_io->lcase;                                       \
+        break
+
+    switch (reg_io->module) {
+    case REG_IO_CASE(err, ERR);
+    case REG_IO_CASE(central, CENTRAL);
+    case REG_IO_CASE(sata, SATA);
+    case REG_IO_CASE(daq, DAQ);
+    case REG_IO_CASE(udp, UDP);
+    case REG_IO_CASE(gpio, GPIO);
+    default:
+        return -1;
+    }
+#undef REG_IO_CASE
+    return reg_addr;
+}
+
+static void client_log_command(ControlCommand *cmd)
+{
+    __unused char sub_msg[200];
+    switch (cmd->type) {
+    case CONTROL_COMMAND__TYPE__STREAM:
+        break;
+    case CONTROL_COMMAND__TYPE__STORE:
+        break;
+    case CONTROL_COMMAND__TYPE__ACQUIRE: {
+        static const char *m;
+        if (cmd->acquire->has_enable) {
+            if (cmd->acquire->enable) {
+                m = " enable";
+            } else {
+                m = " disable";
+            }
+        } else {
+            m = "<invalid; missing enable field>";
+        }
+        strncpy(sub_msg, m, sizeof(sub_msg));
+        break;
+    }
+    case CONTROL_COMMAND__TYPE__REG_IO: {
+        int32_t r_addr = client_r_addr_for_reg_io(cmd->reg_io);
+        if (r_addr == -1) {
+            snprintf(sub_msg, sizeof(sub_msg), " <invalid RegisterIO>");
+        } else {
+            int n;
+            RegisterIO *reg_io = cmd->reg_io;
+            int is_write = reg_io->has_val;
+            snprintf(sub_msg, sizeof(sub_msg), " %s %s%n",
+                     is_write ? "[W]" : "[R]",
+                     raw_r_addr_str(reg_io->module, (uint16_t)r_addr),
+                     &n);
+            if (is_write) {
+                uint32_t val = reg_io->val;
+                snprintf(sub_msg + n, sizeof(sub_msg) - n, "=%u (0x%x)",
+                         val, val);
+            }
+        }
+        break;
+    }
+    default:
+        snprintf(sub_msg, sizeof(sub_msg), " %s", "unknown command type");
+        break;
+    }
+    log_DEBUG("command:  %s%s",
+              protobuf_c_enum_descriptor_get_value
+                  (&control_command__type__descriptor, cmd->type)->name,
+              sub_msg);
+}
+
+static void client_log_response(ControlResponse *res)
+{
+    char buf[200];
+    __unused const char *sub_msg = "";
+    switch (res->type) {
+    case CONTROL_RESPONSE__TYPE__ERR:
+        sub_msg = res->err->msg ? res->err->msg : NULL;
+        break;
+    case CONTROL_RESPONSE__TYPE__STORE_FINISHED:
+        sub_msg = protobuf_c_enum_descriptor_get_value
+            (&control_res_store__status__descriptor, res->store->status)->name;
+        break;
+    case CONTROL_RESPONSE__TYPE__REG_IO: {
+        int32_t r_addr = client_r_addr_for_reg_io(res->reg_io);
+        if (r_addr == -1) {
+            sub_msg = "UNKNOWN R_ADDR; THIS IS A BUG";
+        } else {
+            snprintf(buf, sizeof(buf), "    %s=%u (0x%x)",
+                     raw_r_addr_str(res->reg_io->module, (uint16_t)r_addr),
+                     res->reg_io->val, res->reg_io->val);
+            sub_msg = buf;
+        }
+        break;
+    } case CONTROL_RESPONSE__TYPE__SUCCESS:
+        sub_msg = "";
+        break;
+    default:
+        sub_msg = " UNKNOWN RESPONSE TYPE; UPDATE client_log_response()";
+        break;
+    }
+    log_DEBUG("response: %s %s",
+              protobuf_c_enum_descriptor_get_value
+                  (&control_response__type__descriptor, res->type)->name,
+              sub_msg);
+}
+
 /********************************************************************
  * Conveniences for sending responses to client
  *
@@ -278,11 +394,7 @@ static void client_send_response(struct control_session *cs,
     client_cmd_len_t clen = client_cmd_hton((client_cmd_len_t)packed);
     bufferevent_write(cs->cbev, &clen, CLIENT_CMDLEN_SIZE);
     bufferevent_write(cs->cbev, cpriv->c_rsp_arr, packed);
-    if (cr->type != CONTROL_RESPONSE__TYPE__ERR) {
-        log_DEBUG("sending non-error ControlResponse type %d", cr->type);
-    } else {
-        log_DEBUG("sending error ControlResponse type");
-    }
+    client_log_response(cr);
     client_done_with_cmd(cs);
 }
 
@@ -310,7 +422,7 @@ static void client_send_success(struct control_session *cs)
 }
 
 #define CLIENT_RES_ERR_NO_DNODE(cs) do {                                \
-        log_DEBUG("got client request, but no data node is connected"); \
+        log_DEBUG("got client command, but no data node is connected"); \
         client_send_err(cs, CONTROL_RES_ERR__ERR_CODE__NO_DNODE,        \
                         "not connected to data node");                  \
     } while (0)
@@ -1314,30 +1426,12 @@ static void client_process_cmd_regio(struct control_session *cs)
         return;
     }
 
-    /* A little evil macro to save typing. */
-    uint16_t reg_addr;
-#define REG_IO_CASE(lcase, ucase)                                       \
-    MODULE__MOD_ ## ucase:                                              \
-        if (!reg_io->has_ ## lcase) {                                   \
-            CLIENT_RES_ERR_C_PROTO(cs,                                 \
-                                   "missing " #lcase " register address"); \
-            return;                                                     \
-        }                                                               \
-        reg_addr = reg_io->lcase;                                       \
-        break
-
-    switch (reg_io->module) {
-    case REG_IO_CASE(err, ERR);
-    case REG_IO_CASE(central, CENTRAL);
-    case REG_IO_CASE(sata, SATA);
-    case REG_IO_CASE(daq, DAQ);
-    case REG_IO_CASE(udp, UDP);
-    case REG_IO_CASE(gpio, GPIO);
-    default:
-        CLIENT_RES_ERR_C_PROTO(cs, "no address field set in RegisterIO");
+    int32_t r_addr = client_r_addr_for_reg_io(reg_io);
+    if (r_addr == -1) {
+        CLIENT_RES_ERR_C_PROTO(cs, "invalid RegisterIO specified");
         return;
     }
-#undef REG_IO_CASE
+    uint16_t reg_addr = (uint16_t)r_addr;
 
     struct control_txn *txn = malloc(sizeof(struct control_txn));
     if (!txn) {
@@ -1942,31 +2036,27 @@ static void client_process_cmd(struct control_session *cs)
         return;
     }
 
-    cmd_proc_fn proc;
-    const char *type;
+    cmd_proc_fn proc = NULL;
 
     switch (cmd->type) {
     case CONTROL_COMMAND__TYPE__REG_IO:
         proc = client_process_cmd_regio;
-        type = "REG_IO";
         break;
     case CONTROL_COMMAND__TYPE__STREAM:
         proc = client_process_cmd_stream;
-        type = "STREAM";
         break;
     case CONTROL_COMMAND__TYPE__STORE:
         proc = client_process_cmd_store;
-        type = "STORE";
         break;
     case CONTROL_COMMAND__TYPE__ACQUIRE:
         proc = client_process_cmd_acquire;
-        type = "ACQUIRE";
         break;
     default:
         CLIENT_RES_ERR_C_PROTO(cs, "unknown command type");
         return;
     }
-    log_DEBUG("handling %s command (%d)", type, cmd->type);
+    assert(proc);
+    client_log_command(cmd);
     proc(cs);
 }
 
