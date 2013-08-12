@@ -110,8 +110,9 @@ class DaemonTest(unittest.TestCase):
             p2bkw.update(self.proto2bytes_popen_kwargs)
             self.proto2bytes = proto2bytes_sub(*self.proto2bytes_args, **p2bkw)
 
-        cmds = [daemon_control.reg_read(daemon_control.MOD_CENTRAL,
-                                        daemon_control.CENTRAL_STATE)]
+        ctype = daemon_control.ControlCommand.PING_DNODE
+        cmds = [daemon_control.ControlCommand(type=ctype)]
+
         # Spin until the daemon comes up
         if self.start_daemon:
             resps = daemon_control.do_control_cmds(cmds, retry=True)
