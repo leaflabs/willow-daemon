@@ -282,7 +282,7 @@ static int32_t client_r_addr_for_reg_io(RegisterIO *reg_io)
 
 static void client_log_command(ControlCommand *cmd)
 {
-    __unused char sub_msg[200];
+    __unused char sub_msg[200] = { [0] = '\0' };
     switch (cmd->type) {
     case CONTROL_COMMAND__TYPE__STREAM:
         break;
