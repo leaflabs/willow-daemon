@@ -99,11 +99,16 @@ stream_parser.add_argument('enable',
                            choices=['start', 'stop'],
                            help='Start or stop streaming')
 
+def nop_resp_filter(resps):
+    return resps
+
 COMMAND_HANDLING = {
-    'start': (start, no_arg_parser('start', 'Start acquiring to disk')),
-    'stop': (stop, no_arg_parser('stop', 'Stop acquiring to disk')),
-    'save_stream': (save_stream, save_stream_parser),
-    'stream': (stream, stream_parser),
+    'start': (start, no_arg_parser('start', 'Start acquiring to disk'),
+              nop_resp_filter),
+    'stop': (stop, no_arg_parser('stop', 'Stop acquiring to disk'),
+             nop_resp_filter),
+    'save_stream': (save_stream, save_stream_parser, nop_resp_filter),
+    'stream': (stream, stream_parser, nop_resp_filter),
 }
 
 ##
@@ -124,13 +129,13 @@ def main():
     cmd, cmd_args = sys.argv[1], sys.argv[2:]
     if cmd not in COMMAND_HANDLING:
         usage()
-    handler, parser = COMMAND_HANDLING[cmd]
+    handler, parser, rfilter = COMMAND_HANDLING[cmd]
     cmds = handler(parser.parse_args(cmd_args))
     resps = do_control_cmds(cmds)
     if resps is None:
         print("Didn't get a response", file=sys.stderr)
         sys.exit(1)
-    for resp in resps:
+    for resp in rfilter(resps):
         print(resp, end='')
 
 if __name__ == '__main__':
