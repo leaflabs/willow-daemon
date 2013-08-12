@@ -181,6 +181,18 @@ static int dnode_got_entire_pkt(struct control_session *cs,
     return ret;
 }
 
+static void dnode_log_recv_err_pkt(struct raw_pkt_cmd *pkt)
+{
+    if (raw_mtype(pkt) == RAW_MTYPE_ERR) {
+        log_WARNING("async error raw response");
+    } else {
+        log_WARNING("err flag in raw response: "
+                    "flags 0x%x addr %s",
+                    raw_pflags(pkt),
+                    raw_r_addr_str(raw_r_type(pkt), raw_r_addr(pkt)));
+    }
+}
+
 static int dnode_read(struct control_session *cs)
 {
     int ret = CONTROL_WHY_NONE;
@@ -198,14 +210,7 @@ static int dnode_read(struct control_session *cs)
                 continue;
             }
             if (raw_pkt_is_err(&pkt)) {
-                log_INFO("received error response packet from data node");
-                __unused int eflag = raw_pflags(&pkt) & RAW_PFLAG_ERR;
-                log_DEBUG("flags 0x%x%s raw_pkt_err=%s address=%s",
-                          raw_pflags(&pkt),
-                          eflag ? " (err flag set)" : "",
-                          raw_mtype(&pkt) == RAW_MTYPE_ERR ? "yes" : "no",
-                          raw_r_addr_str(raw_r_type(&pkt), raw_r_addr(&pkt))
-                          );
+                dnode_log_recv_err_pkt(&pkt);
             }
 
             /*
