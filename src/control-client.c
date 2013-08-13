@@ -2060,13 +2060,19 @@ static void client_process_cmd(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
     ControlCommand *cmd = cpriv->c_cmd;
+
+    client_log_command(cpriv->c_cmd);
+
+    if (!cs->dbev) {     /* TODO fix this abstraction violation */
+        CLIENT_RES_ERR_NO_DNODE(cs);
+        return;
+    }
     if (!cmd->has_type) {
         CLIENT_RES_ERR_C_PROTO(cs, "missing type field in command");
         return;
     }
 
     cmd_proc_fn proc = NULL;
-
     switch (cmd->type) {
     case CONTROL_COMMAND__TYPE__REG_IO:
         proc = client_process_cmd_regio;
@@ -2144,13 +2150,8 @@ static void client_thread(struct control_session *cs)
         assert(!cs->ctl_txns);
         /* There should be a command waiting for us */
         assert(cpriv(cs)->c_cmd);
-
-        client_log_command(cpriv(cs)->c_cmd);
-        if (!cs->dbev) {     /* TODO fix this abstraction violation */
-            CLIENT_RES_ERR_NO_DNODE(cs);
-        } else {
-            client_process_cmd(cs);
-        }
+        /* Handle the command */
+        client_process_cmd(cs);
         cs->wake_why &= ~CONTROL_WHY_CLIENT_CMD;
     }
     if (cs->wake_why & CONTROL_WHY_CLIENT_RES) {
