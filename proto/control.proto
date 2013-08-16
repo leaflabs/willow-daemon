@@ -64,6 +64,10 @@ enum CentralAddr {
     CENTRAL_STATE = 1;
     CENTRAL_COOKIE_H = 2;
     CENTRAL_COOKIE_L = 3;
+    CENTRAL_GIT_SHA_PIECE = 4;  // 4 bytes of Git commit
+    CENTRAL_HDL_PARAM = 5;
+    CENTRAL_HDL_BUILD_TIME = 6;
+    CENTRAL_BOARD_ID = 7;
 }
 
 enum SataAddr {
