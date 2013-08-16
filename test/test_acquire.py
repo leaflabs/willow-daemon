@@ -37,10 +37,11 @@ class TestAcquire(test_helpers.DaemonTest):
                          msg='\nenable response:\n' + str(resp))
 
         # Run for a while
-        print('Sleeping for', SLEEP_TIME_SEC / 60.,
-              'minutes while data is being acquired',
-              file=sys.stderr)
+        print('Sleeping', SLEEP_TIME_SEC / 60., 'minutes while acquiring... ',
+              end='', file=sys.stderr)
+        sys.stderr.flush()
         time.sleep(SLEEP_TIME_SEC)
+        print('done.', file=sys.stderr)
 
         # Stop acquisition
         cmd.acquire.enable = False
