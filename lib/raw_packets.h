@@ -124,11 +124,15 @@ struct raw_cmd_res { _RAW_C_REQ_RES };
 #define RAW_RADDR_ERR_ERR0 0x00 /* global error register 0 (r/w) */
 #define RAW_RADDR_ERR_NREGS (RAW_RADDR_ERR_ERR0 + 1)
 /* RAW_RTYPE_CENTRAL */
-#define RAW_RADDR_CENTRAL_ERR         0x00 /* Module error flags */
-#define RAW_RADDR_CENTRAL_STATE       0x01 /* Module state */
-#define RAW_RADDR_CENTRAL_EXP_CK_H    0x02 /* Experiment cookie, high word */
-#define RAW_RADDR_CENTRAL_EXP_CK_L    0x03 /* Experiment cookie, low word */
-#define RAW_RADDR_CENTRAL_NREGS (RAW_RADDR_CENTRAL_EXP_CK_L + 1)
+#define RAW_RADDR_CENTRAL_ERR           0x00 /* Module error flags */
+#define RAW_RADDR_CENTRAL_STATE         0x01 /* Module state */
+#define RAW_RADDR_CENTRAL_EXP_CK_H      0x02 /* Experiment cookie, high word */
+#define RAW_RADDR_CENTRAL_EXP_CK_L      0x03 /* Experiment cookie, low word */
+#define RAW_RADDR_CENTRAL_GIT_SHA_PIECE 0x04 /* Piece of Git commit SHA-1 */
+#define RAW_RADDR_CENTRAL_HDL_PARAM     0x05 /* HDL parameters */
+#define RAW_RADDR_CENTRAL_HDL_TIMESTAMP 0x06 /* HDL build Unix time, sec. */
+#define RAW_RADDR_CENTRAL_BOARD_ID      0x07 /* Board identifier */
+#define RAW_RADDR_CENTRAL_NREGS (RAW_RADDR_CENTRAL_BOARD_ID + 1)
 /* RAW_RTYPE_SATA */
 #define RAW_RADDR_SATA_ERR           0x00 /* Module error flags */
 #define RAW_RADDR_SATA_MODE          0x01 /* Module mode (0 wait, 1
