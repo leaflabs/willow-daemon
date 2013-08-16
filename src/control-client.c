@@ -42,6 +42,13 @@
 #define LOCAL_DEBUG(...) ((void)0)
 #endif
 
+/* Hackaround for the fact that we're jumping around between
+ * sng-firmware versions that do and don't support
+ * RAW_RADDR_SATA_R_FIFO_RST. */
+#ifndef CLIENT_RESET_SATA_FIFO
+#define CLIENT_RESET_SATA_FIFO 1
+#endif
+
 #define HDF5_DATASET_NAME "wired-dataset"
 #define DEFAULT_STORAGE_BACKEND STORAGE_BACKEND__STORE_HDF5
 
@@ -1348,8 +1355,10 @@ static int client_start_txns_store(struct control_session *cs)
     /* Reset SATA-UDP and SATA read FIFOs by toggling reset line */
     client_sata_w(txns + txno++, RAW_RADDR_SATA_UDP_FIFO_RST, 1);
     client_sata_w(txns + txno++, RAW_RADDR_SATA_UDP_FIFO_RST, 0);
+#if CLIENT_RESET_SATA_FIFO
     client_sata_w(txns + txno++, RAW_RADDR_SATA_R_FIFO_RST, 1);
     client_sata_w(txns + txno++, RAW_RADDR_SATA_R_FIFO_RST, 0);
+#endif
     /* Check SATA device ready flag */
     client_sata_r(txns + txno++, RAW_RADDR_SATA_STATUS);
     /* Set SATA read index and length.
