@@ -1,3 +1,5 @@
+"""Tests acquisition: ACQUIRE to disk, sleep, stop, send and check samples."""
+
 from __future__ import print_function
 
 import unittest

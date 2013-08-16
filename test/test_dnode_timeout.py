@@ -1,3 +1,5 @@
+"""(DO_IT_LIVE=0 only) test that reg I/O times out properly."""
+
 import time
 import unittest
 

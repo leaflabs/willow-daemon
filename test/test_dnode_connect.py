@@ -1,4 +1,4 @@
-# Test that we can make a basic client/data node connection
+"""Test that we can make a basic client/data node connection"""
 
 import test_helpers
 

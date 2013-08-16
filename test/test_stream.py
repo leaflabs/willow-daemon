@@ -1,3 +1,8 @@
+"""Test live data stream in (raw,proto) x (bsamp, bsubsamp) formats.
+
+ONLY TESTS THAT _SOME_ DATA ARE RECEIVED. DOES NOT TEST CONTIGUITY OF
+SAMPLES, E.G."""
+
 import fcntl
 import os
 import subprocess

@@ -1,4 +1,4 @@
-# Test channel storage
+"""Test live channel streaming/storage on daemon's disk"""
 
 from __future__ import print_function
 

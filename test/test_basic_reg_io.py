@@ -1,4 +1,4 @@
-# Test basic register I/O with the dummy data node
+"""Test basic register I/O (reads/writes to registers)"""
 
 import random
 import time

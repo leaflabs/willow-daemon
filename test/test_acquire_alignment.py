@@ -1,3 +1,5 @@
+"""Test that the daemon refuses STORE commands with bad sample alignment."""
+
 import test_helpers
 from daemon_control import *
 

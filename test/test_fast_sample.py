@@ -1,3 +1,15 @@
+"""Tests against a race condition.
+
+If a sample transfer finishes before the last transaction's reg I/O
+result has been received, we need to wait to respond to the client or
+otherwise react to the transfer until the result has been
+processed. If we don't, the daemon gets confused.
+
+Test that by reading 10 samples, which under normal conditions takes
+considerably less time to finish than the last result.
+
+"""
+
 from __future__ import print_function
 
 import unittest
