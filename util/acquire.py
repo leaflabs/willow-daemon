@@ -55,8 +55,15 @@ def forward(args):
     cmd = ControlCommand(type=ControlCommand.FORWARD)
     if args.type == 'sample':
         cmd.forward.sample_type = BOARD_SAMPLE
-    else:
+    elif args.type == 'subsample':
         cmd.forward.sample_type = BOARD_SUBSAMPLE
+    elif args.type == 'sample_raw':
+        cmd.forward.sample_type = BOARD_SAMPLE_RAW
+    elif args.type == 'subsample_raw':
+        cmd.forward.sample_type = BOARD_SUBSAMPLE_RAW
+    else:
+        print('Invalid sample type:', args.type, file=sys.stderr)
+        sys.exit(1)
     if args.force_daq_reset:
         cmd.forward.force_daq_reset = True
     try:
@@ -126,7 +133,7 @@ forward_parser.add_argument(
     help='[DANGEROUS] force DAQ module reset')
 forward_parser.add_argument(
     '-t', '--type',
-    choices=['sample', 'subsample'],
+    choices=['sample', 'subsample', 'sample_raw', 'subsample_raw'],
     default=DEFAULT_FORWARD_TYPE,
     help='Type of packets to forward (default %s)' % DEFAULT_FORWARD_TYPE)
 forward_parser.add_argument(
