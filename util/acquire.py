@@ -117,7 +117,7 @@ DEFAULT_FORWARD_PORT = 7654      # for proto2bytes
 DEFAULT_FORWARD_TYPE = 'sample'
 forward_parser = argparse.ArgumentParser(
     prog='stream',
-    description='Control real-time data forwarding',
+    description='Control live stream data forwarding',
     epilog='Enable/disable forwarding real-time data to another program.')
 forward_parser.add_argument(
     '-f', '--force-daq-reset',
