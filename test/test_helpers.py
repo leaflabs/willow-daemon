@@ -117,7 +117,7 @@ class DaemonTest(unittest.TestCase):
         if self.start_daemon:
             resps = daemon_control.do_control_cmds(cmds, retry=True)
             if resps is None:
-                self.bail()
+                self.bail("can't start daemon")
 
         # Spin until the daemon and data node connect to each other
         if (self.wait_for_connect and self.start_daemon and
@@ -125,7 +125,7 @@ class DaemonTest(unittest.TestCase):
             attempt = 0
             err_type = daemon_control.ControlResponse.ERR
             no_dnode_code = daemon_control.ControlResErr.NO_DNODE
-            while attempt < 50:
+            while attempt < 8:
                 if (resps is not None and resps[0].type == err_type and
                     resps[0].err.code == no_dnode_code):
                     resps = daemon_control.do_control_cmds(cmds, retry=False)
@@ -135,11 +135,11 @@ class DaemonTest(unittest.TestCase):
                     break
             if (resps is None or
                 resps[0].type == daemon_control.ControlResponse.ERR):
-                self.bail()
+                self.bail("daemon/data node can't connect to each other")
 
-    def bail(self):
+    def bail(self, msg="can't start up/set up necessary processes"):
         self.tearDown()
-        raise IOError("can't start up/set up necessary processes")
+        raise IOError(msg)
 
     def tearDown(self):
         if self.start_dnode and not DO_IT_LIVE:
