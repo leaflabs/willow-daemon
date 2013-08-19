@@ -87,7 +87,8 @@ DEFAULT_STREAM_PORT = 7654      # for proto2bytes
 DEFAULT_STREAM_TYPE = 'sample'
 stream_parser = argparse.ArgumentParser(
     prog='stream',
-    description='Control live stream behavior')
+    description='Control real-time data forwarding',
+    epilog='Enable/disable forwarding real-time data to another program.')
 stream_parser.add_argument(
     '-f', '--force-daq-reset',
     default=False,
@@ -119,7 +120,9 @@ COMMAND_HANDLING = {
     'err_regs': (err_regs,
                  no_arg_parser('err_regs', 'Print nonzero error registers'),
                  lambda resps: [r for r in resps if r.reg_io.val != 0]),
-    'start': (start, no_arg_parser('start', 'Start acquiring to disk'),
+    'start': (start,
+              no_arg_parser('start',
+                            'Start acquiring to disk and streaming live data'),
               nop_resp_filter),
     'stop': (stop, no_arg_parser('stop', 'Stop acquiring to disk'),
              nop_resp_filter),
