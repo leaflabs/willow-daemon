@@ -12,6 +12,9 @@ from daemon_control import *
 ## Command handling
 ##
 
+BACKENDS = { 'STORE_HDF5': STORE_HDF5,
+             'STORE_RAW': STORE_RAW }
+
 def acquire(enable):
     cmd = ControlCommand(type=ControlCommand.ACQUIRE)
     if enable:
@@ -34,6 +37,8 @@ def save_stream(args):
     cmd = ControlCommand(type=ControlCommand.STORE)
     cmd.store.path = os.path.abspath(fpath)
     cmd.store.nsamples = nsamples
+    if args.backend is not None:
+        cmd.store.backend = BACKENDS[args.backend]
     return [cmd]
 
 def stream(args):
@@ -71,6 +76,11 @@ save_stream_parser.add_argument('file',
                                 help='File to store samples in')
 save_stream_parser.add_argument('nsamples', type=int,
                                 help='Number of samples to try storing')
+save_stream_parser.add_argument(
+    '-b', '--backend',
+    default=None,
+    choices=['STORE_HDF5', 'STORE_RAW'],
+    help='Storage backend')
 
 DEFAULT_STREAM_ADDR = '127.0.0.1'
 DEFAULT_STREAM_PORT = 7654      # for proto2bytes
