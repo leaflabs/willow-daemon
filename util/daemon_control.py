@@ -83,25 +83,29 @@ def read_err_regs():
 def get_daemon_control_sock(addr=('127.0.0.1', 1371), retry=False,
                             max_retries=100):
     tries = max_retries if retry else 1
-    while tries:
+    while 1:
         try:
             sckt = socket.create_connection(('127.0.0.1', 1371))
         except socket.error:
             tries -= 1
-            continue
+            if tries:
+                continue
+            else:
+                raise
         return sckt
-    return None
 
 def do_control_cmds(commands, retry=False, max_retries=100,
                     control_socket=None):
     if control_socket is not None:
         sckt = control_socket
     else:
-        sckt = get_daemon_control_sock(retry=retry, max_retries=max_retries)
-
-    if sckt is None:
-        print("Can't open connection to daemon", file=sys.stderr)
-        return None
+        try:
+            sckt = get_daemon_control_sock(retry=retry,
+                                           max_retries=max_retries)
+        except socket.error as se:
+            print("Can't open connection to daemon:", se,
+                  file=sys.stderr)
+            return None
 
     try:
         # Send each command, then wait for and get the response.
