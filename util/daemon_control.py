@@ -144,6 +144,10 @@ def do_control_cmds(commands, retry=False, max_retries=100,
         if control_socket is None:
             sckt.close()
 
+def do_control_cmd(cmd, **kwargs):
+    resps = do_control_cmds([cmd], **kwargs)
+    return resps[0] if resps is not None else None
+
 def get_err_regs(**kwargs):
     """Read error registers; return reg_io of results with nonzero values."""
     results = do_control_cmds(read_err_regs(), **kwargs)
