@@ -23,7 +23,7 @@ def acquire(enable):
     cmd.acquire.enable = enable
     return [cmd]
 
-def err_regs(args):
+def dump_err_regs(args):
     return read_err_regs()
 
 def start(args):
@@ -168,9 +168,9 @@ COMMAND_HANDLING['stream'] = (
     stream,
     stream_parser,
     nop_resp_map)
-COMMAND_HANDLING['err_regs'] = (
-    err_regs,
-    no_arg_parser('err_regs', 'Print nonzero error registers'),
+COMMAND_HANDLING['dump_err_regs'] = (
+    dump_err_regs,
+    no_arg_parser('dump_err_regs', 'Print nonzero error registers'),
     lambda resps: [r for r in resps if r.reg_io.val != 0])
 
 ##
