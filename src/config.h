@@ -26,4 +26,10 @@
 #define CONFIG_RESET_SATA_READ_FIFO 1
 #endif
 
+/* If 1, log all raw packet requests/responses as they are transacted.
+ */
+#ifndef CONFIG_LOG_REG_IO_TXNS
+#define CONFIG_LOG_REG_IO_TXNS 0
+#endif
+
 #endif

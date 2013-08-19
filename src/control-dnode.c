@@ -29,9 +29,9 @@
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 
-#define LOCAL_DEBUG 0 /* extra-verbose debugging in this translation unit */
+#include "config.h"
 
-#if LOCAL_DEBUG
+#if CONFIG_LOG_REG_IO_TXNS
 #define STRLEN_RAW_RADDR_ 10    /* strlen("RAW_ADDR_") */
 #define DEBUG_LOG_RCMD_IOD(mtype, ph)                           \
     (mtype == RAW_MTYPE_REQ ?                                   \
