@@ -210,7 +210,7 @@ message RegisterIO {
 // - send that prefixed by its length as a uint32 to the daemon's
 //   client control socket.
 //
-// See the script 'util/acquire.py' for examples.
+// See the script 'util/daemon_control.py' for example code.
 //
 // In return, you'll get a ControlResult (see below).
 
