@@ -258,11 +258,10 @@ message ControlCmdAcquire {
 // again. Results are unspecified if you enable the stream without
 // having previously configured its destination.
 //
-// If "enable" is present and false, any existing stream will stop
-// being sent. If dest_udp_addr4 and dest_udp_port are present in this
-// case, the order between the events "stream is disabled" and "stream
-// is reconfigured" is undefined. Send two messages if you need a
-// reliable order.
+// If "enable" is present and false, data will no longer be forwarded.
+// If dest_udp_addr4 and dest_udp_port are present, the order between
+// "stream is disabled" and "stream is reconfigured" is undefined.
+// Send two messages if you need a reliable order.
 message ControlCmdStream {
     optional fixed32 dest_udp_addr4 = 1;
     optional uint32 dest_udp_port = 2;
