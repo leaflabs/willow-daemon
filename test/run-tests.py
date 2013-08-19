@@ -137,7 +137,7 @@ try:
         print('=' * 70)
         print('Running Python tests:')
         for t in sorted(pytests):
-            print(t[len('test-'):-len('.py')])
+            print(t[len('test_'):-len('.py')])
             tmod = t[:-len('.py')]
             subprocess.call(['python', '-m', 'unittest', '-q', tmod],
                             env=fresh_test_env())
