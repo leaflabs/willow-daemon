@@ -31,6 +31,15 @@ def start(args):
 def stop(args):
     return acquire(False)
 
+def save_stored(args):
+    fpath = os.path.abspath(args.file)
+    cmd = ControlCommand(type=ControlCommand.STORE)
+    cmd.store.start_sample = args.start_sample
+    cmd.store.path = fpath
+    if args.backend is not None:
+        cmd.store.backend = BACKENDS[args.backend]
+    return [cmd]
+
 def save_stream(args):
     fpath = os.path.abspath(args.file)
     nsamples = args.nsamples
@@ -70,6 +79,24 @@ BACKEND_CHOICES = ['STORE_HDF5', 'STORE_RAW']
 
 def no_arg_parser(cmd, description):
     return argparse.ArgumentParser(prog=cmd, description=description)
+
+DEFAULT_START_SAMPLE = 0
+save_stored_parser = argparse.ArgumentParser(
+    prog='save_stored',
+    description='Copy experiment data to file (after stopping acquisition)',
+    epilog="""DO NOT USE THIS WHILE ACQUISITION IS ONGOING.""")
+save_stored_parser.add_argument('file',
+                                help='File to store samples in.')
+save_stored_parser.add_argument(
+    '-s', '--start_sample',
+    type=int,
+    default=DEFAULT_START_SAMPLE,
+    help='Start sample (default %d)' % DEFAULT_START_SAMPLE)
+save_stored_parser.add_argument(
+    '-b', '--backend',
+    default=None,
+    choices=BACKEND_CHOICES,
+    help='Storage backend')
 
 save_stream_parser = argparse.ArgumentParser(
     prog='save_stream',
@@ -128,6 +155,7 @@ COMMAND_HANDLING = {
               nop_resp_filter),
     'stop': (stop, no_arg_parser('stop', 'Stop acquiring to disk'),
              nop_resp_filter),
+    'save_stored': (save_stored, save_stored_parser, nop_resp_filter),
     'save_stream': (save_stream, save_stream_parser, nop_resp_filter),
     'stream': (stream, stream_parser, nop_resp_filter),
 }
