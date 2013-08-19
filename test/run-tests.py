@@ -127,7 +127,7 @@ try:
 
     if ctests:
         print('=' * 70)
-        print('Running C tests:', ' '.join(t[len('test-'):] for t in ctests))
+        print('Running C tests:')
         for t in sorted(ctests):
             subprocess.call([t], env=fresh_test_env())
         if pytests:
@@ -135,12 +135,13 @@ try:
 
     if pytests:
         print('=' * 70)
-        print('Running Python tests:',
-              ' '.join(t[len('test-'):-len('.py')] for t in pytests))
+        print('Running Python tests:')
         for t in sorted(pytests):
+            print(t[len('test-'):-len('.py')])
             tmod = t[:-len('.py')]
             subprocess.call(['python', '-m', 'unittest', '-q', tmod],
                             env=fresh_test_env())
+            print()
 finally:
     os.chdir(oldcwd)
     kill_stray('leafysd')
