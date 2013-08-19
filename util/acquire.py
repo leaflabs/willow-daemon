@@ -51,25 +51,25 @@ def save_stream(args):
         cmd.store.backend = BACKENDS[args.backend]
     return [cmd]
 
-def stream(args):
-    cmd = ControlCommand(type=ControlCommand.STREAM)
+def forward(args):
+    cmd = ControlCommand(type=ControlCommand.FORWARD)
     if args.type == 'sample':
-        cmd.stream.sample_type = BOARD_SAMPLE
+        cmd.forward.sample_type = BOARD_SAMPLE
     else:
-        cmd.stream.sample_type = BOARD_SUBSAMPLE
+        cmd.forward.sample_type = BOARD_SUBSAMPLE
     if args.force_daq_reset:
-        cmd.stream.force_daq_reset = True
+        cmd.forward.force_daq_reset = True
     try:
         aton = socket.inet_aton(args.address)
     except socket.error:
         print('Invalid address', args.address, file=sys.stderr)
         sys.exit(1)
-    cmd.stream.dest_udp_addr4 = struct.unpack('!l', aton)[0]
+    cmd.forward.dest_udp_addr4 = struct.unpack('!l', aton)[0]
     if args.port <= 0 or args.port >= 0xFFFF:
         print('Invalid port', args.port, file=sys.stderr)
         sys.exit(1)
-    cmd.stream.dest_udp_port = args.port
-    cmd.stream.enable = True if args.enable == 'start' else False
+    cmd.forward.dest_udp_port = args.port
+    cmd.forward.enable = True if args.enable == 'start' else False
     return [cmd]
 
 ##
@@ -112,36 +112,37 @@ save_stream_parser.add_argument(
     choices=BACKEND_CHOICES,
     help='Storage backend')
 
-DEFAULT_STREAM_ADDR = '127.0.0.1'
-DEFAULT_STREAM_PORT = 7654      # for proto2bytes
-DEFAULT_STREAM_TYPE = 'sample'
-stream_parser = argparse.ArgumentParser(
+DEFAULT_FORWARD_ADDR = '127.0.0.1'
+DEFAULT_FORWARD_PORT = 7654      # for proto2bytes
+DEFAULT_FORWARD_TYPE = 'sample'
+forward_parser = argparse.ArgumentParser(
     prog='stream',
     description='Control real-time data forwarding',
     epilog='Enable/disable forwarding real-time data to another program.')
-stream_parser.add_argument(
+forward_parser.add_argument(
     '-f', '--force-daq-reset',
     default=False,
     action='store_true',
-    help='[DANGEROUS] force DAQ module reset before streaming')
-stream_parser.add_argument(
+    help='[DANGEROUS] force DAQ module reset')
+forward_parser.add_argument(
     '-t', '--type',
     choices=['sample', 'subsample'],
-    default=DEFAULT_STREAM_TYPE,
-    help='Type of packets to stream (default %s)' % DEFAULT_STREAM_TYPE)
-stream_parser.add_argument(
+    default=DEFAULT_FORWARD_TYPE,
+    help='Type of packets to forward (default %s)' % DEFAULT_FORWARD_TYPE)
+forward_parser.add_argument(
     '-a', '--address',
-    default=DEFAULT_STREAM_ADDR,
-    help=('Address send packets to, default %s' %
-          DEFAULT_STREAM_ADDR))
-stream_parser.add_argument(
+    default=DEFAULT_FORWARD_ADDR,
+    help=('Address to forward packets to, default %s' %
+          DEFAULT_FORWARD_ADDR))
+forward_parser.add_argument(
     '-p', '--port',
-    default=DEFAULT_STREAM_PORT,
-    help=('Port to send packets to, default %s' %
-          DEFAULT_STREAM_PORT))
-stream_parser.add_argument('enable',
-                           choices=['start', 'stop'],
-                           help='Start or stop streaming')
+    default=DEFAULT_FORWARD_PORT,
+    help=('Port to forward packets to, default %s' %
+          DEFAULT_FORWARD_PORT))
+forward_parser.add_argument(
+    'enable',
+    choices=['start', 'stop'],
+    help='Start or stop live sample forwarding')
 
 def nop_resp_map(resps):
     return resps
@@ -164,9 +165,9 @@ COMMAND_HANDLING['save_stored'] = (
     save_stored,
     save_stored_parser,
     nop_resp_map)
-COMMAND_HANDLING['stream'] = (
-    stream,
-    stream_parser,
+COMMAND_HANDLING['forward'] = (
+    forward,
+    forward_parser,
     nop_resp_map)
 COMMAND_HANDLING['dump_err_regs'] = (
     dump_err_regs,

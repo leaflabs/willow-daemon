@@ -285,7 +285,7 @@ static void client_log_command(ControlCommand *cmd)
 {
     __unused char sub_msg[200] = { [0] = '\0' };
     switch (cmd->type) {
-    case CONTROL_COMMAND__TYPE__STREAM:
+    case CONTROL_COMMAND__TYPE__FORWARD:
         break;
     case CONTROL_COMMAND__TYPE__STORE:
         break;
@@ -1508,31 +1508,31 @@ static void client_process_res_regio(struct control_session *cs)
     client_send_response(cs, &cr);
 }
 
-static void client_process_cmd_stream(struct control_session *cs)
+static void client_process_cmd_forward(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
-    ControlCmdStream *stream = cpriv->c_cmd->stream;
+    ControlCmdForward *forward = cpriv->c_cmd->forward;
 
-    if (!stream) {
-        CLIENT_RES_ERR_C_PROTO(cs, "missing stream field");
+    if (!forward) {
+        CLIENT_RES_ERR_C_PROTO(cs, "missing forward field");
         return;
     }
-    int has_addr = stream->has_dest_udp_addr4;
-    int has_port = stream->has_dest_udp_port;
+    int has_addr = forward->has_dest_udp_addr4;
+    int has_port = forward->has_dest_udp_port;
     if (has_addr ^ has_port) {
         CLIENT_RES_ERR_C_PROTO(cs,
                                "neither or both of UDP address/port "
                                "must be set");
         return;
     }
-    if (has_port && (stream->dest_udp_port > UINT16_MAX)) {
+    if (has_port && (forward->dest_udp_port > UINT16_MAX)) {
         CLIENT_RES_ERR_C_PROTO(cs, "specified port is out of range");
         return;
     }
 
     /* Set defaults */
-    if (!stream->has_sample_type) {
-        stream->sample_type = SAMPLE_TYPE__BOARD_SUBSAMPLE;
+    if (!forward->has_sample_type) {
+        forward->sample_type = SAMPLE_TYPE__BOARD_SUBSAMPLE;
     }
 
     /*
@@ -1541,8 +1541,8 @@ static void client_process_cmd_stream(struct control_session *cs)
     if (has_addr) {
         struct sockaddr_in caddr = {
             .sin_family = AF_INET,
-            .sin_port = htons((uint16_t)stream->dest_udp_port),
-            .sin_addr.s_addr = htonl(stream->dest_udp_addr4),
+            .sin_port = htons((uint16_t)forward->dest_udp_port),
+            .sin_addr.s_addr = htonl(forward->dest_udp_addr4),
         };
         memset(&caddr.sin_zero, 0, sizeof(caddr.sin_zero));
         if (sample_set_addr(cs->smpl, (struct sockaddr*)&caddr,
@@ -1552,7 +1552,7 @@ static void client_process_cmd_stream(struct control_session *cs)
         }
     }
     /* If this is just a reconfigure command, then we're done here. */
-    if (!stream->has_enable) {
+    if (!forward->has_enable) {
         client_send_success(cs);
         return;
     }
@@ -1560,10 +1560,10 @@ static void client_process_cmd_stream(struct control_session *cs)
     /*
      * Prepare transactions
      */
-    if (stream->enable) {
+    if (forward->enable) {
         client_clear_dnode_addr_storage(cs);
         uint32_t daq_udp_mode;
-        switch (stream->sample_type) {
+        switch (forward->sample_type) {
         case SAMPLE_TYPE__BOARD_SUBSAMPLE: /* fall through */
         case SAMPLE_TYPE__BOARD_SUBSAMPLE_RAW:
             daq_udp_mode = RAW_DAQ_UDP_MODE_BSUB;
@@ -1576,8 +1576,8 @@ static void client_process_cmd_stream(struct control_session *cs)
             CLIENT_RES_ERR_C_VALUE(cs, "unknown sample_type");
             return;
         }
-        int force_daq_reset = (stream->has_force_daq_reset ?
-                               stream->force_daq_reset : 0);
+        int force_daq_reset = (forward->has_force_daq_reset ?
+                               forward->force_daq_reset : 0);
         client_start_txns_stream(cs, force_daq_reset, daq_udp_mode);
     } else {
         /* Note: these transactions allow live storage to continue. */
@@ -1598,21 +1598,21 @@ static void client_process_cmd_stream(struct control_session *cs)
     }
 }
 
-static void client_process_res_stream(struct control_session *cs)
+static void client_process_res_forward(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
-    ControlCmdStream *stream = cpriv->c_cmd->stream;
+    ControlCmdForward *forward = cpriv->c_cmd->forward;
 
-    assert(stream->has_enable);
+    assert(forward->has_enable);
 
-    if (client_ensure_txn_ok(cs, "ControlCmdStream") == -1) {
+    if (client_ensure_txn_ok(cs, "ControlCmdForward") == -1) {
         return;
     }
 
     /*
      * Deal with any register values we needed to read.
      */
-    if (stream->enable &&
+    if (forward->enable &&
         client_update_dnode_addr_storage(cs, cs->ctl_cur_txn) == -1) {
         return;
     }
@@ -1626,20 +1626,20 @@ static void client_process_res_stream(struct control_session *cs)
      * That's the last transaction. Finish up and send the success
      * result.
      */
-    if (stream->enable &&
+    if (forward->enable &&
         sample_set_addr(cs->smpl, (struct sockaddr*)&cpriv->dn_addr_in,
                         SAMPLE_ADDR_DNODE)) {
         CLIENT_RES_ERR_DAEMON(cs, "can't configure data node address");
         return;
     }
-    SampleType stype = stream->sample_type;
-    enum sample_forward fwd = !stream->enable ? SAMPLE_FWD_NOTHING :
+    SampleType stype = forward->sample_type;
+    enum sample_forward fwd = !forward->enable ? SAMPLE_FWD_NOTHING :
         (stype == SAMPLE_TYPE__BOARD_SAMPLE ? SAMPLE_FWD_BSMP :
          stype == SAMPLE_TYPE__BOARD_SUBSAMPLE ? SAMPLE_FWD_BSUB :
          stype == SAMPLE_TYPE__BOARD_SUBSAMPLE_RAW ? SAMPLE_FWD_BSUB_RAW :
          stype == SAMPLE_TYPE__BOARD_SAMPLE_RAW ? SAMPLE_FWD_BSMP_RAW :
          SAMPLE_FWD_NOTHING);
-    if (fwd == SAMPLE_FWD_NOTHING && stream->enable) {
+    if (fwd == SAMPLE_FWD_NOTHING && forward->enable) {
         CLIENT_RES_ERR_C_PROTO(cs, "unknown sample_type");
         return;
     }
@@ -2080,8 +2080,8 @@ static void client_process_cmd(struct control_session *cs)
     case CONTROL_COMMAND__TYPE__REG_IO:
         proc = client_process_cmd_regio;
         break;
-    case CONTROL_COMMAND__TYPE__STREAM:
-        proc = client_process_cmd_stream;
+    case CONTROL_COMMAND__TYPE__FORWARD:
+        proc = client_process_cmd_forward;
         break;
     case CONTROL_COMMAND__TYPE__STORE:
         proc = client_process_cmd_store;
@@ -2113,8 +2113,8 @@ static void client_process_res(struct control_session *cs)
     case CONTROL_COMMAND__TYPE__REG_IO:
         client_process_res_regio(cs);
         break;
-    case CONTROL_COMMAND__TYPE__STREAM:
-        client_process_res_stream(cs);
+    case CONTROL_COMMAND__TYPE__FORWARD:
+        client_process_res_forward(cs);
         break;
     case CONTROL_COMMAND__TYPE__STORE:
         client_process_res_store(cs);

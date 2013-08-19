@@ -217,7 +217,7 @@ message RegisterIO {
 // Start/stop acquiring to disk.
 //
 // You must start acquisition before configuring sample forwarding
-// (see ControlCmdStream, below).
+// (see ControlCmdForward, below).
 //
 // Stopping acquisition also halts live streaming.
 message ControlCmdAcquire {
@@ -262,7 +262,7 @@ message ControlCmdAcquire {
 // If dest_udp_addr4 and dest_udp_port are present, the order between
 // "stream is disabled" and "stream is reconfigured" is undefined.
 // Send two messages if you need a reliable order.
-message ControlCmdStream {
+message ControlCmdForward {
     optional fixed32 dest_udp_addr4 = 1;
     optional uint32 dest_udp_port = 2;
     optional bool enable = 3;
@@ -279,7 +279,7 @@ message ControlCmdStream {
 //            already, this will always time out.
 //
 //            To ensure streaming, use (safer) ControlCmdAcquire or
-//            (DANGEROUS! SEE NOTES ABOVE) ControlCmdStream with
+//            (DANGEROUS! SEE NOTES ABOVE) ControlCmdForward with
 //            force_daq_reset=true.
 //
 // This command can be used to store live or pre-recorded samples. To
@@ -321,7 +321,7 @@ message ControlCmdStore {
 // https://developers.google.com/protocol-buffers/docs/techniques#union
 message ControlCommand {
     enum Type {
-        STREAM = 1;
+        FORWARD = 1;
         STORE = 2;
         ACQUIRE = 3;
         PING_DNODE = 15;
@@ -329,7 +329,7 @@ message ControlCommand {
     }
     optional Type type = 1;
 
-    optional ControlCmdStream stream = 2;
+    optional ControlCmdForward forward = 2;
     optional ControlCmdStore store = 3;
     optional ControlCmdAcquire acquire = 4;
     // (nothing more needed for PING_DNODE)

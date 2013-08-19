@@ -1,4 +1,4 @@
-"""Test live data stream in (raw,proto) x (bsamp, bsubsamp) formats.
+"""Test data forwarding in (raw, proto) x (bsamp, bsubsamp) formats.
 
 ONLY TESTS THAT _SOME_ DATA ARE RECEIVED. DOES NOT TEST CONTIGUITY OF
 SAMPLES, E.G."""
@@ -53,24 +53,24 @@ class RawDataMixin(object):
                 return False
             return True
 
-class AbstractTestStream(test_helpers.DaemonTest):
-    """Parent class for test cases for streaming packets."""
+class AbstractTestForward(test_helpers.DaemonTest):
+    """Parent class for test cases for forwarding packets."""
 
     def __init__(self, *args, **kwargs):
         kwargs['start_dnode'] = True
         kwargs['start_sampstreamer'] = not test_helpers.DO_IT_LIVE
-        super(AbstractTestStream, self).__init__(*args, **kwargs)
+        super(AbstractTestForward, self).__init__(*args, **kwargs)
 
     def do_test(self, sample_type):
-        cmd_stream = ControlCmdStream(dest_udp_addr4=0x7f000001,
-                                      dest_udp_port=DST_PORT,
-                                      enable=True,
-                                      sample_type=sample_type,
-                                      force_daq_reset=True)
-        cmd = ControlCommand(type=ControlCommand.STREAM,
-                             stream=cmd_stream)
+        cmd_forward = ControlCmdForward(dest_udp_addr4=0x7f000001,
+                                        dest_udp_port=DST_PORT,
+                                        enable=True,
+                                        sample_type=sample_type,
+                                        force_daq_reset=True)
+        cmd = ControlCommand(type=ControlCommand.FORWARD,
+                             forward=cmd_forward)
 
-        # Start the stream.
+        # Start stream forwarding.
         resps = do_control_cmds([cmd])
         self.assertIsNotNone(resps)
         resp = resps[0]
@@ -88,54 +88,54 @@ class AbstractTestStream(test_helpers.DaemonTest):
         self.assertTrue(got_data)
 
         # Stop the stream.
-        cmd.stream.enable = False
+        cmd.forward.enable = False
         resps = do_control_cmds([cmd])
         self.assertIsNotNone(resps)
         resp = resps[0]
         self.assertEqual(resp.type, ControlResponse.SUCCESS,
                          msg='\ndisable resp:\n' + str(resp))
 
-class AbstractTestSubStream(AbstractTestStream):
-    """Parent class for board subsample streaming test cases."""
+class AbstractTestSubForward(AbstractTestForward):
+    """Parent class for board subsample forwarding test cases."""
 
     def __init__(self, *args, **kwargs):
         kwargs['sampstreamer_args'] = ['-s']
-        super(AbstractTestSubStream, self).__init__(*args, **kwargs)
+        super(AbstractTestSubForward, self).__init__(*args, **kwargs)
 
-class TestProtoSubStream(ProtoDataMixin, AbstractTestSubStream):
+class TestProtoSubForward(ProtoDataMixin, AbstractTestSubForward):
 
     def __init__(self, *args, **kwargs):
         kwargs['start_proto2bytes'] = True
         kwargs['proto2bytes_args'] = ['-c', '0', '-s']
         kwargs['proto2bytes_popen_kwargs'] = { 'stdout' : subprocess.PIPE }
-        super(TestProtoSubStream, self).__init__(*args, **kwargs)
+        super(TestProtoSubForward, self).__init__(*args, **kwargs)
 
-    def testProtoSubStream(self):
+    def testProtoSubForward(self):
         self.do_test(BOARD_SUBSAMPLE)
 
-class TestRawSubStream(RawDataMixin, AbstractTestSubStream):
+class TestRawSubForward(RawDataMixin, AbstractTestSubForward):
 
-    def testRawSubStream(self):
+    def testRawSubForward(self):
         self.raw_start()
         try:
             self.do_test(BOARD_SUBSAMPLE_RAW)
         finally:
             self.raw_stop()
 
-class TestProtoSmpStream(ProtoDataMixin, AbstractTestStream):
+class TestProtoSmpForward(ProtoDataMixin, AbstractTestForward):
 
     def __init__(self, *args, **kwargs):
         kwargs['start_proto2bytes'] = True
         kwargs['proto2bytes_args'] = ['-M', '-c', '0', '-s']
         kwargs['proto2bytes_popen_kwargs'] = { 'stdout' : subprocess.PIPE }
-        super(TestProtoSmpStream, self).__init__(*args, **kwargs)
+        super(TestProtoSmpForward, self).__init__(*args, **kwargs)
 
-    def testProtoSmpStream(self):
+    def testProtoSmpForward(self):
         self.do_test(BOARD_SAMPLE)
 
-class TestRawSmpStream(RawDataMixin, AbstractTestStream):
+class TestRawSmpForward(RawDataMixin, AbstractTestForward):
 
-    def testRawSmpStream(self):
+    def testRawSmpForward(self):
         self.raw_start()
         try:
             self.do_test(BOARD_SAMPLE_RAW)
