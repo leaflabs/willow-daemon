@@ -66,6 +66,8 @@ def stream(args):
 ## Argument parsing
 ##
 
+BACKEND_CHOICES = ['STORE_HDF5', 'STORE_RAW']
+
 def no_arg_parser(cmd, description):
     return argparse.ArgumentParser(prog=cmd, description=description)
 
@@ -79,7 +81,7 @@ save_stream_parser.add_argument('nsamples', type=int,
 save_stream_parser.add_argument(
     '-b', '--backend',
     default=None,
-    choices=['STORE_HDF5', 'STORE_RAW'],
+    choices=BACKEND_CHOICES,
     help='Storage backend')
 
 DEFAULT_STREAM_ADDR = '127.0.0.1'
