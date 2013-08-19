@@ -179,9 +179,9 @@ COMMAND_HANDLING['dump_err_regs'] = (
 ##
 
 def usage():
-    print('usage: acquire.py command [[-h] command_args ...]\n'
-          'Commands:\n'
-          '%s' % ''.join(['\t%s: %s\n' % (s, h_p[1].description)
+    print('usage: acquire.py command [[-h] command_args ...]\n\n'
+          'Commands:\n\n'
+          '%s' % ''.join(['   %s: %s\n' % (s, h_p[1].description)
                           for s, h_p in COMMAND_HANDLING.iteritems()]),
           end='', file=sys.stderr)
     sys.exit(1)
