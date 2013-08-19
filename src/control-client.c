@@ -32,6 +32,7 @@
 #include "hdf5_ch_storage.h"
 #include "raw_ch_storage.h"
 
+#include "config.h"
 #include "sample.h"
 
 #define LOCAL_DEBUG_LOGV 0
@@ -40,13 +41,6 @@
 #define LOCAL_DEBUG(...) log_DEBUG(__VA_ARGS__)
 #else
 #define LOCAL_DEBUG(...) ((void)0)
-#endif
-
-/* Hackaround for the fact that we're jumping around between
- * sng-firmware versions that do and don't support
- * RAW_RADDR_SATA_R_FIFO_RST. */
-#ifndef CLIENT_RESET_SATA_FIFO
-#define CLIENT_RESET_SATA_FIFO 1
 #endif
 
 #define HDF5_DATASET_NAME "wired-dataset"
@@ -1355,7 +1349,7 @@ static int client_start_txns_store(struct control_session *cs)
     /* Reset SATA-UDP and SATA read FIFOs by toggling reset line */
     client_sata_w(txns + txno++, RAW_RADDR_SATA_UDP_FIFO_RST, 1);
     client_sata_w(txns + txno++, RAW_RADDR_SATA_UDP_FIFO_RST, 0);
-#if CLIENT_RESET_SATA_FIFO
+#if CONFIG_RESET_SATA_READ_FIFO
     client_sata_w(txns + txno++, RAW_RADDR_SATA_R_FIFO_RST, 1);
     client_sata_w(txns + txno++, RAW_RADDR_SATA_R_FIFO_RST, 0);
 #endif
