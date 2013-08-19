@@ -256,6 +256,7 @@ run_event_loop(struct arguments *args)
     unsigned iface = if_nametoindex(args->sample_iface);
     if (iface == 0) {
         log_EMERG("unknown network interface %s", args->sample_iface);
+        goto nosample;
     }
     struct sample_session *sample = sample_new(base, iface, args->sample_port);
     if (!sample) {
