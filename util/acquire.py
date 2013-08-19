@@ -2,6 +2,7 @@
 
 from __future__ import print_function
 import argparse
+import collections
 import os.path
 import sys
 from time import time
@@ -145,20 +146,32 @@ stream_parser.add_argument('enable',
 def nop_resp_map(resps):
     return resps
 
-COMMAND_HANDLING = {
-    'err_regs': (err_regs,
-                 no_arg_parser('err_regs', 'Print nonzero error registers'),
-                 lambda resps: [r for r in resps if r.reg_io.val != 0]),
-    'start': (start,
-              no_arg_parser('start',
-                            'Start acquiring to disk and streaming live data'),
-              nop_resp_map),
-    'stop': (stop, no_arg_parser('stop', 'Stop acquiring to disk'),
-             nop_resp_map),
-    'save_stored': (save_stored, save_stored_parser, nop_resp_map),
-    'save_stream': (save_stream, save_stream_parser, nop_resp_map),
-    'stream': (stream, stream_parser, nop_resp_map),
-}
+COMMAND_HANDLING = collections.OrderedDict()
+COMMAND_HANDLING['start'] = (
+    start,
+    no_arg_parser('start',
+                  'Start acquiring to disk and streaming live data'),
+    nop_resp_map)
+COMMAND_HANDLING['save_stream'] = (
+    save_stream,
+    save_stream_parser,
+    nop_resp_map)
+COMMAND_HANDLING['stop'] = (
+    stop,
+    no_arg_parser('stop', 'Stop acquiring to disk'),
+    nop_resp_map)
+COMMAND_HANDLING['save_stored'] = (
+    save_stored,
+    save_stored_parser,
+    nop_resp_map)
+COMMAND_HANDLING['stream'] = (
+    stream,
+    stream_parser,
+    nop_resp_map)
+COMMAND_HANDLING['err_regs'] = (
+    err_regs,
+    no_arg_parser('err_regs', 'Print nonzero error registers'),
+    lambda resps: [r for r in resps if r.reg_io.val != 0])
 
 ##
 ## main()
