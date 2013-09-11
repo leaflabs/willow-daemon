@@ -123,7 +123,7 @@ DEFAULT_FORWARD_ADDR = '127.0.0.1'
 DEFAULT_FORWARD_PORT = 7654      # for proto2bytes
 DEFAULT_FORWARD_TYPE = 'sample'
 forward_parser = argparse.ArgumentParser(
-    prog='stream',
+    prog='forward',
     description='Control live stream data forwarding',
     epilog='Enable/disable forwarding real-time data to another program.')
 forward_parser.add_argument(
