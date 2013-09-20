@@ -78,7 +78,7 @@ enum sample_stop_why {
 
 #define SAMPLE_PBUF_ARR_SIZE (1024 * 1024)
 #define SAMPLE_BSAMP_KHZ 30 /* sample frequency; TODO: don't hard-code here */
-#define SAMPLE_BSAMP_SEC_P_BUF 2 /* seconds of data per sample buffer */
+#define SAMPLE_BSAMP_SEC_P_BUF 0.5 /* seconds of data per sample buffer */
 #define SAMPLE_BSAMP_MAXLEN (SAMPLE_BSAMP_KHZ * 1000 * SAMPLE_BSAMP_SEC_P_BUF)
 #define SAMPLE_BSAMP_TIMEOUT_SEC 3 /* WISHLIST: be smarter */
 #define SAMPLE_BSAMP_TIMEOUT_USEC 0
