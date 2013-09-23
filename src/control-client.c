@@ -1312,7 +1312,7 @@ static int client_start_txns_stream(struct control_session *cs,
 static int client_start_txns_store(struct control_session *cs)
 {
     struct client_priv *cpriv = cs->cpriv;
-    const size_t ntxns = CLIENT_N_NET_TXNS + 14;
+    const size_t ntxns = CLIENT_N_NET_TXNS + 15;
     struct control_txn *txns = malloc(ntxns * sizeof(struct control_txn));
     size_t txno = 0;
     if (!txns) {
@@ -1340,6 +1340,8 @@ static int client_start_txns_store(struct control_session *cs)
      * XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
      */
 
+    /* Ensure DAQ is not pumping bits into SATA. */
+    client_daq_w(txns + txno++, RAW_RADDR_DAQ_SATA_ENABLE, 0);
     /* Stop SATA, DAQ, and UDP modules. */
     client_sata_w(txns + txno++, RAW_RADDR_SATA_MODE, RAW_SATA_MODE_WAIT);
     client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 0);
