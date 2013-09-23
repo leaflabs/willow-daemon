@@ -191,6 +191,9 @@ struct ch_storage *hdf5_ch_storage_alloc(const char *out_file_path,
         free(data);
         return NULL;
     }
+    if (!dataset_name) {
+        dataset_name = "wired-dataset";
+    }
     h5_ch_data_init(data, dataset_name);
     storage->ch_path = out_file_path;
     storage->ops = &hdf5_ch_storage_ops;
