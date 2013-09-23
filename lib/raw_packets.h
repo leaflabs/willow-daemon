@@ -58,6 +58,8 @@
 #define RAW_PKT_HEADER_PROTO_VERS 0x00
 ///@}
 
+typedef uint8_t raw_magic_t;
+
 /** Common packet header. */
 struct raw_pkt_header {
     /* These are set by raw_packet_init(). */
@@ -306,6 +308,7 @@ struct raw_bsub_cfg {
 };
 
 #define RAW_BSUB_NSAMP 32
+#define RAW_MAX_SIDX UINT32_MAX
 
 /** Board subsample wire format struct */
 struct raw_pkt_bsub {
