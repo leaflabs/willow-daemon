@@ -68,7 +68,11 @@ VariantDir(build_util_dir, util_dir, duplicate=0)
 # Base build environment. Note we don't copy os.environ here.
 env = Environment(CC=build_cc,
                   CCFLAGS=build_cflags + ' ' + build_cflags_extra,
-                  CPPDEFINES={'_GNU_SOURCE': 1}, # we need Linux extensions
+                  CPPDEFINES={
+                      '_GNU_SOURCE': 1, # we need Linux extensions
+                      '_FILE_OFFSET_BITS': 64, # large file support
+                                               # (e.g. /dev/sdX for raw2hdf5)
+                  },
                   CPPPATH=[build_lib_dir, src_dir],
                   LINK=build_ld,
                   LINKFLAGS=build_ldflags_extra,
