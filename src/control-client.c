@@ -1287,8 +1287,8 @@ static int client_start_txns_stream(struct control_session *cs,
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 1);
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_ENABLE, 1);
     } else {
-        client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 0);
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_UDP_ENABLE, 0);
+        client_udp_w(txns + txno++, RAW_RADDR_UDP_ENABLE, 0);
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 1);
         client_daq_w(txns + txno++, RAW_RADDR_DAQ_FIFO_FLAGS, 0);
         client_udp_w(txns + txno++,
