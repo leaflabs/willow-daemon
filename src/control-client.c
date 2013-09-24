@@ -662,7 +662,6 @@ static void client_sample_restart_callback(__unused evutil_socket_t ignored,
                                            __unused short events_ignored,
                                            void *csvp)
 {
-    log_DEBUG("%s", __func__);
     struct control_session *cs = csvp;
     struct client_priv *cpriv = cs->cpriv;
     assert(client_is_response_pending(cs));
@@ -705,7 +704,6 @@ static void client_schedule_sample_store_restart(struct control_session *cs,
 {
     struct client_priv *cpriv = cs->cpriv;
     client_do_schedule_prechecks(cs);
-    log_DEBUG("%s: waiting to begin restart", __func__);
     cpriv->bs_restart_pending = nwritten;
     cpriv->bs_response_pend_evt = event_new(cs->base, -1, SAMPLE_BS_PKTDROP,
                                            client_sample_restart_callback, cs);
@@ -1766,8 +1764,6 @@ static void client_process_res_store(struct control_session *cs)
     struct client_priv *cpriv = cs->cpriv;
 
     if (client_is_response_pending(cs)) {
-        log_DEBUG("%s: transaction finished, handling pending callback",
-                  __func__);
         control_clear_transactions(cs, 1);
         event_active(cpriv->bs_response_pend_evt, 0, 0);
         return;
