@@ -269,7 +269,8 @@ run_event_loop(struct arguments *args)
                                                   args->dnode_port,
                                                   sample);
     if (!control) {
-        log_EMERG("can't create control session");
+        log_EMERG("can't create control session; is %s already running?",
+                  program_name);
         goto nocontrol;
     }
 
