@@ -214,3 +214,14 @@ class DaemonTest(unittest.TestCase):
         if start_sample is not None:
             cmd.acquire.start_sample = start_sample
         return cmd
+
+    def getStoreCmds(self, path, nsamples, backend=daemon_control.STORE_HDF5):
+        acq = self.getAcquireCommand(enable=True)
+        cmd = daemon_control.ControlCommand()
+        cmd.type = daemon_control.ControlCommand.STORE
+        cmd.store.path = path
+        cmd.store.nsamples = nsamples
+        cmd.store.backend = backend
+        nacq = self.getAcquireCommand(enable=False)
+        return [acq, cmd, nacq]
+

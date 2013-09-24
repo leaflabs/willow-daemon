@@ -66,16 +66,6 @@ class TestChannelStorage(test_helpers.DaemonTest):
         self.ensureStoreOK(store2, path, NSAMPLES)
         self.ensureHDF5OK(path, NSAMPLES)
 
-    def getStoreCmds(self, path, nsamples, backend=STORE_HDF5):
-        acq = self.getAcquireCommand(enable=True)
-        cmd = ControlCommand()
-        cmd.type = ControlCommand.STORE
-        cmd.store.path = path
-        cmd.store.nsamples = nsamples
-        cmd.store.backend = backend
-        nacq = self.getAcquireCommand(enable=False)
-        return [acq, cmd, nacq]
-
     def ensureStoreOK(self, store, path, nsamples):
         msg = '\nstore:\n' + str(store)
         self.assertEqual(store.status, ControlResStore.DONE, msg=msg)
