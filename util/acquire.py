@@ -76,7 +76,7 @@ def forward(args):
         print('Invalid port', args.port, file=sys.stderr)
         sys.exit(1)
     cmd.forward.dest_udp_port = args.port
-    cmd.forward.enable = True if args.enable == 'start' else False
+    cmd.forward.enable = (args.enable == 'start')
     return [cmd]
 
 ##
