@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kst version="2.0">
+    <data>
+        <source reader="ASCII file" file="/home/bnewbold/leaf/sng/daemon/util/monitor.log" fileRelative="monitor.log">
+            <properties vector="INDEX" interpretation="1" delimiters="#" columntype="2" columndelimiter="," headerstart="0" fields="0" readfields="false" usedot="true" columnwidthisconst="false" readunits="false" units="0"/>
+        </source>
+    </data>
+    <variables>
+        <datavector file="/home/bnewbold/leaf/sng/daemon/util/monitor.log" fileRelative="monitor.log" field="INDEX" start="0" count="-1" skip="-1" doAve="false" initialVNum="1" initialXNum="1"/>
+        <datavector file="/home/bnewbold/leaf/sng/daemon/util/monitor.log" fileRelative="monitor.log" field="Column 1" start="0" count="-1" skip="-1" doAve="false" initialVNum="2" initialXNum="13"/>
+        <datavector file="/home/bnewbold/leaf/sng/daemon/util/monitor.log" fileRelative="monitor.log" field="Column 1" start="0" count="-1" skip="-1" doAve="false" initialVNum="3" initialXNum="25"/>
+        <datavector file="/home/bnewbold/leaf/sng/daemon/util/monitor.log" fileRelative="monitor.log" field="Column 2" start="0" count="-1" skip="-1" doAve="false" initialVNum="4" initialXNum="37"/>
+        <datavector file="/home/bnewbold/leaf/sng/daemon/util/monitor.log" fileRelative="monitor.log" field="Column 3" start="0" count="-1" skip="-1" doAve="false" initialVNum="5" initialXNum="49"/>
+        <string value="2013-08-09 00:00:16" initialTNum="1"/>
+        <string value="2013-08-09 00:00:16" initialTNum="2"/>
+        <string value="monitor.log" initialTNum="3"/>
+        <string value="/home/bnewbold/leaf/sng/daemon/util" initialTNum="4"/>
+        <string value="2013-08-09 00:00:16" initialTNum="5"/>
+        <string value="2013-08-09 00:00:16" initialTNum="6"/>
+        <string value="monitor.log" initialTNum="7"/>
+        <string value="/home/bnewbold/leaf/sng/daemon/util" initialTNum="8"/>
+        <string orphan="true" editable="true" value="2013-08-08 13:44:35" initialTNum="1"/>
+        <string orphan="true" editable="true" value="2013-08-08 13:44:35" initialTNum="2"/>
+        <string orphan="true" editable="true" value="monitor.log" initialTNum="3"/>
+        <string orphan="true" editable="true" value="." initialTNum="4"/>
+        <string orphan="true" editable="true" value="2013-08-08 13:44:35" initialTNum="5"/>
+        <string orphan="true" editable="true" value="2013-08-08 13:44:35" initialTNum="6"/>
+        <string orphan="true" editable="true" value="monitor.log" initialTNum="7"/>
+        <string orphan="true" editable="true" value="/home/bnewbold/leaf/sng/daemon/util" initialTNum="8"/>
+    </variables>
+    <objects/>
+    <relations>
+        <curve xvector="INDEX (V1)" yvector="Column 1 (V2)" color="#0000ff" headcolor="#000000" haslines="true" linewidth="1" linestyle="0" haspoints="false" pointtype="0" pointdensity="0" hasbars="false" barstyle="0" ignoreautoscale="false" hashead="false" headtype="0" initialCNum="1"/>
+        <curve xvector="Column 1 (V2)" yvector="Column 1 (V3)" color="#000000" headcolor="#000000" haslines="true" linewidth="0" linestyle="0" haspoints="false" pointtype="0" pointdensity="0" hasbars="false" barstyle="0" ignoreautoscale="false" hashead="false" headtype="-1" initialCNum="2"/>
+        <curve xvector="Column 1 (V2)" yvector="Column 2 (V4)" color="#ff00ff" headcolor="#000000" haslines="true" linewidth="0" linestyle="0" haspoints="false" pointtype="1" pointdensity="0" hasbars="false" barstyle="0" ignoreautoscale="false" hashead="false" headtype="-1" initialCNum="3"/>
+        <curve xvector="Column 1 (V2)" yvector="Column 3 (V5)" color="#4682b4" headcolor="#000000" haslines="true" linewidth="0" linestyle="0" haspoints="false" pointtype="2" pointdensity="0" hasbars="false" barstyle="0" ignoreautoscale="false" hashead="false" headtype="-1" initialCNum="4"/>
+    </relations>
+    <graphics>
+        <view name="View &amp;1" width="1211" height="508">
+            <plot tiedxzoom="false" tiedyzoom="false" leftlabelvisible="true" bottomlabelvisible="true" rightlabelvisible="true" toplabelvisible="true" globalfont="Sans,10,-1,5,50,0,0,0,0,0" globalfontscale="12" globalfontcolor="#000000" showlegend="false" hidebottomaxislabel="false" hidetopaxislabel="false" hideleftaxislabel="false" hiderightaxislabel="false" initialPlotNum="1" name="Plot">
+                <position x="0" y="0"/>
+                <rect x="0" y="0" width="1210.00082508251" height="507.001964636542"/>
+                <relativesize width="0.999174917491749" height="0.99803536345776" centerx="0.499587458745875" centery="0.49901768172888" posx="0" posy="0"/>
+                <transform m11="1" m12="0" m13="0" m21="0" m22="1" m23="0" m31="0" m32="0" m33="1"/>
+                <pen style="1" width="0" miterlimit="2" cap="16" joinStyle="64">
+                    <brush color="#000000" style="1"/>
+                </pen>
+                <brush color="#ffffff" style="1"/>
+                <legend auto="true" title="" font="Sans,10,-1,5,50,0,0,0,0,0" fontscale="12" verticaldisplay="false" name="Legend">
+                    <position x="44.9550595164026" y="67.3364172005016"/>
+                    <rect x="0" y="0" width="0" height="0"/>
+                    <relativesize width="0" height="0" centerx="-0.0201383523550591" centery="0.119769036480258" posx="-0.0201383523550591" posy="0.119769036480258"/>
+                    <transform m11="1" m12="0" m13="0" m21="0" m22="1" m23="0" m31="0" m32="0" m33="1"/>
+                    <pen style="1" width="0" miterlimit="2" cap="16" joinStyle="64">
+                        <brush color="#000000" style="1"/>
+                    </pen>
+                    <brush color="#ffffff" style="1"/>
+                </legend>
+                <cartesianrender name="Cartesian Plot" type="1">
+                    <relation tag="Column 2 vs Column 1 (C3)"/>
+                </cartesianrender>
+                <plotaxis id="xaxis" visible="true" log="false" reversed="false" autobaseoffset="true" baseoffset="false" interpret="false" interpretation="1" display="4" majortickmode="5" minortickcount="5" autominortickcount="true" drawmajorticks="true" drawminorticks="true" drawmajorgridlines="true" drawminorgridlines="false" drawmajorgridlinecolor="#a0a0a4" drawminorgridlinecolor="#a0a0a4" drawmajorgridlinestyle="2" drawminorgridlinestyle="2" drawmajorgridlinewidth="1" drawminorgridlinewidth="1" significantdigits="9" rotation="0" zoommode="0">
+                    <plotmarkers xaxis="true" linecolor="#000000" linestyle="1" linewidth="1" curvemode="3"/>
+                </plotaxis>
+                <plotaxis id="yaxis" visible="true" log="false" reversed="false" autobaseoffset="true" baseoffset="false" interpret="false" interpretation="1" display="4" majortickmode="5" minortickcount="5" autominortickcount="true" drawmajorticks="true" drawminorticks="true" drawmajorgridlines="true" drawminorgridlines="false" drawmajorgridlinecolor="#a0a0a4" drawminorgridlinecolor="#a0a0a4" drawmajorgridlinestyle="2" drawminorgridlinestyle="2" drawmajorgridlinewidth="1" drawminorgridlinewidth="1" significantdigits="9" rotation="0" zoommode="1">
+                    <plotmarkers xaxis="false" linecolor="#000000" linestyle="1" linewidth="1" curvemode="-2565928"/>
+                </plotaxis>
+                <plotlabel id="leftlabel" visible="true" overridetext="" autolabel="true" font="Sans,10,-1,5,50,0,0,0,0,0" fontscale="12" fontcolor="#000000" fontuseglobal="true"/>
+                <plotlabel id="rightlabel" visible="true" overridetext="" autolabel="true" font="Sans,10,-1,5,50,0,0,0,0,0" fontscale="12" fontcolor="#000000" fontuseglobal="true"/>
+                <plotlabel id="toplabel" visible="true" overridetext="" autolabel="true" font="Sans,10,-1,5,50,0,0,0,0,0" fontscale="12" fontcolor="#000000" fontuseglobal="true"/>
+                <plotlabel id="bottomlabel" visible="true" overridetext="" autolabel="true" font="Sans,10,-1,5,50,0,0,0,0,0" fontscale="12" fontcolor="#000000" fontuseglobal="true"/>
+                <plotlabel id="numberlabel" visible="true" overridetext="" autolabel="true" font="Sans,10,-1,5,50,0,0,0,0,0" fontscale="12" fontcolor="#000000" fontuseglobal="true"/>
+                <projectionrect x="170332" y="-230.85" width="54096872" height="10073.7"/>
+            </plot>
+        </view>
+    </graphics>
+</kst>
