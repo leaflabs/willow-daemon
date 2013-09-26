@@ -72,8 +72,7 @@ def read_request(module, addr):
     """
     reply = do_control_cmd(reg_read(module, addr))
     if reply is None or reply.type != 255: # TODO: 255 == REG_IO
-        print(reply)
-        raise Exception("No reply! Is daemon running?")
+        raise Exception("%s\nNo reply! Is daemon running?" % reply)
     return reply.reg_io.val
 
 def write_request(module, addr, data):
@@ -85,8 +84,7 @@ def write_request(module, addr, data):
     """
     reply = do_control_cmd(reg_write(module, addr, data))
     if reply is None or reply.type != 255: # TODO: 255 == REG_IO
-        print(reply)
-        raise Exception("No reply! Is daemon running?")
+        raise Exception("%s\nNo reply! Is daemon running?" % reply)
     return reply.reg_io.val
 
 def parse_module(raw):
@@ -139,9 +137,12 @@ def ping(delay_sec=0.5):
         sys.stdout.write("Ping... ")
         sys.stdout.flush()
         start = time.time()
-        read_request(0, 0)
-        diff = time.time() - start
-        sys.stdout.write("Pong (%.3fms)\n" % (diff*1000.))
+        try:
+            read_request(0, 0)
+            diff = time.time() - start
+            sys.stdout.write("Pong (%.3fms)\n" % (diff*1000.))
+        except:
+            sys.stdout.write("Failed.\n")
         sys.stdout.flush()
         time.sleep(delay_sec)
 
