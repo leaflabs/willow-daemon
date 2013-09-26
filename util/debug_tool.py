@@ -1,5 +1,11 @@
 #!/usr/bin/env python
 """
+Copyright: (C) 2013 LeafLabs, LLC
+License: MIT License
+Author: bnewbold
+Date: September 2013
+Project: SNG Wired Leaf (SNG4)
+
 This is essentially a port of the old packet_tool.py to work through the
 daemon (instead of writing raw TCP packets).
 

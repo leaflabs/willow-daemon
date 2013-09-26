@@ -1,5 +1,11 @@
 #!/usr/bin/env python
 """
+Copyright: (C) 2013 LeafLabs, LLC
+License: MIT License
+Author: bnewbold
+Date: September 2013
+Project: SNG Wired Leaf (SNG4)
+
 This is a script to measure probe impedances on a per-channel basis.
 
 DO NOT run this script during acquisition to disk or readback from disk.
