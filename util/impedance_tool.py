@@ -97,10 +97,10 @@ def amp2volts(amplitude, nsamples):
     Converts a complex FFT amplitude at 1KHz to a sinewave amplitude in volts
     (normal amplitude, not peak-to-peak).
 
-    The conversion factor between ADC counts and volts is 0.2 microvolts per
+    The conversion factor between ADC counts and volts is 0.195 microvolts per
     count.
     """
-    return abs(amplitude * 2 / nsamples) * 0.2 * 10**-6
+    return abs(amplitude * 2 / nsamples) * 0.195 * 10**-6
 
 def calculate_impedences(waveforms, capacitorscale, verbose=False):
     """
@@ -124,7 +124,7 @@ def calculate_impedences(waveforms, capacitorscale, verbose=False):
     an impedance of about 1MOhm. It generates a 3.8mV 1kHz sine waveform and
     calculates the impedance assuming the 1.0pF capacitor was selected.
 
-        >>> w = [int((numpy.sin(t*3.141592/15)*3.8*0.001/(0.2*10**-6)))
+        >>> w = [int((numpy.sin(t*3.141592/15)*3.8*0.001/(0.195*10**-6)))
                +2**15+numpy.random.random_integers(-20,20)
                for t in range(15000)]
         >>> calculate_impedences({5:w}, 1, True)
