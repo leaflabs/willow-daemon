@@ -65,10 +65,10 @@ def read_request(module, addr):
     manner.
     """
     reply = do_control_cmd(reg_read(module, addr))
-    if reply is None:
+    if reply is None or reply.type != 255: # TODO: 255 == REG_IO
         print(reply)
         raise Exception("No reply! Is daemon running?")
-    return reply
+    return reply.reg_io.val
 
 def write_request(module, addr, data):
     """
@@ -78,10 +78,10 @@ def write_request(module, addr, data):
     'data' should be 32bits as an integer
     """
     reply = do_control_cmd(reg_write(module, addr, data))
-    if reply is None:
+    if reply is None or reply.type != 255: # TODO: 255 == REG_IO
         print(reply)
         raise Exception("No reply! Is daemon running?")
-    return reply
+    return reply.reg_io.val
 
 def parse_module(raw):
     if raw in modules.keys():
@@ -159,21 +159,21 @@ def dump(module):
         if modules[k] == module:
             print("All registers for '%s' module:" % k)
     for addr in range(module_len[module]):
-        reply = read_request(module, addr)
+        reply_val = read_request(module, addr)
         print("Register value at %d, %d: \t%s" % (
-            module, addr, repr_data(reply.reg_io.val)))
+            module, addr, repr_data(reply_val)))
 
 def do_reg_read(module, addr):
     module = parse_module(module)
-    reply = read_request(module, addr)
+    reply_val = read_request(module, addr)
     print("Register value at %d, %d: \t%s" % (
-        module, addr, repr_data(reply.reg_io.val)))
+        module, addr, repr_data(reply_val)))
 
 def do_reg_write(module, addr, value):
     module = parse_module(module)
-    reply = write_request(module, addr, parse_value(value))
+    reply_val = write_request(module, addr, parse_value(value))
     print("Written to %d, %d: \t%s" % (
-        module, addr, repr_data(reply.reg_io.val)))
+        module, addr, repr_data(reply_val)))
 
 def intan_write(intan_addr, value):
     module = modules['daq']
@@ -185,12 +185,12 @@ def intan_write(intan_addr, value):
           ((0b10000000 | intan_addr) << 8) | \
           value
     print("CMD: %s" % hex(cmd))
+    reply_val = write_request(module, addr, cmd)
+    print("Written to %d, %d: \t%s" % (
+        module, addr, repr_data(reply_val)))
     reply = write_request(module, addr, cmd)
     print("Written to %d, %d: \t%s" % (
-        module, addr, repr_data(reply.reg_io.val)))
-    reply = write_request(module, addr, cmd)
-    print("Written to %d, %d: \t%s" % (
-        module, addr, repr_data(reply.reg_io.val)))
+        module, addr, repr_data(reply_val)))
     print("That means that register %d (zero-indexed) was set to %d (integer) "
         "for all attached Intan chips." % (intan_addr, value))
     print("(assuming that acquisition was running...)")
