@@ -10,22 +10,22 @@ This is a script to measure probe impedances on a per-channel basis.
 
 DO NOT run this script during acquisition to disk or readback from disk.
 
-It requires the h5py and numpy packages. On debian::
+This script requires the h5py and numpy packages. On debian::
 
     apt-get install python-h5py python-numpy
 
-Impedance Measurement Process (paraphrased):
+Impedance Measurement Recipe (paraphrased):
 
-    1. start streaming
-    2. parse chip_alive to determine which chips to test
-    3. setup channels for first chip
-    4. collect 1 second of contiguous data for chip
+    1. sanity check datanode status
+    2. start streaming
+    3. setup channels for first channel (all chips)
+    4. collect ~0.5 seconds of contiguous data for channel (across all chips)
     5. run FFT on each returned channel, store result
     6. setup next chip and back to #4
     7. when done, return channel map to defaults and stop streaming
 
 TODO:
- - real math with units, not "impedance factor"
+ - impedance calculation should be reviewed by SNG staff.
  - currently full-sample streams are saved to disk, even though only sub-sample
    streams are required. this is an open feature request for the daemon.
  - loading and re-ordering HDF5 data is super slow. scales with number of chips 
@@ -33,6 +33,9 @@ TODO:
  - there are several magic numbers sprinkled around, eg to decode the command
    status enum. these should be replaced with human readable values. see TODO
    tags.
+ - as an extra feature, the ability to automatically tune the capacitorscale
+   parameter and re-run impedance measurements to get the most accurate
+   measurement.
 
 See the '-h' usage for more info.
 """
@@ -53,29 +56,75 @@ import numpy.fft
 from daemon_control import *
 from debug_tool import read_request, write_request, set_channel_list, modules
 
-# ========== Helpers =========== #
-def amplitude2impedance(amp):
-    """
-    TODO:
-    This returns the impedance "factor", which I just now made up. Sort of a
-    proxy for resistance until I do the actual math.
-    """
-    max_amp = float(2**15) # rail-to-rail amplitude for 16bit ADC
-    if amp == 0:
-        return 'open'
-    imp = max_amp/amp - 1.0
-    if imp > 10**7: # 10,000,000 Ohm MAX!!! that's a lota impedence
-        return 'open'
-    elif imp <= 0.01: # very small, probably numerical
-        return 'short'
-    else:
-        return imp
-    return max(max_amp/amp - 1.0, 0)
 
-def calculate_impedences(waveforms, verbose=False):
+# ========== Calculations =========== #
+def volts2impedance(volts, capacitorscale):
+    """
+    See pages 28 to 30 of the Intan RHD2000 Series datasheet.
+
+    Formula for impedance:
+
+        (impedance ohms) = (amplitude volts) / (current amps)
+
+    The example given in the Intan datasheet is that with the 1.0pF capacitor
+    selected (capacitorscale=1), a 1MOhm total impedance would result in a
+    3.8mV signal amplitude.
+
+    This conversion assumes:
+      - 1kHz sine max amplitude DAC waveform
+      - "normal" ADC and amplifier configuration
+    """
+    cap2current = {0: 0.38 * 10**-9,  # 0.1pF capacitor
+                   1: 3.8 * 10**-9,   # 1.0pF capacitor
+                   3: 38.0 * 10**-9}  # 10.0pF capacitor
+
+    if volts < 10**-6:
+        # dodge a divide-by-zero or numerical glitch
+        return 'open (null data)'
+
+    impedance = volts / cap2current[capacitorscale]
+
+    if impedance > 10**7:
+        # above 10 MOhm, assume we've got an open circuit 
+        return 'open (> 10 MOhm)'
+    elif impedance <= 0.1: # very small, probably numerical
+        return 'short (< 0.1 Ohm)'
+    else:
+        return impedance
+
+def amp2volts(amplitude, nsamples):
+    """
+    Converts a complex FFT amplitude at 1KHz to a sinewave amplitude in volts
+    (normal amplitude, not peak-to-peak).
+
+    The conversion factor between ADC counts and volts is 0.2 microvolts per
+    count.
+    """
+    return abs(amplitude * 2 / nsamples) * 0.2 * 10**-6
+
+def calculate_impedences(waveforms, capacitorscale, verbose=False):
+    """
+    This function iterates through all the waveforms passed in, and for each
+    calculates the 1kHz sine amplitude present (using an FFT), and then
+    calculates the probe impedance in Ohms from that.
+
+    NB: The fourier math and index selection below has not been reviewed.
+
+        waveforms: a dictionary with integer keys corresponding to chip indexes
+            and values as single dimensional 16bit unsigned integer numpy
+            arrays (waveform data)
+        capacitorscale: the Intan capacitor selection register (passed through
+            to amplitude2impedance)
+
+    Returns a dictionary with integer keys (chip indexes) and values that are a
+    3-tuple of the measured impedance in Ohms, the 1kHz sine-wave
+    amplitude (not peak to peak), and  the complex FFT amplitude at 1Khz. The
+    impedance value is either a float or a string starting with 'open' or
+    'short'.
+    """
     if verbose:
         for k in waveforms.keys():
-            print("\t\t%d: %d %d %d ..." % (k,
+            print("\t\tChip %d values: %d %d %d ..." % (k,
                 waveforms[k][0],
                 waveforms[k][1],
                 waveforms[k][2],))
@@ -85,11 +134,15 @@ def calculate_impedences(waveforms, verbose=False):
         onekhz_index = int(1000 * len(wf)/30000)
         fourier = numpy.fft.rfft(wf)
         #freqs = numpy.fft.fftfreq(wf.size, d=1/30000.)
-        #print "%d: %f" % (onekhz_index, freqs[onekhz_index])
-        onekhz = fourier[onekhz_index] * 2.0 / len(wf)
-        amplitudes[k] = (onekhz, amplitude2impedance(abs(onekhz)))
+        #print("%d: %f" % (onekhz_index, freqs[onekhz_index]))
+        onekhz_amp = fourier[onekhz_index]
+        volts = amp2volts(onekhz_amp, len(wf))
+        amplitudes[k] = (volts2impedance(volts, capacitorscale),
+                         volts,
+                         onekhz_amp)
     return amplitudes
 
+# ========== Helpers =========== #
 def get_chips_alive():
     mask = read_request(modules['daq'], 4)
     return [i for i in range(32) if (mask & (0x1 << i))]
@@ -194,10 +247,10 @@ def load_chip_data_from_hdf5(fpath, chips):
         """
     return data
 
-def process_data(fpath, chips, currentmode, verbose=False):
+def process_data(fpath, chips, capacitorscale, verbose=False):
     data = load_chip_data_from_hdf5(fpath, chips)
     print("\tCalculating imedances...")
-    results = calculate_impedences(data, verbose)
+    results = calculate_impedences(data, capacitorscale, verbose)
     if verbose:
         for k in chips:
             print("\t\tChip %02d: %s" % (k, results[k]))
@@ -205,15 +258,15 @@ def process_data(fpath, chips, currentmode, verbose=False):
 
 # ========== Commands =========== #
 
-def run(chips, channels, samples, pause, currentmode, force=False,
+def run(chips, channels, samples, pause, capacitorscale, force=False,
         keepfiles=False, verbose=False):
-    currentmode = {"low":0, "medium":1, "high":3}[currentmode]
+    capacitorscale = {"low":0, "medium":1, "high":3}[capacitorscale]
     if verbose:
         print("chips: %s" % chips)
         print("channels: %s" % channels)
         print("samples: %s" % samples)
         print("pause: %s" % pause)
-        print("currentmode: " + bin(currentmode))
+        print("capacitorscale: " + bin(capacitorscale))
         print("keepfiles: %s" % keepfiles)
         print("force: %s" % force)
         print("-----------------------------------------------")
@@ -250,7 +303,7 @@ def run(chips, channels, samples, pause, currentmode, force=False,
         # setup chips for channel
         set_channel_list([(chip, chan) for chip in range(32)])
         # enable DAC injection
-        configure_dac(True, True, currentmode, False, chan)
+        configure_dac(True, True, capacitorscale, False, chan)
         # pause for DAC to stabilize
         if verbose:
             print("\tSleeping for %f seconds..." % pause)
@@ -263,7 +316,7 @@ def run(chips, channels, samples, pause, currentmode, force=False,
         configure_dac(False, 0, 0, 0, 0)
         # load data and determine impedances for each chip; print and store
         # result
-        results[chan]= process_data(fpath, chips, currentmode, verbose)
+        results[chan]= process_data(fpath, chips, capacitorscale, verbose)
         if not keepfiles:
             # delete data file
             os.unlink(fpath)
@@ -283,7 +336,7 @@ def run(chips, channels, samples, pause, currentmode, force=False,
     for chip in chips:
         print("Chip %02d:" % chip)
         for channel in channels:
-            print("\tChannel %02d: %s" % (channel, results[channel][chip][1]))
+            print("\tChannel %02d: %s" % (channel, results[channel][chip][0]))
     print("=====================================")
     if keepfiles:
         print("Raw files retained and available at %s" % temp_directory)
@@ -304,9 +357,9 @@ def main():
         help="how many samples to measure")
     parser.add_argument("-p", "--pause", type=float, default=0.5,
         help="how long to pause before capturing samples (per channel)")
-    parser.add_argument("-m", "--currentmode",
+    parser.add_argument("-m", "--capacitorscale",
         choices=['low', 'medium', 'high'],
-        default='low', help="strength of injected DAC current")
+        default='low', help="determines the strength of injected DAC current")
     parser.add_argument("-f", "--force", action="store_true",
         help="collect measurements regardless of chip_alive status")
     parser.add_argument("-k", "--keepfiles", action="store_true",
