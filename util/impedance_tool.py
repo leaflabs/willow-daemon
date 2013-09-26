@@ -108,8 +108,6 @@ def calculate_impedences(waveforms, capacitorscale, verbose=False):
     calculates the 1kHz sine amplitude present (using an FFT), and then
     calculates the probe impedance in Ohms from that.
 
-    NB: The fourier math and index selection below has not been reviewed.
-
         waveforms: a dictionary with integer keys corresponding to chip indexes
             and values as single dimensional 16bit unsigned integer numpy
             arrays (waveform data)
@@ -121,6 +119,19 @@ def calculate_impedences(waveforms, capacitorscale, verbose=False):
     amplitude (not peak to peak), and  the complex FFT amplitude at 1Khz. The
     impedance value is either a float or a string starting with 'open' or
     'short'.
+
+    This function can be tested with the following snippet, which should report
+    an impedance of about 1MOhm. It generates a 3.8mV 1kHz sine waveform and
+    calculates the impedance assuming the 1.0pF capacitor was selected.
+
+        >>> w = [int((numpy.sin(t*3.141592/15)*3.8*0.001/(0.2*10**-6)))
+               +2**15+numpy.random.random_integers(-20,20)
+               for t in range(15000)]
+        >>> calculate_impedences({5:w}, 1, True)
+        {5: (999968.20706330962,
+          0.0037998791868405768,
+          (-46838.651388999962-142495461.80852485j))}
+
     """
     if verbose:
         for k in waveforms.keys():
