@@ -63,7 +63,7 @@ typedef uint8_t raw_magic_t;
 /** Common packet header. */
 struct raw_pkt_header {
     /* These are set by raw_packet_init(). */
-    uint8_t _p_magic;
+    raw_magic_t _p_magic;
     uint8_t p_proto_vers;
 
     uint8_t p_mtype;            /* Message Type */
