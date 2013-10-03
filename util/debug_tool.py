@@ -170,17 +170,19 @@ def dump(module):
         print("Register value at %d, %d: \t%s" % (
             module, addr, repr_data(reply_val)))
 
-def do_reg_read(module, addr):
+def do_reg_read(module, addr, verbose=True):
     module = parse_module(module)
     reply_val = read_request(module, addr)
-    print("Register value at %d, %d: \t%s" % (
-        module, addr, repr_data(reply_val)))
+    if verbose:
+        print("Register value at %d, %d: \t%s" % (
+            module, addr, repr_data(reply_val)))
 
-def do_reg_write(module, addr, value):
+def do_reg_write(module, addr, value, verbose=True):
     module = parse_module(module)
-    reply_val = write_request(module, addr, parse_value(value))
-    print("Written to %d, %d: \t%s" % (
-        module, addr, repr_data(reply_val)))
+    reply_val = write_request(module, addr, value)
+    if verbose:
+        print("Written to %d, %d: \t%s" % (
+            module, addr, repr_data(reply_val)))
 
 def intan_write(intan_addr, value):
     module = modules['daq']
