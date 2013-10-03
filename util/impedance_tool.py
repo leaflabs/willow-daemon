@@ -80,7 +80,7 @@ def volts2impedance(volts, capacitorscale):
 
     if volts < 10**-6:
         # dodge a divide-by-zero or numerical glitch
-        return 'open (null data)'
+        return 'short (null data)'
 
     impedance = volts / cap2current[capacitorscale]
 
@@ -135,10 +135,12 @@ def calculate_impedences(waveforms, capacitorscale, verbose=False):
     """
     if verbose:
         for k in waveforms.keys():
-            print("\t\tChip %d values: %d %d %d ..." % (k,
+            print("\t\tChip %d values: %d %d; %d %d; max=%d" % (k,
                 waveforms[k][0],
                 waveforms[k][1],
-                waveforms[k][2],))
+                waveforms[k][8],
+                waveforms[k][9],
+		max(waveforms[k]),))
     amplitudes = dict()
     for k in waveforms.keys():
         wf = waveforms[k]
