@@ -239,7 +239,7 @@ def save_stream(nsamples, temp_directory, chan, attempts=3):
         raise Exception("Timed out!")
     return fpath
 
-def load_chip_data_from_hdf5(fpath, chips):
+def load_chip_data_from_hdf5(fpath, chips, channel):
     data = dict()
     with h5py.File(fpath, 'r', driver='core') as f:
         d = f['wired-dataset']
@@ -249,7 +249,7 @@ def load_chip_data_from_hdf5(fpath, chips):
         print("\tLoading and re-ordering data (slow!)...")
         for i in range(count):
             for c in chips:
-                data[c][i] = d[i][3][c]
+                data[c][i] = d[i][3][c*32 + channel]
         """ DEBUG
         i = 0
         for sample in d:
@@ -260,8 +260,8 @@ def load_chip_data_from_hdf5(fpath, chips):
         """
     return data
 
-def process_data(fpath, chips, capacitorscale, verbose=False):
-    data = load_chip_data_from_hdf5(fpath, chips)
+def process_data(fpath, chips, capacitorscale, channel, verbose=False):
+    data = load_chip_data_from_hdf5(fpath, chips, channel)
     print("\tCalculating imedances...")
     results = calculate_impedences(data, capacitorscale, verbose)
     if verbose:
@@ -329,7 +329,7 @@ def run(chips, channels, samples, pause, capacitorscale, force=False,
         configure_dac(False, 0, 0, 0, 0)
         # load data and determine impedances for each chip; print and store
         # result
-        results[chan]= process_data(fpath, chips, capacitorscale, verbose)
+        results[chan]= process_data(fpath, chips, capacitorscale, chan, verbose)
         if not keepfiles:
             # delete data file
             os.unlink(fpath)
