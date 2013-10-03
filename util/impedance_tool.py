@@ -262,7 +262,7 @@ def load_chip_data_from_hdf5(fpath, chips, channel):
 
 def process_data(fpath, chips, capacitorscale, channel, verbose=False):
     data = load_chip_data_from_hdf5(fpath, chips, channel)
-    print("\tCalculating imedances...")
+    print("\tCalculating impedances...")
     results = calculate_impedences(data, capacitorscale, verbose)
     if verbose:
         for k in chips:
