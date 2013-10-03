@@ -126,7 +126,7 @@ def set_channel_list(l):
     for i in range(32):
         chip = l[i][0] & 0b00011111
         chan = l[i][1] & 0b00011111
-        do_reg_write(modules['daq'], 128+i, (chip << 8) | chan)
+        do_reg_write(modules['daq'], 128+i, (chip << 8) | chan, verbose=False)
 
 # ========== Commands =========== #
 
@@ -170,17 +170,19 @@ def dump(module):
         print("Register value at %d, %d: \t%s" % (
             module, addr, repr_data(reply_val)))
 
-def do_reg_read(module, addr):
+def do_reg_read(module, addr, verbose=True):
     module = parse_module(module)
     reply_val = read_request(module, addr)
-    print("Register value at %d, %d: \t%s" % (
-        module, addr, repr_data(reply_val)))
+    if verbose:
+        print("Register value at %d, %d: \t%s" % (
+            module, addr, repr_data(reply_val)))
 
-def do_reg_write(module, addr, value):
+def do_reg_write(module, addr, value, verbose=True):
     module = parse_module(module)
     reply_val = write_request(module, addr, value)
-    print("Written to %d, %d: \t%s" % (
-        module, addr, repr_data(reply_val)))
+    if verbose:
+        print("Written to %d, %d: \t%s" % (
+            module, addr, repr_data(reply_val)))
 
 def intan_write(intan_addr, value):
     module = modules['daq']
