@@ -218,8 +218,8 @@ def configure_streaming(enable, force_dac_reset=True, ip_addr='127.0.0.1',
     assert(reply is not None)
     assert(reply.type == 2)       # TODO: SUCCESS
 
-def save_stream(nsamples, temp_directory, chan, attempts=3):
-    fpath = os.path.join(temp_directory, "chan_%d.h5" % chan)
+def save_stream(nsamples, temp_directory, chan, capacitorscale, attempts=4):
+    fpath = os.path.join(temp_directory, "chan_%d_capscale_%d.h5" % (chan,capacitorscale))
     cmd = ControlCommand(type=ControlCommand.STORE)
     cmd.store.path = os.path.abspath(fpath)
     cmd.store.nsamples = nsamples
@@ -324,7 +324,7 @@ def run(chips, channels, samples, pause, capacitorscale, force=False,
         # save N samples contiguous data for channel to disk
         if verbose:
             print("\tCollecting %d samples..." % samples)
-        fpath = save_stream(samples, temp_directory, chan)
+        fpath = save_stream(samples, temp_directory, chan, capacitorscale)
         # disable DAC injection
         configure_dac(False, 0, 0, 0, 0)
         # load data and determine impedances for each chip; print and store
