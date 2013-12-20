@@ -272,7 +272,7 @@ def process_data(fpath, chips, capacitorscale, channel, verbose=False):
 # ========== Commands =========== #
 
 def run(chips, channels, samples, pause, capacitorscale, force=False,
-        keepfiles=False, verbose=False):
+        keepfiles=False, verbose=False, calc_flag=False):
     capacitorscale = {"low":0, "medium":1, "high":3}[capacitorscale]
     if verbose:
         print("chips: %s" % chips)
@@ -329,7 +329,8 @@ def run(chips, channels, samples, pause, capacitorscale, force=False,
         configure_dac(False, 0, 0, 0, 0)
         # load data and determine impedances for each chip; print and store
         # result
-        results[chan]= process_data(fpath, chips, capacitorscale, chan, verbose)
+        if calc_flag:
+            results[chan]= process_data(fpath, chips, capacitorscale, chan, verbose)
         if not keepfiles:
             # delete data file
             os.unlink(fpath)
@@ -345,12 +346,13 @@ def run(chips, channels, samples, pause, capacitorscale, force=False,
     # stop streaming
     configure_streaming(False)
     # pretty print results
-    print("============== Results ==============")
-    for chip in chips:
-        print("Chip %02d:" % chip)
-        for channel in channels:
-            print("\tChannel %02d: %s" % (channel, results[channel][chip][0]))
-    print("=====================================")
+    if calc_flag:
+        print("============== Results ==============")
+        for chip in chips:
+            print("Chip %02d:" % chip)
+            for channel in channels:
+                print("\tChannel %02d: %s" % (channel, results[channel][chip][0]))
+        print("=====================================")
     if keepfiles:
         print("Raw files retained and available at %s" % temp_directory)
 
@@ -361,6 +363,7 @@ def main():
         description="Measures probe impedances.",
         epilog="Kapow.")
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("-j", "--calc_flag", action="store_true")
     parser.add_argument("-c", "--chips", type=int, nargs='+',
         default=range(32),
         help="which chips to check (defaults to all)")
