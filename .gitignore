@@ -1,3 +1,4 @@
+DEBUG
 build/
 *~
 *.swp
@@ -6,3 +7,4 @@ TAGS
 cscope.*
 *.pyc
 .sconsign.dblite
+*.h5
