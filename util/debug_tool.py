@@ -126,7 +126,7 @@ def set_channel_list(l):
     for i in range(32):
         chip = l[i][0] & 0b00011111
         chan = l[i][1] & 0b00011111
-        do_reg_write(modules['daq'], 128+i, (chip << 8) | chan, verbose=False)
+        write_request(modules['daq'], 128+i, (chip << 8) | chan)
 
 # ========== Commands =========== #
 
