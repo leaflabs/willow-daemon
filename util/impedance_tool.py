@@ -292,24 +292,31 @@ def run(chips, channels, samples, pause, capacitorscale, force=False,
     elif verbose:
         print("SATA mode was 0.")
 
+    # check chip_alive against chips[]
+    alive_chips = get_chips_alive()
+    if verbose:
+        print("alive_chips: %s" % alive_chips)
     # start sub-sample streaming
     configure_streaming(True)
     if not force:
-        # check chip_alive against chips[]
-        alive_chips = get_chips_alive()
-        if verbose:
-            print("alive_chips: %s" % alive_chips)
-        for c in chips:
-            if not c in alive_chips:
-                print("alive_chips: %s" % alive_chips)
-                print("Told to measure chip %d, but it isn't alive." % c)
-                print("Halting; use --force to override")
-                sys.exit(-1)
+      for c in chips:
+          if not c in alive_chips:
+              print("alive_chips: %s" % alive_chips)
+              print("Told to measure chip %d, but it isn't alive." % c)
+              print("Halting; use --force to override")
+              sys.exit(-1)
     else:
         print("Skipping chip alive check.")
 
     temp_directory = tempfile.mkdtemp(
         prefix="wired_impedance_%s_" % (time.strftime("%Y%m%d")))
+    ## JPK
+    print("temp directory = %s" % temp_directory)
+    f = open("%s/alive_chips.txt" % (temp_directory), 'w')
+    for item in alive_chips: 
+      f.write("%s\n" % item)
+    f.close()
+    ## JPK
     results = {}
     for chan in channels:
         print("Acquiring data for channel %d:" % chan)
