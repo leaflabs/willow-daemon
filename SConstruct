@@ -43,7 +43,7 @@ build_util_dir = toplevel_join(build_dir, util_dir)
 build_pyproto_dir = toplevel_join(build_dir, 'pyproto')
 lib_deps = [
      # External dependencies:
-     'event', 'event_pthreads', 'hdf5', 'protobuf-c']
+     'event', 'event_pthreads', 'hdf5', 'protobuf-c', 'm', 'rt']
 libsng_deps = ['protobuf-c']
 test_lib_deps = ['check_pic', 'sng'] # External dependencies for tests
 verbosity_level = int(ARGUMENTS.get('V', 0))
