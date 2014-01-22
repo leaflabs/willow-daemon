@@ -55,6 +55,7 @@ build_base_cflags = '-std=c99 -g -Wall -Wextra -Wpointer-arith -Werror'
 build_libsng_cflags = build_base_cflags
 build_cflags = '-pthread ' + build_base_cflags
 build_cflags_extra = ARGUMENTS.get('EXTRA_CFLAGS', '')
+build_ldflags = '-pthread '
 build_ldflags_extra = ARGUMENTS.get('EXTRA_LDFLAGS', '')
 
 # Put all generated files underneath the build directory. protoc-c is
@@ -75,7 +76,7 @@ env = Environment(CC=build_cc,
                   },
                   CPPPATH=[build_lib_dir, src_dir],
                   LINK=build_ld,
-                  LINKFLAGS=build_ldflags_extra,
+                  LINKFLAGS=build_ldflags + build_ldflags_extra,
                   LIBS=lib_deps,
                   tools=['default', 'protocc'],
                   )
