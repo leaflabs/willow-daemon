@@ -4,6 +4,7 @@ For the impatient
 -----------------
 
 On Ubuntu 12.04:
+(also tested on Linux Mint 16)
 
 1. Install mandatory dependencies:
 
