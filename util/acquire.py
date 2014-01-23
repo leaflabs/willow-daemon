@@ -91,7 +91,7 @@ def no_arg_parser(cmd, description):
 DEFAULT_START_SAMPLE = 0
 save_stored_parser = argparse.ArgumentParser(
     prog='save_stored',
-    description='Copy experiment data to file (after stopping acquisition)',
+    description='Copy experiment data from node disk to file on daemon computer (after stopping acquisition)',
     epilog="""DO NOT USE THIS WHILE ACQUISITION IS ONGOING.""")
 save_stored_parser.add_argument('file',
                                 help='File to store samples in.')
@@ -108,7 +108,7 @@ save_stored_parser.add_argument(
 
 save_stream_parser = argparse.ArgumentParser(
     prog='save_stream',
-    description='Save live streaming data to disk')
+    description='Save live streaming data to disk on daemon computer')
 save_stream_parser.add_argument('file',
                                 help='File to store samples in')
 save_stream_parser.add_argument('nsamples', type=int,
@@ -158,7 +158,7 @@ COMMAND_HANDLING = collections.OrderedDict()
 COMMAND_HANDLING['start'] = (
     start,
     no_arg_parser('start',
-                  'Start acquiring to disk and streaming live data'),
+                  'Start acquiring to node disk and streaming live data to daemon'),
     nop_resp_map)
 COMMAND_HANDLING['save_stream'] = (
     save_stream,
@@ -166,7 +166,7 @@ COMMAND_HANDLING['save_stream'] = (
     nop_resp_map)
 COMMAND_HANDLING['stop'] = (
     stop,
-    no_arg_parser('stop', 'Stop acquiring to disk'),
+    no_arg_parser('stop', 'Stop acquiring to node disk, and stop streaming'),
     nop_resp_map)
 COMMAND_HANDLING['save_stored'] = (
     save_stored,
