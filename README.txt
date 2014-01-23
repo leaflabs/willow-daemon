@@ -26,7 +26,7 @@ On Ubuntu 12.04:
 
 You can install some useful programs later, if you want:
 
-   $ sudo apt-get install hdf5-tools hdfviewer
+   $ sudo apt-get install hdf5-tools hdfview
 
 Mandatory dependencies
 ----------------------
