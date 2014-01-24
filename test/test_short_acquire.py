@@ -75,7 +75,7 @@ class TestShortAcquire(test_helpers.DaemonTest):
         self.assertEqual(rs.status, ControlResStore.DONE, msg=msg)
         self.assertEqual(rs.path, store_path)
         min_nsamples_expected = SLEEP_TIME_SEC * test_helpers.SAMPLE_RATE_HZ
-        fudge_factor = 0.95
+        fudge_factor = 0.925
         self.assertTrue(rs.nsamples > fudge_factor * min_nsamples_expected)
 
         # Ensure the data looks ok
