@@ -20,7 +20,7 @@ echo "Waiting for daemon to spool up..."
 sleep 2
 
 # setup default channels
-./debug_tool.py subsamples --constant chip 2
+./debug_tool.py subsamples --constant chip 3
 
 # start KST streaming
 ./acquire.py forward start -f -t subsample
