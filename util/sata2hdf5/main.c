@@ -158,7 +158,7 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
             break;
         case 'o':
             offset = strtol(optarg, (char**)0, 10);
-            if (count < 0) {
+            if (offset < 0) {
                 fprintf(stderr, "offset %ld must be positive\n", offset);
                 usage(EXIT_FAILURE);
             }
