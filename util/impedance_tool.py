@@ -24,6 +24,12 @@ Impedance Measurement Recipe (paraphrased):
     6. setup next chip and back to #4
     7. when done, return channel map to defaults and stop streaming
 
+Example calculation of impedance:
+
+    0.001 * 12. * 25000/65000 / (2*3.8 * 10**-9)
+    (volts/milivolts) * (12 mv peak to peak) * (p2p counts observed / max) / (double amplitude in amps)
+
+
 TODO:
  - impedance calculation should be reviewed by SNG staff.
  - currently full-sample streams are saved to disk, even though only sub-sample
