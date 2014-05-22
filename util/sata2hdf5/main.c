@@ -16,7 +16,7 @@
 /*
  * sata2hdf5
  *
- *  Utility to read raw board samples from a bare block device (eg, a SATA disk 
+ *  Utility to read raw board samples from a bare block device (eg, a SATA disk
  *  attached via a USB 3.0 adapter and available at /dev/sd{b,c,d,...}) and
  *  copy out to an HDF5 file for later analysis or archiving.
  *
@@ -328,7 +328,7 @@ int main(int argc, char *argv[])
 
 /* TODO: enable disk synchronization? could speculatively make batch jobs run
  * slowly, so commented out.
- 
+
     printf("Synchronizing disk...\n");
     fsync(fileno(infile));
 */
