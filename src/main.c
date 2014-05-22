@@ -75,16 +75,6 @@ static const char* program_name;
  * for benchmarking). */
 #define DO_HDF5_STORAGE 0
 
-/* Local file to start storing in. This gets truncated each time you
- * run the daemon. */
-#define DNODE_DATA_DIR "/tmp"
-#if DO_HDF5_STORAGE
-#define DNODE_DATA_FILE DNODE_DATA_DIR "/dnode_data.h5"
-#else
-#define DNODE_DATA_FILE DNODE_DATA_DIR "/dnode_data.raw"
-#endif
-#define DNODE_DATASET_NAME "ANONYMOUS_DATASET"
-
 //////////////////////////////////////////////////////////////////////
 
 static void panic(const char *msg)
