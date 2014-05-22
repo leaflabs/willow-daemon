@@ -207,6 +207,9 @@ def main():
         sys.exit(1)
     for resp in rmap(resps):
         print(resp, end='')
+        if resp.type == ControlResponse.ERR:
+            sys.exit(1)
+    sys.exit(0)
 
 if __name__ == '__main__':
     main()
