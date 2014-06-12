@@ -16,6 +16,10 @@ from daemon_control import *
 BACKENDS = { 'STORE_HDF5': STORE_HDF5,
              'STORE_RAW': STORE_RAW }
 
+# parameters used in subsample determination
+CHANNELS_PER_CHIP = 32
+CHIPS_PER_DATANODE = 32
+
 def acquire(enable):
     cmd = ControlCommand(type=ControlCommand.ACQUIRE)
     if enable:
@@ -79,6 +83,31 @@ def forward(args):
     cmd.forward.enable = (args.enable == 'start')
     return [cmd]
 
+def subsamples(args):
+    constant = args.constant
+    number = args.number
+    chipchanList = []
+    if constant == 'chip':
+        chip = number
+        chipchanList = [(chip, chan) for chan in range(CHANNELS_PER_CHIP)]
+    elif  constant == 'channel':
+        chan = number
+        chipchanList = [(chip, chan) for chip in range(CHIPS_PER_DATANODE)]
+    else:
+        raise ValueError("Don't know how to hold constant '%s'" % constant)
+    print("Setting sub-sample channels as:")
+    print()
+    print("\tindex\tchip\tchannel")
+    for i,chipchan in enumerate(chipchanList):
+        print("\t%3d\t%3d\t%3d" % (i, chipchan[0], chipchan[1]))
+    cmdlist = []
+    for i,chipchan in enumerate(chipchanList):
+        chip = chipchan[0] & 0b00011111
+        chan = chipchan[1] & 0b00011111
+        cmdlist.append(reg_write(MOD_DAQ, DAQ_SUBSAMP_CHIP0+i, (chip << 8) | chan))
+    return cmdlist
+
+
 ##
 ## Argument parsing
 ##
@@ -118,6 +147,17 @@ save_stream_parser.add_argument(
     default=None,
     choices=BACKEND_CHOICES,
     help='Storage backend')
+
+subsamples_parser = argparse.ArgumentParser(
+    prog='subsamples',
+    description='Configure which channels make up the subsample')
+subsamples_parser.add_argument("--constant",
+    choices=['chip','channel'],
+    required=True,
+    help="what to hold constant")
+subsamples_parser.add_argument("number",
+    type=int,
+    help="the value for the index being held constant")
 
 DEFAULT_FORWARD_ADDR = '127.0.0.1'
 DEFAULT_FORWARD_PORT = 7654      # for proto2bytes
@@ -180,6 +220,10 @@ COMMAND_HANDLING['dump_err_regs'] = (
     dump_err_regs,
     no_arg_parser('dump_err_regs', 'Print nonzero error registers'),
     lambda resps: [r for r in resps if r.reg_io.val != 0])
+COMMAND_HANDLING['subsamples'] = (
+    subsamples,
+    subsamples_parser,
+    nop_resp_map)
 
 ##
 ## main()
