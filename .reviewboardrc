@@ -1,0 +1,2 @@
+REPOSITORY = 'sng-daemon'
+REVIEWBOARD_URL = 'http://reviews.leaflabs.com'
