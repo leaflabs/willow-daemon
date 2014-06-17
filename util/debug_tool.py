@@ -257,7 +257,7 @@ def main():
         description="Write to a single register value.")
     parser_write.add_argument("module", type=str)
     parser_write.add_argument("addr", type=int)
-    parser_write.add_argument("value", type=str)
+    parser_write.add_argument("value", type=int)
     parser_write.set_defaults(func=do_reg_write)
 
     parser_intan_write = subparsers.add_parser('intan_write',
