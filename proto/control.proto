@@ -276,7 +276,8 @@ message ControlCmdForward {
 // Store board samples received from the data node to disk.
 //
 // IMPORTANT: If the data node isn't streaming data to the daemon
-//            already, this will always time out.
+//            already, and you try to store live samples, this will
+//            always time out.
 //
 //            To ensure streaming, use (safer) ControlCmdAcquire or
 //            (DANGEROUS! SEE NOTES ABOVE) ControlCmdForward with
