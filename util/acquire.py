@@ -16,14 +16,24 @@ from daemon_control import *
 BACKENDS = { 'STORE_HDF5': STORE_HDF5,
              'STORE_RAW': STORE_RAW }
 
+BSI_INTERVAL = 1920
+
 # parameters used in subsample determination
 CHANNELS_PER_CHIP = 32
 CHIPS_PER_DATANODE = 32
 
-def acquire(enable):
+
+def acquire(enable, args):
     cmd = ControlCommand(type=ControlCommand.ACQUIRE)
     if enable:
         cmd.acquire.exp_cookie = long(time())
+        start_sample = args.start_sample
+        r = start_sample % BSI_INTERVAL
+        if r != 0:
+            start_sample += (BSI_INTERVAL-r)
+            print('Rounding start_sample up to next multiple of %d:\n
+                   \tstart_sample = %d'%(BSI_INTERVAL, start_sample))
+        cmd.acquire.start_sample = start_sample
     cmd.acquire.enable = enable
     return [cmd]
 
@@ -31,15 +41,16 @@ def dump_err_regs(args):
     return read_err_regs()
 
 def start(args):
-    return acquire(True)
+    return acquire(True, args)
 
 def stop(args):
-    return acquire(False)
+    return acquire(False, args)
 
 def save_stored(args):
     fpath = os.path.abspath(args.file)
     cmd = ControlCommand(type=ControlCommand.STORE)
     cmd.store.start_sample = args.start_sample
+    cmd.store.nsamples = args.nsamples
     cmd.store.path = fpath
     if args.backend is not None:
         cmd.store.backend = BACKENDS[args.backend]
@@ -104,7 +115,8 @@ def subsamples(args):
     for i,chipchan in enumerate(chipchanList):
         chip = chipchan[0] & 0b00011111
         chan = chipchan[1] & 0b00011111
-        cmdlist.append(reg_write(MOD_DAQ, DAQ_SUBSAMP_CHIP0+i, (chip << 8) | chan))
+        cmdlist.append(reg_write(MOD_DAQ, DAQ_SUBSAMP_CHIP0+i,
+                       (chip << 8) | chan))
     return cmdlist
 
 
@@ -112,28 +124,54 @@ def subsamples(args):
 ## Argument parsing
 ##
 
+DEFAULT_START_SAMPLE = 0
+DEFAULT_NSAMPLES = 0 # default behavior: read until experiment cookie changes
+
+
+start_parser = argparse.ArgumentParser(
+    prog='start',
+    description='Start acquiring to node disk and streaming live data to 
+                 daemon')
+
+start_parser.add_argument(
+    '-s', '--start_sample',
+    type=int,
+    default=DEFAULT_START_SAMPLE,
+    help='Board sample index (BSI) at which to start acquiring. Must be a 
+          multiple of %d, default is %d.'%(BSI_INTERVAL, DEFAULT_START_SAMPLE))
+
 BACKEND_CHOICES = ['STORE_HDF5', 'STORE_RAW']
 
 def no_arg_parser(cmd, description):
     return argparse.ArgumentParser(prog=cmd, description=description)
 
-DEFAULT_START_SAMPLE = 0
 save_stored_parser = argparse.ArgumentParser(
     prog='save_stored',
-    description='Copy experiment data from node disk to file on daemon computer (after stopping acquisition)',
+    description='Copy experiment data from node disk to file on daemon '
+                'computer (after stopping acquisition)',
     epilog="""DO NOT USE THIS WHILE ACQUISITION IS ONGOING.""")
+
 save_stored_parser.add_argument('file',
                                 help='File to store samples in.')
+
 save_stored_parser.add_argument(
     '-s', '--start_sample',
     type=int,
     default=DEFAULT_START_SAMPLE,
     help='Start sample (default %d)' % DEFAULT_START_SAMPLE)
+
+save_stored_parser.add_argument(
+    '-n', '--nsamples',
+    type=int,
+    default=DEFAULT_NSAMPLES,
+    help='Number of samples (default %d)' % DEFAULT_NSAMPLES)
+
 save_stored_parser.add_argument(
     '-b', '--backend',
     default=None,
     choices=BACKEND_CHOICES,
     help='Storage backend')
+
 
 save_stream_parser = argparse.ArgumentParser(
     prog='save_stream',
@@ -197,8 +235,7 @@ def nop_resp_map(resps):
 COMMAND_HANDLING = collections.OrderedDict()
 COMMAND_HANDLING['start'] = (
     start,
-    no_arg_parser('start',
-                  'Start acquiring to node disk and streaming live data to daemon'),
+    start_parser,
     nop_resp_map)
 COMMAND_HANDLING['save_stream'] = (
     save_stream,
