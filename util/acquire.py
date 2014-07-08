@@ -31,8 +31,8 @@ def acquire(enable, args):
         r = start_sample % BSI_INTERVAL
         if r != 0:
             start_sample += (BSI_INTERVAL-r)
-            print('Rounding start_sample up to next multiple of %d:\n
-                   \tstart_sample = %d'%(BSI_INTERVAL, start_sample))
+            print('Rounding start_sample up to next multiple of %d:\n'
+                   '\tstart_sample = %d'%(BSI_INTERVAL, start_sample))
         cmd.acquire.start_sample = start_sample
     cmd.acquire.enable = enable
     return [cmd]
@@ -130,15 +130,15 @@ DEFAULT_NSAMPLES = 0 # default behavior: read until experiment cookie changes
 
 start_parser = argparse.ArgumentParser(
     prog='start',
-    description='Start acquiring to node disk and streaming live data to 
-                 daemon')
+    description='Start acquiring to node disk and streaming live data to '
+                'daemon')
 
 start_parser.add_argument(
     '-s', '--start_sample',
     type=int,
     default=DEFAULT_START_SAMPLE,
-    help='Board sample index (BSI) at which to start acquiring. Must be a 
-          multiple of %d, default is %d.'%(BSI_INTERVAL, DEFAULT_START_SAMPLE))
+    help='Board sample index (BSI) at which to start acquiring. Must be a '
+         'multiple of %d, default is %d.'%(BSI_INTERVAL, DEFAULT_START_SAMPLE))
 
 BACKEND_CHOICES = ['STORE_HDF5', 'STORE_RAW']
 
