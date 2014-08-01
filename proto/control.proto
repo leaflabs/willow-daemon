@@ -184,14 +184,17 @@ enum GpioAddr {
 // and ControlResponse).
 
 message RegisterIO {
-    // Choice of type specifies which group of registers (which
-    // module) you can use.  You must provide a value for "type":
+    // This field specifies which group of registers (which hardware
+    // module on the data node) you are addressing.  You must provide
+    // a value for "module":
     optional Module module = 1;
 
     // Register value. Provide "val" on a write; don't on a read:
     optional fixed32 val = 2;
 
-    // Register address. Provide exactly one of these, depending on 'type'.
+    // Register address. Provide exactly one of these, depending on
+    // the value of "module" -- e.g., if module==MOD_SATA, provide a
+    // SataAddr, etc.
     optional ErrAddr err = 3;
     optional CentralAddr central = 4;
     optional SataAddr sata = 5;
