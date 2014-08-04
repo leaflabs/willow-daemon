@@ -293,9 +293,9 @@ static hid_t hdf5_create_attrs(struct h5_ch_data *data)
                                                data->h5_attr_dspace,
                                                H5P_DEFAULT, H5P_DEFAULT);
     data->h5_attrs[H5_ATTR_COOKIE] = H5Acreate2(dobj, H5_ATTR_COOKIE_NAME,
-                                               COOKIE_H5_TYPE,
-                                               data->h5_attr_dspace,
-                                               H5P_DEFAULT, H5P_DEFAULT);
+                                                COOKIE_H5_TYPE,
+                                                data->h5_attr_dspace,
+                                                H5P_DEFAULT, H5P_DEFAULT);
     for (size_t i = 0; i < H5_NATTRS; i++) {
         /* Note that this also checks if we missed one. */
         if (data->h5_attrs[i] < 0) {
