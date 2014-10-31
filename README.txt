@@ -1,4 +1,5 @@
-This are the sources for leafysd, the WiredLeaf electrophysiology daemon.
+These are the sources for leafysd, the WiredLeaf project electrophysiology
+daemon.
 
 For the impatient
 -----------------
@@ -19,7 +20,7 @@ On Ubuntu 12.04:
 
 3. Compile everything:
 
-    $ scons
+    $ scons EXTRA_CFLAGS='-O2'
 
 4. Now you can run the daemon, ./build/leafysd. Use "./build/leafysd -h" for
    help with command line arguments.
@@ -127,6 +128,9 @@ Repository contents
   are available ("proto/foo.proto" gets included as
   "proto/foo.pb-c.h") and that the generated C sources get built and
   linked into the final program.
+
+  The build system also generates Python output, but doesn't do anything to get
+  it into sys.path.
 
 - src/: Daemon source code.
 
