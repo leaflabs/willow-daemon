@@ -216,7 +216,7 @@ def configure_streaming(enable, force_dac_reset=True, ip_addr='127.0.0.1',
     cmd = ControlCommand(type=ControlCommand.FORWARD)
     cmd.forward.enable = enable
     cmd.forward.force_daq_reset = force_dac_reset
-    cmd.forward.sample_type = 1 # BOARD_SUBSAMPLE
+    cmd.forward.sample_type = 1 # BOARD_SAMPLE
     cmd.forward.dest_udp_addr4 = \
         struct.unpack('!l', socket.inet_aton(ip_addr))[0]
     cmd.forward.dest_udp_port = ip_port
