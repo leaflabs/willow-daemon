@@ -23,6 +23,7 @@
 #include "type_attrs.h"
 #include "ch_storage.h"
 #include "raw_packets.h"
+#include "logging.h"
 
 struct raw_ch_data {
     int fd;
@@ -39,7 +40,7 @@ static int raw_ch_open(struct ch_storage *chns, unsigned flags);
 static int raw_ch_close(struct ch_storage *chns);
 static int raw_ch_datasync(struct ch_storage *chns);
 static int raw_ch_write(struct ch_storage *chns,
-                        const struct raw_pkt_bsmp*,
+                        struct raw_pkt_fields*,
                         size_t);
 static void raw_ch_free(struct ch_storage *chns);
 
@@ -92,11 +93,30 @@ static int raw_ch_datasync(struct ch_storage *chns)
 }
 
 static int raw_ch_write(struct ch_storage *chns,
-                        const struct raw_pkt_bsmp *bsamps,
+                        struct raw_pkt_fields *bsamp_data,
                         size_t n)
 {
-    ssize_t status = write(raw_ch_data(chns)->fd, bsamps, n * sizeof(*bsamps));
-    return (status < 0 ? (int)status :
-            status == (ssize_t)(n * sizeof(*bsamps)) ? 0 :
-            -1);
+    ssize_t write_size;
+
+    write_size = n*sizeof(uint8_t);
+    if (write(raw_ch_data(chns)->fd, bsamp_data->ph_flags, write_size)
+        != write_size) return -1;
+
+    write_size = n*sizeof(uint32_t);
+    if (write(raw_ch_data(chns)->fd, bsamp_data->sample_index, write_size)
+        != write_size) return -1;
+
+    write_size = n*sizeof(uint32_t);
+    if (write(raw_ch_data(chns)->fd, bsamp_data->chip_live, write_size)
+        != write_size) return -1;
+
+    write_size = n*CH_STORAGE_NCHAN*sizeof(raw_samp_t);
+    if (write(raw_ch_data(chns)->fd, bsamp_data->channel_data, write_size)
+        != write_size) return -1;
+
+    write_size = n*CH_STORAGE_NAUX*sizeof(raw_samp_t);
+    if (write(raw_ch_data(chns)->fd, bsamp_data->aux_data, write_size)
+        != write_size) return -1;
+
+    return 0;
 }

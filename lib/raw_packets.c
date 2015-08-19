@@ -156,9 +156,7 @@ static void raw_bsmp_hton(struct raw_pkt_bsmp *bsmp)
     bsmp->b_sidx = htonl(bsmp->b_sidx);
     bsmp->b_chip_live = htonl(bsmp->b_chip_live);
     for (size_t i = 0; i < RAW_BSMP_NSAMP; i++) {
-        bsmp->b_samps[i] = raw_samp_hton(bsmp->b_samps[i]);
-    }
-}
+        bsmp->b_samps[i] = raw_samp_hton(bsmp->b_samps[i]); } }
 
 int raw_pkt_hton(void *pkt)
 {
@@ -473,3 +471,35 @@ const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr)
     default: return "<UNKNOWN_R_ADDR>";
     }
 }
+
+/* bufidx is the index within the raw_pkt_fields buffer to write into
+ * if this is a single-sample buffer (as in sata2hdf5), set this to zero
+*/
+void raw_pkt_deconstruct(struct raw_pkt_bsmp *pktbuf,
+                                      struct raw_pkt_fields *bsamp_data,
+                                      size_t bufidx)
+{
+
+    /* if first sample, store attributes */
+    if (bufidx == 0) {
+        bsamp_data->board_id = pktbuf->b_id;
+        bsamp_data->experiment_cookie = ((uint64_t)pktbuf->b_cookie_h << 32)
+                                            | (uint64_t)pktbuf->b_cookie_l;
+        bsamp_data->raw_mtype = pktbuf->ph.p_mtype;
+        bsamp_data->raw_proto_vers = pktbuf->ph.p_proto_vers;
+    }
+
+    memcpy(bsamp_data->ph_flags+bufidx, &(pktbuf->ph.p_flags),
+           sizeof(uint8_t));
+    memcpy(bsamp_data->sample_index+bufidx, &(pktbuf->b_sidx),
+           sizeof(uint32_t));
+    memcpy(bsamp_data->chip_live+bufidx, &(pktbuf->b_chip_live),
+           sizeof(uint32_t));
+    /* separate b_samps into data_channels and data_aux */
+    memcpy(bsamp_data->channel_data+bufidx*CH_STORAGE_NCHAN, pktbuf->b_samps,
+           sizeof(raw_samp_t)*CH_STORAGE_NCHAN);
+    memcpy(bsamp_data->aux_data+bufidx*CH_STORAGE_NAUX,
+            pktbuf->b_samps+CH_STORAGE_NCHAN,
+            sizeof(raw_samp_t)*CH_STORAGE_NAUX);
+}
+

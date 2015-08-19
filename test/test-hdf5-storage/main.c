@@ -40,18 +40,42 @@ START_TEST(test_hdf5_end_to_end)
         bsmp.b_samps[i] = i;
     }
 
-    ck_assert(chns != NULL);
-    ck_assert(ch_storage_open(chns, H5F_ACC_TRUNC) == 0);
-    ck_assert(ch_storage_write(chns, &bsmp, 1) == 0);
+    /* declare bsamp_buf and mini-fields */
+    struct raw_pkt_fields bsamp_buf;
+    uint8_t ph_flag;
+    bsamp_buf.ph_flags = &ph_flag;
+    uint32_t sample_index;
+    bsamp_buf.sample_index = &sample_index;
+    uint32_t chip_live;
+    bsamp_buf.chip_live = &chip_live;
+    raw_samp_t channel_data[CH_STORAGE_NCHAN];
+    bsamp_buf.channel_data = channel_data;
+    raw_samp_t aux_data[CH_STORAGE_NAUX];
+    bsamp_buf.aux_data = aux_data;
+
+    assert(chns != NULL);
+    assert(ch_storage_open(chns, H5F_ACC_TRUNC) == 0);
+
+    raw_pkt_deconstruct(&bsmp, &bsamp_buf, 0);
+    assert(ch_storage_write(chns, &bsamp_buf, 1) == 0);
     bsmp.b_sidx++;
-    ck_assert(ch_storage_write(chns, &bsmp, 1) == 0);
+
+    raw_pkt_deconstruct(&bsmp, &bsamp_buf, 0);
+    assert(ch_storage_write(chns, &bsamp_buf, 1) == 0);
     bsmp.b_sidx++;
-    ck_assert(ch_storage_write(chns, &bsmp, 1) == 0);
+
+    raw_pkt_deconstruct(&bsmp, &bsamp_buf, 0);
+    assert(ch_storage_write(chns, &bsamp_buf, 1) == 0);
     bsmp.b_sidx++;
-    ck_assert(ch_storage_write(chns, &bsmp, 1) == 0);
+
+    raw_pkt_deconstruct(&bsmp, &bsamp_buf, 0);
+    assert(ch_storage_write(chns, &bsamp_buf, 1) == 0);
     bsmp.b_sidx++;
-    ck_assert(ch_storage_write(chns, &bsmp, 1) == 0);
-    ck_assert(ch_storage_close(chns) == 0);
+
+    raw_pkt_deconstruct(&bsmp, &bsamp_buf, 0);
+    assert(ch_storage_write(chns, &bsamp_buf, 1) == 0);
+
+    assert(ch_storage_close(chns) == 0);
 
     /*
      * FIXME write verification using just the HDF5 API

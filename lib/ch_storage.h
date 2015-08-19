@@ -30,8 +30,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <raw_packets.h>
+
+typedef uint16_t raw_samp_t; /* redefined? */
+
 struct ch_storage_ops;
-struct raw_pkt_bsmp;
 
 struct ch_storage {
     const char *ch_path;
@@ -43,10 +46,10 @@ struct ch_storage_ops {
     int (*ch_open)(struct ch_storage*, unsigned flags);
     int (*ch_close)(struct ch_storage*);
     int (*ch_datasync)(struct ch_storage*);
-    int (*ch_write)(struct ch_storage*, const struct raw_pkt_bsmp *bsamps,
-                    size_t nsamps);
+    int (*ch_write)(struct ch_storage*, struct raw_pkt_fields*, size_t);
     void (*ch_free)(struct ch_storage*);
 };
+
 
 static inline int ch_storage_open(struct ch_storage *chns, unsigned flags)
 {
@@ -64,10 +67,10 @@ static inline int ch_storage_datasync(struct ch_storage *chns)
 }
 
 static inline int ch_storage_write(struct ch_storage *chns,
-                                   const struct raw_pkt_bsmp *bsamps,
+                                   struct raw_pkt_fields* bsmp_data,
                                    size_t nsamps)
 {
-    return chns->ops->ch_write(chns, bsamps, nsamps);
+    return chns->ops->ch_write(chns, bsmp_data, nsamps);
 }
 
 static inline void ch_storage_free(struct ch_storage *chns)

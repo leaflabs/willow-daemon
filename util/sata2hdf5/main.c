@@ -214,31 +214,31 @@ int main(int argc, char *argv[])
         exit(-1);
     }
 
+    /* allocate single-sample buffers */
+    /* kinda hacky, since ch_storage_fields was intended to hold pointers
+     * to large (150000 sample) buffers. Since it's only one sample long
+     * here, we simply declare it on the stack.
+    */
+    struct raw_pkt_fields bsamp_buf;
+
+    uint8_t ph_flag;
+    bsamp_buf.ph_flags = &ph_flag;
+
+    uint32_t sample_index;
+    bsamp_buf.sample_index = &sample_index;
+
+    uint32_t chip_live;
+    bsamp_buf.chip_live = &chip_live;
+
+    raw_samp_t channel_data[CH_STORAGE_NCHAN];
+    bsamp_buf.channel_data = channel_data;
+
+    raw_samp_t aux_data[CH_STORAGE_NAUX];
+    bsamp_buf.aux_data = aux_data;
+
     raw_packet_init(buf_pkt_bsmp, RAW_MTYPE_BSMP, 0);
 
-/* DEBUG
-    printf("buf_pkt_bsmp.p_mtype: %d\n", buf_pkt_bsmp->ph.p_mtype);
-
-    printf("buf: %p\n", buf);
-    printf("len buf: %d\n", (int)sizeof(struct raw_pkt_header) + BUF_LEN);
-    printf("buf + 4: %p\n", buf+4);
-    printf("raw_pkt_bsmp: %p\n", buf_pkt_bsmp);
-    printf("raw_pkt_bsmp + sizeof(struct raw_pkt_header)): %p\n",
-        buf_pkt_bsmp + sizeof(struct raw_pkt_header));
-    printf("raw_pkt_bsmp + 4: %p\n", buf_pkt_bsmp + 4);
-    printf("sizeof(struct raw_pkt_bsmp): %d\n",
-           (int)sizeof(struct raw_pkt_bsmp));
-    printf("sizeof(struct raw_pkt_header): %d\n",
-           (int)sizeof(struct raw_pkt_header));
-*/
-
     parse_args(&args, argc, argv);
-/* DEBUG
-    printf("========= Args:\n");
-    printf("Count: %ld\n", args.count);
-    printf("Length: %d sectors\n", args.length);
-    printf("Offset: %ld\n", args.offset);
-*/
 
     FILE * infile = fopen(args.inpath, "rb");
     if (NULL == infile) {
@@ -262,11 +262,14 @@ int main(int argc, char *argv[])
     uint64_t cookie, this_cookie;
     uint32_t bsi = args.offset;
     uint32_t board_id;
-    // DEBUG printf("========= Starting...\n");
+   
+    size_t sidx = 0; 
     while (1) {
         fseek(infile, fptr, SEEK_SET);
+
         len = fread(buf + sizeof(struct raw_pkt_header), 1,
                     512*args.length, infile);
+
         if (len != (int)(512*args.length)) {
             if (ferror(infile)) {
                 if (ferror(infile) == EFAULT) {
@@ -311,12 +314,18 @@ int main(int argc, char *argv[])
             break;
         }
 
+
+        raw_pkt_deconstruct(buf_pkt_bsmp, &bsamp_buf, 0);
+
         // write hdf5 sample
-        len = ch_storage_write(chns, buf_pkt_bsmp, 1);
+        len = ch_storage_write(chns, &bsamp_buf, 1);
 
         // increment file pointer by <length> sectors
         fptr += args.length * 512;
         count++;
+
+        // increment loop index
+        sidx++;
 
         // print progress every ~second of copied data
         if (!(count % 30000)) {

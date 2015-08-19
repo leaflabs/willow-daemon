@@ -57,7 +57,6 @@
 #define RAW_PKT_HEADER_MAGIC      0x5A
 #define RAW_PKT_HEADER_PROTO_VERS 0x00
 ///@}
-
 typedef uint8_t raw_magic_t;
 
 /** Common packet header. */
@@ -344,6 +343,7 @@ struct raw_pkt_bsmp {
     raw_samp_t b_samps[RAW_BSMP_NSAMP]; /**< samples */
 };
 
+
 ///@}
 
 /*********************************************************************
@@ -571,5 +571,30 @@ ssize_t raw_bsmp_recv(int sockfd, struct raw_pkt_bsmp *bsmp, int flags);
 const char* raw_mtype_str(uint8_t mtype);
 const char* raw_r_type_str(uint8_t r_type);
 const char* raw_r_addr_str(uint8_t r_type, uint8_t r_addr);
+
+/* This is a structure of pointers to malloc'd, contiguous arrays,
+*  plus metadata (attributes). The arrays are 1D in memory, though
+*  channel_data and aux_data are logically 2D.
+*/
+struct raw_pkt_fields {
+    /* attributes */
+    uint32_t board_id;                  /**< board id */
+    uint64_t experiment_cookie;         /**< experiment cookie low word */
+    uint8_t  raw_mtype;                 /**< message type */ 
+    uint8_t  raw_proto_vers;            /**< raw proto version */ 
+    /* pointers to contiguous data arrays */
+    uint8_t*  ph_flags;                 /**< packet header flags */
+    uint32_t* sample_index;             /**< sample index */
+    uint32_t* chip_live;                /**< chip live status */
+    raw_samp_t* channel_data;           /**< samples */
+    raw_samp_t* aux_data;               /**< aux data*/
+};
+
+#define CH_STORAGE_NCHAN 1024
+#define CH_STORAGE_NAUX 96
+
+void raw_pkt_deconstruct(struct raw_pkt_bsmp *pktbuf,
+                                      struct raw_pkt_fields *bsamp_data,
+                                      size_t bufidx);
 
 #endif

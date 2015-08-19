@@ -184,7 +184,7 @@ struct sample_session {
      * time to flip buffers. Failure to do so means samples get lost.
      */
     pthread_rwlock_t bsamp_mtx;
-    struct raw_pkt_bsmp *bsamp_bufs[2]; /**< Buffer expected board samples. */
+    struct raw_pkt_fields *bsamp_bufs[2]; /**< Buffers expecting board samples. */
     size_t bsamp_buflen[2];  /**< Number of samples in each bsamp_bufs. */
     size_t bsamp_widx;       /**< Worker index into bsamp_bufs/bsamp_buflen. */
     /** Cached sample storage configuration. */
@@ -411,6 +411,16 @@ static void sample_finished_with_bsamps(struct sample_session *smpl)
     assert(smpl->bsamp_bufs[0] && smpl->bsamp_bufs[1]);
     free(smpl->bsamp_bufs[0]);
     free(smpl->bsamp_bufs[1]);
+    free(smpl->bsamp_bufs[0]->ph_flags);
+    free(smpl->bsamp_bufs[1]->ph_flags);
+    free(smpl->bsamp_bufs[0]->sample_index);
+    free(smpl->bsamp_bufs[1]->sample_index);
+    free(smpl->bsamp_bufs[0]->chip_live);
+    free(smpl->bsamp_bufs[1]->chip_live);
+    free(smpl->bsamp_bufs[0]->channel_data);
+    free(smpl->bsamp_bufs[1]->channel_data);
+    free(smpl->bsamp_bufs[0]->aux_data);
+    free(smpl->bsamp_bufs[1]->aux_data);
     smpl->bsamp_bufs[0] = NULL;
     smpl->bsamp_bufs[1] = NULL;
     smpl->bsamp_buflen[0] = 0;
@@ -836,7 +846,6 @@ static void sample_setup_bsamp_worker(struct sample_session *smpl)
 static int sample_setup_dbuf(struct sample_session *smpl,
                              struct sample_bsamp_cfg *cfg)
 {
-    const size_t bufsize = SAMPLE_BSAMP_MAXLEN * sizeof(struct raw_pkt_bsmp);
     int ret = 0;
     if (sample_must_trywrlock_dbuf(smpl) == EBUSY) {
         log_ERR("%s: not expecting samples, but can't wrlock sample buffers",
@@ -847,21 +856,45 @@ static int sample_setup_dbuf(struct sample_session *smpl,
     smpl->bsamp_buflen[0] = 0;
     smpl->bsamp_buflen[1] = 0;
     smpl->bsamp_widx = 0;
-    smpl->bsamp_bufs[0] = malloc(bufsize);
-    smpl->bsamp_bufs[1] = malloc(bufsize);
-    if (!smpl->bsamp_bufs[0] || !smpl->bsamp_bufs[1]) {
-        log_ERR("%s: out of memory", __func__);
-        free(smpl->bsamp_bufs[0]);
-        free(smpl->bsamp_bufs[1]);
-        smpl->bsamp_bufs[0] = NULL;
-        smpl->bsamp_bufs[1] = NULL;
-        sample_init_bsamp_cfg(smpl);
-        ret = -1;
-        goto out;
-    }
+
+    smpl->bsamp_bufs[0] = malloc(sizeof(struct raw_pkt_fields));
+    smpl->bsamp_bufs[1] = malloc(sizeof(struct raw_pkt_fields));
+    assert(smpl->bsamp_bufs[0] && smpl->bsamp_bufs[1]);
+
+    smpl->bsamp_bufs[0]->ph_flags = malloc(SAMPLE_BSAMP_MAXLEN*sizeof(uint8_t));
+    smpl->bsamp_bufs[1]->ph_flags = malloc(SAMPLE_BSAMP_MAXLEN*sizeof(uint8_t));
+    assert(smpl->bsamp_bufs[0]->ph_flags && smpl->bsamp_bufs[1]->ph_flags);
+
+    smpl->bsamp_bufs[0]->sample_index =
+        malloc(SAMPLE_BSAMP_MAXLEN*sizeof(uint32_t));
+    smpl->bsamp_bufs[1]->sample_index =
+        malloc(SAMPLE_BSAMP_MAXLEN*sizeof(uint32_t));
+    assert(smpl->bsamp_bufs[0]->sample_index &&
+            smpl->bsamp_bufs[1]->sample_index);
+
+    smpl->bsamp_bufs[0]->chip_live =
+        malloc(SAMPLE_BSAMP_MAXLEN*sizeof(uint32_t));
+    smpl->bsamp_bufs[1]->chip_live =
+        malloc(SAMPLE_BSAMP_MAXLEN*sizeof(uint32_t));
+    assert(smpl->bsamp_bufs[0]->chip_live && smpl->bsamp_bufs[1]->chip_live);
+
+    smpl->bsamp_bufs[0]->channel_data =
+        malloc(SAMPLE_BSAMP_MAXLEN*CH_STORAGE_NCHAN*sizeof(raw_samp_t));
+    smpl->bsamp_bufs[1]->channel_data =
+        malloc(SAMPLE_BSAMP_MAXLEN*CH_STORAGE_NCHAN*sizeof(raw_samp_t));
+    assert(smpl->bsamp_bufs[0]->channel_data &&
+        smpl->bsamp_bufs[1]->channel_data);
+
+    smpl->bsamp_bufs[0]->aux_data =
+        malloc(SAMPLE_BSAMP_MAXLEN*CH_STORAGE_NAUX*sizeof(raw_samp_t));
+    smpl->bsamp_bufs[1]->aux_data =
+        malloc(SAMPLE_BSAMP_MAXLEN*CH_STORAGE_NAUX*sizeof(raw_samp_t));
+    assert(smpl->bsamp_bufs[0]->aux_data && smpl->bsamp_bufs[1]->aux_data);
+
     memcpy(&smpl->bsamp_cfg, cfg, sizeof(smpl->bsamp_cfg));
- out:
+
     sample_must_rwunlock_dbuf(smpl);
+
     return ret;
 }
 
@@ -1122,7 +1155,6 @@ static int sample_ddatafd_grab_bsamps(struct sample_session *smpl)
 
     sample_must_rdlock_dbuf(smpl);
     size_t myidx = 0x1 ^ smpl->bsamp_widx;
-    struct raw_pkt_bsmp *mybufs = smpl->bsamp_bufs[myidx];
     const size_t s_left = sample_samps_left(smpl);
     const size_t b_start = smpl->bsamp_buflen[myidx];
     const size_t b_avail = SAMPLE_BSAMP_MAXLEN - b_start;
@@ -1130,13 +1162,18 @@ static int sample_ddatafd_grab_bsamps(struct sample_session *smpl)
 
     size_t i = b_start;
     size_t n_bad = 0; /* number of bad packets since last good packet. */
+
+    /* buffer for incoming board sample packets */
+    struct raw_pkt_bsmp *tmp_pktbuf = malloc(sizeof(struct raw_pkt_bsmp));
+    assert(tmp_pktbuf);
+
     while (i < b_end) {
         if (n_bad > SAMPLE_MAX_CONSECUTIVE_BAD_PKTS) {
             log_WARNING("%s: too many bad packets; returning early", __func__);
             break;
         }
 
-        ssize_t s = recvfrom(smpl->ddatafd, &mybufs[i],
+        ssize_t s = recvfrom(smpl->ddatafd, tmp_pktbuf,
                              sizeof(struct raw_pkt_bsmp), 0,
                              (struct sockaddr*)&sas, &sas_len);
         if (s == -1) {
@@ -1165,43 +1202,46 @@ static int sample_ddatafd_grab_bsamps(struct sample_session *smpl)
             continue;
         }
         /* Make sure the packet is a well-formed board sample. */
-        if (raw_pkt_ntoh(&mybufs[i])) {
+        if (raw_pkt_ntoh(tmp_pktbuf)) {
             log_WARNING("dropping malformed data packet");
             n_bad++;
             continue;
         }
-        uint8_t mtype = raw_mtype(&mybufs[i]);
+        uint8_t mtype = raw_mtype(tmp_pktbuf);
         if (mtype != RAW_MTYPE_BSMP) {
             log_DEBUG("ignoring data packet with wrong mtype %s",
                       raw_mtype_str(mtype));
             n_bad++;
             continue;
         }
-        if (raw_pkt_is_err(&mybufs[i])) {
-            log_INFO("board sample %u has error flag set", mybufs[i].b_sidx);
+        if (raw_pkt_is_err(tmp_pktbuf)) {
+            log_INFO("board sample %u has error flag set", tmp_pktbuf->b_sidx);
             ret = GOT_PKT_ERR;
             break;
         }
         /* If this is the first packet, and we don't care about
          * indexes, then start counting from here. */
         if (smpl->bsamp_cfg.start_sample == -1) {
-            smpl->bsamp_cfg.start_sample = mybufs[i].b_sidx;
-            smpl->smpl_next_sidx = mybufs[i].b_sidx;
+            smpl->bsamp_cfg.start_sample = tmp_pktbuf->b_sidx;
+            smpl->smpl_next_sidx = tmp_pktbuf->b_sidx;
         }
         /* Check for dropped or reordered packets. */
-        if (mybufs[i].b_sidx != smpl->smpl_next_sidx++) {
+        if (tmp_pktbuf->b_sidx != smpl->smpl_next_sidx++) {
             log_DEBUG("%s: dropped packet; expected index %zu, got %u",
-                      __func__, smpl->smpl_next_sidx - 1, mybufs[i].b_sidx);
+                      __func__, smpl->smpl_next_sidx - 1, tmp_pktbuf->b_sidx);
             ret = DROPPED_PKT;
             break;
         }
 
         /*
-         * Packet retrieved successfully!
+         * Packet retrieved successfully! Now deconstruct it..
          */
+        raw_pkt_deconstruct(tmp_pktbuf, smpl->bsamp_bufs[myidx], i);
+
         i++;
         n_bad = 0;
     }
+    
  done:
     /* Check if we actually got any board samples. */
     if (i > b_start && ret != GOT_PKT_ERR) {
