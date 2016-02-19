@@ -57,7 +57,6 @@
 
 #include "raw_packets.h"
 #include "sockutil.h"
-#include "proto/data.pb-c.h"
 #include "hdf5_ch_storage.h"
 #include "ch_storage.h"
 
@@ -292,10 +291,10 @@ int main(int argc, char *argv[])
                       | (uint64_t)buf_pkt_bsmp->b_cookie_l;
         if (0 == count) {
             cookie = this_cookie;
-            printf("Starting cookie: 0x%lx\n", cookie);
+            printf("Starting cookie: 0x%lx\n", (unsigned long) cookie);
         } else if (cookie != this_cookie) {
             printf("Experiment number changed (0x%lx != 0x%lx), bailing.\n",
-                   this_cookie, cookie);
+                   (unsigned long) this_cookie, (unsigned long) cookie);
             break;
         }
         if (buf_pkt_bsmp->b_sidx != bsi) {

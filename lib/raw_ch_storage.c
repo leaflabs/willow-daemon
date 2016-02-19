@@ -25,6 +25,12 @@
 #include "raw_packets.h"
 #include "logging.h"
 
+#ifdef __APPLE__
+#define FDATASYNC fsync
+#else
+#define FDATASYNC fdatasync
+#endif
+
 struct raw_ch_data {
     int fd;
     mode_t mode;
@@ -89,7 +95,7 @@ static int raw_ch_close(struct ch_storage *chns)
 
 static int raw_ch_datasync(struct ch_storage *chns)
 {
-    return fdatasync(raw_ch_data(chns)->fd);
+    return FDATASYNC(raw_ch_data(chns)->fd);
 }
 
 static int raw_ch_write(struct ch_storage *chns,
