@@ -1,5 +1,7 @@
 import os
 import os.path
+import platform
+import warnings
 
 Help("""
 Build arguments:
@@ -21,6 +23,16 @@ def node_basename(node):
 def str_to_bool(str):
     str = str.lower().strip()
     return str.startswith('y') or str.startswith('t') or str.startswith('1')
+
+# Get information about Ubuntu release to enable easy building
+class UnsupportedOSWarning(Warning):
+    pass
+
+if platform.dist()[0] != 'Ubuntu':
+    warnings.warn('This build script only supports Ubuntu releases. Trying our best anyway...', UnsupportedOSWarning)
+    ubuntu_version = 'unsupported'
+else:
+    ubuntu_version = map(int, platform.dist()[1].split('.'))
 
 # Top-level build configuration
 program = 'leafysd'   # The name of the daemon program.
@@ -46,6 +58,9 @@ lib_deps = [
      'event', 'event_pthreads', 'hdf5', 'protobuf-c', 'm', 'rt']
 libsng_deps = ['protobuf-c']
 test_lib_deps = ['check_pic', 'sng'] # External dependencies for tests
+# make checks compile for Ubuntu 16 and later
+if ubuntu_version != 'unsupported' and ubuntu_version[0] > 15:
+    test_lib_deps.append('subunit')
 verbosity_level = int(ARGUMENTS.get('V', 0))
 skip_test_build = str_to_bool(ARGUMENTS.get('SKIP_TESTS', 'n'))
 skip_util_build = str_to_bool(ARGUMENTS.get('SKIP_UTIL', 'n'))
@@ -55,8 +70,15 @@ build_base_cflags = '-std=c99 -g -Wall -Wextra -Wpointer-arith -Werror'
 build_libsng_cflags = build_base_cflags
 build_cflags = '-pthread ' + build_base_cflags
 build_cflags_extra = ARGUMENTS.get('EXTRA_CFLAGS', '')
+# add necessary cflags Ubuntu 15 and later
+if ubuntu_version != 'unsupported' and ubuntu_version[0] > 12:
+    build_cflags_extra += ' -I/usr/include/hdf5/serial'
+
 build_ldflags = '-pthread '
 build_ldflags_extra = ARGUMENTS.get('EXTRA_LDFLAGS', '')
+if ubuntu_version != 'unsupported' and ubuntu_version[0] > 12:
+    hdf5_libpath = ['/usr/lib/x86_64-linux-gnu',
+                    '/usr/lib/x86_64-linux-gnu/hdf5/serial']
 
 # Put all generated files underneath the build directory. protoc-c is
 # configured to do this as well, to prevent anyone from carelessly
@@ -67,19 +89,36 @@ VariantDir(build_test_dir, test_dir, duplicate=0)
 VariantDir(build_util_dir, util_dir, duplicate=0)
 
 # Base build environment. Note we don't copy os.environ here.
-env = Environment(CC=build_cc,
-                  CCFLAGS=build_cflags + ' ' + build_cflags_extra,
-                  CPPDEFINES={
-                      '_GNU_SOURCE': 1, # we need Linux extensions
-                      '_FILE_OFFSET_BITS': 64, # large file support
-                                               # (e.g. /dev/sdX for raw2hdf5)
-                  },
-                  CPPPATH=[build_lib_dir, src_dir],
-                  LINK=build_ld,
-                  LINKFLAGS=build_ldflags + build_ldflags_extra,
-                  LIBS=lib_deps,
-                  tools=['default', 'protocc'],
-                  )
+if ubuntu_version != 'unsupported' and ubuntu_version[0] > 12:
+    env = Environment(CC=build_cc,
+                      CCFLAGS=build_cflags + ' ' + build_cflags_extra,
+                      CPPDEFINES={
+                          '_GNU_SOURCE': 1, # we need Linux extensions
+                          '_FILE_OFFSET_BITS': 64, # large file support
+                                                   # (e.g. /dev/sdX for raw2hdf5)
+                      },
+                      CPPPATH=[build_lib_dir, src_dir],
+                      LINK=build_ld,
+                      LINKFLAGS=build_ldflags + build_ldflags_extra,
+                      LIBS=lib_deps,
+                      LIBPATH=hdf5_libpath,
+                      tools=['default', 'protocc'],
+                      )
+else:
+    env = Environment(CC=build_cc,
+                      CCFLAGS=build_cflags + ' ' + build_cflags_extra,
+                      CPPDEFINES={
+                          '_GNU_SOURCE': 1, # we need Linux extensions
+                          '_FILE_OFFSET_BITS': 64, # large file support
+                                                   # (e.g. /dev/sdX for raw2hdf5)
+                      },
+                      CPPPATH=[build_lib_dir, src_dir],
+                      LINK=build_ld,
+                      LINKFLAGS=build_ldflags + build_ldflags_extra,
+                      LIBS=lib_deps,
+                      tools=['default', 'protocc'],
+                      )
+
 # Quiet build output unless user specifies verbose mode.
 if verbosity_level == 0:
     env['ARCOMSTR'] = '[AR] $TARGET'
@@ -143,9 +182,16 @@ out_program = os.path.join(env.GetBuildPath(build_dir), program)
 main = env.Program(out_program, src_sources + libutil)
 
 # libsng
-shenv = env.Clone(CCFLAGS=build_libsng_cflags,
-                  LIBS=libsng_deps,
-                  CPPPATH=[build_lib_dir])
+if ubuntu_version != 'unsupported' and ubuntu_version[0] > 12:
+    shenv = env.Clone(CCFLAGS=build_libsng_cflags + ' ' + build_cflags_extra,
+                      LIBS=libsng_deps,
+                      LIBPATH=hdf5_libpath,
+                      CPPPath=[build_lib_dir])
+else:
+    shenv = env.Clone(CCFLAGS=build_libsng_cflags,
+                      LIBS=libsng_deps,
+                      CPPPATH=[build_lib_dir])
+
 if verbosity_level == 0:
     shenv['SHCCCOMSTR'] = '[SHCC] $SOURCE'
     shenv['SHLINKCOMSTR'] = '[SHLD] $TARGET'
@@ -176,9 +222,15 @@ for h in libsng_headers:
 # The master test runner is test/run-tests.py. We special-case it here.
 test_defines = env['CPPDEFINES'].copy()
 test_defines.update({'TEST_DAEMON_PATH': str(out_program)})
-testenv = env.Clone(LIBS=test_lib_deps + lib_deps,
-                    LIBPATH=[build_libsng_dir],
-                    CPPDEFINES=test_defines)
+if ubuntu_version != 'unsupported' and ubuntu_version[0] > 12:
+    testenv = env.Clone(LIBS=test_lib_deps + lib_deps,
+                        LIBPATH=[build_libsng_dir] + hdf5_libpath,
+                        CPPDEFINES=test_defines)
+else:
+    testenv = env.Clone(LIBS=test_lib_deps + lib_deps,
+                        LIBPATH=[build_libsng_dir],
+                        CPPDEFINES=test_defines)
+
 if verbosity_level == 0:
     testenv['INSTALLSTR'] = '[INSTALL] $TARGET'
 for test_name, sources in test_sources_dict.iteritems():

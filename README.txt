@@ -4,7 +4,7 @@ daemon.
 For the impatient
 -----------------
 
-On Ubuntu 12.04:
+On Ubuntu 12.04, 14.04, 15.10, or 16.04:
 (also tested on Linux Mint 16)
 
 1. Install mandatory dependencies:
