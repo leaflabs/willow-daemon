@@ -93,11 +93,11 @@ struct h5_ch_data {
     hid_t h5_arrtype;           /* sample array (within bsamp) data type */
     hid_t h5_dtype;             /* board sample data type */
     hid_t h5_dset;              /* data set */
-    hid_t h5_dset_ph_flags;       /* ph_flags data set */
-    hid_t h5_dset_sample_index;       /* sample_index data set */
-    hid_t h5_dset_chip_live;       /* chip_live data set */
-    hid_t h5_dset_channel_data;      /* channel_data data set */
-    hid_t h5_dset_aux_data;        /* aux_data data set */
+    hid_t h5_dset_ph_flags;     /* ph_flags data set */
+    hid_t h5_dset_sample_index; /* sample_index data set */
+    hid_t h5_dset_chip_live;    /* chip_live data set */
+    hid_t h5_dset_channel_data; /* channel_data data set */
+    hid_t h5_dset_aux_data;     /* aux_data data set */
     hsize_t h5_dset_off;        /* current dataset write offset */
     hsize_t h5_dset_size;       /* current dataset size */
     hid_t h5_attr_dspace;       /* attribute data space */
