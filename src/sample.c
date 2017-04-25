@@ -1257,6 +1257,7 @@ static int sample_ddatafd_grab_bsamps(struct sample_session *smpl)
             ret = FILLED_BUFFER;
         }
     }
+    free(tmp_pktbuf);
     sample_must_rwunlock_dbuf(smpl);
     return ret;
 }
