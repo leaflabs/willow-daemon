@@ -189,6 +189,8 @@ struct sample_session {
     size_t bsamp_widx;       /**< Worker index into bsamp_bufs/bsamp_buflen. */
     /** Cached sample storage configuration. */
     struct sample_bsamp_cfg bsamp_cfg;
+    /* raw packets are read into this buffer, and then deconstructed */
+    struct raw_pkt_bsmp bsamp_tmp_pktbuf;
 
     /*
      * Debugging; event loop thread only.
@@ -1163,17 +1165,13 @@ static int sample_ddatafd_grab_bsamps(struct sample_session *smpl)
     size_t i = b_start;
     size_t n_bad = 0; /* number of bad packets since last good packet. */
 
-    /* buffer for incoming board sample packets */
-    struct raw_pkt_bsmp *tmp_pktbuf = malloc(sizeof(struct raw_pkt_bsmp));
-    assert(tmp_pktbuf);
-
     while (i < b_end) {
         if (n_bad > SAMPLE_MAX_CONSECUTIVE_BAD_PKTS) {
             log_WARNING("%s: too many bad packets; returning early", __func__);
             break;
         }
 
-        ssize_t s = recvfrom(smpl->ddatafd, tmp_pktbuf,
+        ssize_t s = recvfrom(smpl->ddatafd, &smpl->bsamp_tmp_pktbuf,
                              sizeof(struct raw_pkt_bsmp), 0,
                              (struct sockaddr*)&sas, &sas_len);
         if (s == -1) {
@@ -1202,33 +1200,35 @@ static int sample_ddatafd_grab_bsamps(struct sample_session *smpl)
             continue;
         }
         /* Make sure the packet is a well-formed board sample. */
-        if (raw_pkt_ntoh(tmp_pktbuf)) {
+        if (raw_pkt_ntoh(&smpl->bsamp_tmp_pktbuf)) {
             log_WARNING("dropping malformed data packet");
             n_bad++;
             continue;
         }
-        uint8_t mtype = raw_mtype(tmp_pktbuf);
+        uint8_t mtype = raw_mtype(&smpl->bsamp_tmp_pktbuf);
         if (mtype != RAW_MTYPE_BSMP) {
             log_DEBUG("ignoring data packet with wrong mtype %s",
                       raw_mtype_str(mtype));
             n_bad++;
             continue;
         }
-        if (raw_pkt_is_err(tmp_pktbuf)) {
-            log_INFO("board sample %u has error flag set", tmp_pktbuf->b_sidx);
+        if (raw_pkt_is_err(&smpl->bsamp_tmp_pktbuf)) {
+            log_INFO("board sample %u has error flag set",
+                     smpl->bsamp_tmp_pktbuf.b_sidx);
             ret = GOT_PKT_ERR;
             break;
         }
         /* If this is the first packet, and we don't care about
          * indexes, then start counting from here. */
         if (smpl->bsamp_cfg.start_sample == -1) {
-            smpl->bsamp_cfg.start_sample = tmp_pktbuf->b_sidx;
-            smpl->smpl_next_sidx = tmp_pktbuf->b_sidx;
+            smpl->bsamp_cfg.start_sample = smpl->bsamp_tmp_pktbuf.b_sidx;
+            smpl->smpl_next_sidx = smpl->bsamp_tmp_pktbuf.b_sidx;
         }
         /* Check for dropped or reordered packets. */
-        if (tmp_pktbuf->b_sidx != smpl->smpl_next_sidx++) {
+        if (smpl->bsamp_tmp_pktbuf.b_sidx != smpl->smpl_next_sidx++) {
             log_DEBUG("%s: dropped packet; expected index %zu, got %u",
-                      __func__, smpl->smpl_next_sidx - 1, tmp_pktbuf->b_sidx);
+                      __func__, smpl->smpl_next_sidx - 1,
+                      smpl->bsamp_tmp_pktbuf.b_sidx);
             ret = DROPPED_PKT;
             break;
         }
@@ -1236,7 +1236,8 @@ static int sample_ddatafd_grab_bsamps(struct sample_session *smpl)
         /*
          * Packet retrieved successfully! Now deconstruct it..
          */
-        raw_pkt_deconstruct(tmp_pktbuf, smpl->bsamp_bufs[myidx], i);
+        raw_pkt_deconstruct(&smpl->bsamp_tmp_pktbuf,
+                            smpl->bsamp_bufs[myidx], i);
 
         i++;
         n_bad = 0;
@@ -1257,7 +1258,6 @@ static int sample_ddatafd_grab_bsamps(struct sample_session *smpl)
             ret = FILLED_BUFFER;
         }
     }
-    free(tmp_pktbuf);
     sample_must_rwunlock_dbuf(smpl);
     return ret;
 }
