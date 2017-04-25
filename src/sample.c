@@ -409,8 +409,6 @@ static void sample_finished_with_bsamps(struct sample_session *smpl)
 {
     sample_must_wrlock_dbuf(smpl);
     assert(smpl->bsamp_bufs[0] && smpl->bsamp_bufs[1]);
-    free(smpl->bsamp_bufs[0]);
-    free(smpl->bsamp_bufs[1]);
     free(smpl->bsamp_bufs[0]->ph_flags);
     free(smpl->bsamp_bufs[1]->ph_flags);
     free(smpl->bsamp_bufs[0]->sample_index);
@@ -421,6 +419,8 @@ static void sample_finished_with_bsamps(struct sample_session *smpl)
     free(smpl->bsamp_bufs[1]->channel_data);
     free(smpl->bsamp_bufs[0]->aux_data);
     free(smpl->bsamp_bufs[1]->aux_data);
+    free(smpl->bsamp_bufs[0]);
+    free(smpl->bsamp_bufs[1]);
     smpl->bsamp_bufs[0] = NULL;
     smpl->bsamp_bufs[1] = NULL;
     smpl->bsamp_buflen[0] = 0;
