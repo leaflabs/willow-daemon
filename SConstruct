@@ -69,7 +69,7 @@ skip_test_build = str_to_bool(ARGUMENTS.get('SKIP_TESTS', 'n'))
 skip_util_build = str_to_bool(ARGUMENTS.get('SKIP_UTIL', 'n'))
 build_cc = ARGUMENTS.get('CC', 'gcc')
 build_ld = ARGUMENTS.get('LD', 'gcc')
-build_base_cflags = '-O2 -std=c99 -g -Wall -Wextra -Wpointer-arith -Werror'
+build_base_cflags = '-march=native -O2 -std=c99 -g -Wall -Wextra -Wpointer-arith -Werror'
 
 # Ubuntu places libhdf5 in a weird spot. Query pkg-config for what we need
 if platform.dist()[0] == 'Ubuntu':
