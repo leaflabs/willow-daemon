@@ -57,19 +57,16 @@ static const struct ch_storage_ops hdf5_ch_storage_ops = {
     .ch_free = hdf5_ch_free,
 };
 
-/* Convert an unsigned integer (or unsigned type) to the corresponding
- * HDF5 type ID. */
-#define TO_H5_UTYPE(x)                                  \
+#define SIZE_TO_H5_UTYPE(x)                             \
     ({                                                  \
         hid_t __h5_utype = -1;                          \
-        size_t __x_size = sizeof(x);                    \
-        if (__x_size == 1) {                            \
+        if (x == 1) {                                   \
             __h5_utype = H5T_NATIVE_UINT8;              \
-        } else if (__x_size == 2) {                     \
+        } else if (x == 2) {                            \
             __h5_utype = H5T_NATIVE_UINT16;             \
-        } else if (__x_size == 4) {                     \
+        } else if (x == 4) {                            \
             __h5_utype = H5T_NATIVE_UINT32;             \
-        } else if (__x_size == 8) {                     \
+        } else if (x == 8) {                            \
             __h5_utype = H5T_NATIVE_UINT64;             \
         } else {                                        \
             assert(0);                                  \
@@ -77,18 +74,40 @@ static const struct ch_storage_ops hdf5_ch_storage_ops = {
         __h5_utype;                                     \
     })
 
+/* Convert an unsigned integer (or unsigned type) to the corresponding
+ * HDF5 type ID. */
+#define TO_H5_UTYPE(x)                                  \
+    ({                                                  \
+        hid_t __h5_utype = SIZE_TO_H5_UTYPE(sizeof(x)); \
+        __h5_utype;                                     \
+    })
+
 /* Dataset attributes and their names -- the numbers index into
  * h5_ch_data->h5_attrs, and aren't necessarily the same as their
  * indices in an HDF5 file. */
-#define H5_ATTR_MTYPE 0         /* mtype (==RAW_MTYPE_BSMP) */
-#define H5_ATTR_BOARD_ID 1      /* board identifier */
-#define H5_ATTR_PVERS 2         /* protocol version */
-#define H5_ATTR_COOKIE 3        /* experiment cookie */
-#define H5_ATTR_MTYPE_NAME "raw_mtype"
-#define H5_ATTR_BOARD_ID_NAME "board_id"
-#define H5_ATTR_PVERS_NAME "raw_proto_vers"
-#define H5_ATTR_COOKIE_NAME "experiment_cookie"
-#define H5_NATTRS (H5_ATTR_COOKIE + 1)
+#define H5_ATTR_MTYPE     0  /* mtype (==RAW_MTYPE_BSMP) */
+#define H5_ATTR_BOARD_ID  1  /* board identifier */
+#define H5_ATTR_PVERS     2  /* protocol version */
+#define H5_ATTR_COOKIE    3  /* experiment cookie */
+#define H5_ATTR_MAX       4
+
+struct exp_attr_info {
+  size_t size;
+  const char *name;
+};
+
+/* Can't store predefined HDF5 hid_t datatypes like H5T_NATIVE_UINT8 at
+ * compile-time because these are actually function calls. Instead,
+ * we only store the raw size of the attribute. */
+#define FIELD_SZ(type, field)  (sizeof(((type *)NULL)->field))
+static const struct exp_attr_info exp_attr_info[] = {
+  [H5_ATTR_MTYPE]    = { FIELD_SZ(struct raw_pkt_header, p_mtype),      "raw_mtype" },
+  [H5_ATTR_BOARD_ID] = { FIELD_SZ(struct raw_pkt_bsmp, b_id),           "board_id" },
+  [H5_ATTR_PVERS]    = { FIELD_SZ(struct raw_pkt_header, p_proto_vers), "raw_proto_vers" },
+  [H5_ATTR_COOKIE]   = { 8,                                             "experiment_cookie" }
+};
+
+#define H5_NATTRS (H5_ATTR_MAX)
 
 struct h5_ch_data {
     const char *dset_name;      /* dataset name */
@@ -280,22 +299,15 @@ static hid_t hdf5_create_attrs(struct h5_ch_data *data)
     }
 
     /* Create the attributes. */
-    data->h5_attrs[H5_ATTR_MTYPE] = H5Acreate2(dobj, H5_ATTR_MTYPE_NAME,
-                                               TO_H5_UTYPE(bs.ph.p_mtype),
-                                               data->h5_attr_dspace,
-                                               H5P_DEFAULT, H5P_DEFAULT);
-    data->h5_attrs[H5_ATTR_BOARD_ID] = H5Acreate2(dobj, H5_ATTR_BOARD_ID_NAME,
-                                                  TO_H5_UTYPE(bs.b_id),
-                                                  data->h5_attr_dspace,
-                                                  H5P_DEFAULT, H5P_DEFAULT);
-    data->h5_attrs[H5_ATTR_PVERS] = H5Acreate2(dobj, H5_ATTR_PVERS_NAME,
-                                               TO_H5_UTYPE(bs.ph.p_proto_vers),
-                                               data->h5_attr_dspace,
-                                               H5P_DEFAULT, H5P_DEFAULT);
-    data->h5_attrs[H5_ATTR_COOKIE] = H5Acreate2(dobj, H5_ATTR_COOKIE_NAME,
-                                                COOKIE_H5_TYPE,
-                                                data->h5_attr_dspace,
-                                                H5P_DEFAULT, H5P_DEFAULT);
+    for (size_t i = 0; i < H5_NATTRS; i++) {
+      data->h5_attrs[i] = H5Acreate2(dobj,
+                                     exp_attr_info[i].name,
+                                     SIZE_TO_H5_UTYPE(exp_attr_info[i].size),
+                                     data->h5_attr_dspace,
+                                     H5P_DEFAULT,
+                                     H5P_DEFAULT);
+    }
+
     for (size_t i = 0; i < H5_NATTRS; i++) {
         /* Note that this also checks if we missed one. */
         if (data->h5_attrs[i] < 0) {
