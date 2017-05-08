@@ -89,7 +89,8 @@ static const struct ch_storage_ops hdf5_ch_storage_ops = {
 #define H5_ATTR_BOARD_ID  1  /* board identifier */
 #define H5_ATTR_PVERS     2  /* protocol version */
 #define H5_ATTR_COOKIE    3  /* experiment cookie */
-#define H5_ATTR_MAX       4
+#define H5_ATTR_PH_FLAGS  4  /* packet header flags */
+#define H5_ATTR_MAX       5
 
 struct exp_attr_info {
   size_t size;
@@ -104,7 +105,8 @@ static const struct exp_attr_info exp_attr_info[] = {
   [H5_ATTR_MTYPE]    = { FIELD_SZ(struct raw_pkt_header, p_mtype),      "raw_mtype" },
   [H5_ATTR_BOARD_ID] = { FIELD_SZ(struct raw_pkt_bsmp, b_id),           "board_id" },
   [H5_ATTR_PVERS]    = { FIELD_SZ(struct raw_pkt_header, p_proto_vers), "raw_proto_vers" },
-  [H5_ATTR_COOKIE]   = { 8,                                             "experiment_cookie" }
+  [H5_ATTR_COOKIE]   = { 8,                                             "experiment_cookie" },
+  [H5_ATTR_PH_FLAGS] = { FIELD_SZ(struct raw_pkt_header, p_flags),      "ph_flags" }
 };
 
 #define H5_NATTRS (H5_ATTR_MAX)
@@ -392,6 +394,7 @@ static void hdf5_init_exp_attrs(struct ch_storage *chns,
                                 const struct raw_pkt_bsmp *bs)
 {
     struct h5_ch_data *data = h5_data(chns);
+    int rc;
     raw_cookie_t cookie = raw_exp_cookie(bs);
     if (hdf5_write_close(data->h5_attrs + H5_ATTR_BOARD_ID,
                          TO_H5_UTYPE(bs->b_id), &bs->b_id) ||
@@ -402,6 +405,15 @@ static void hdf5_init_exp_attrs(struct ch_storage *chns,
                 "some data will be missing",
                 (long long unsigned)bs->b_id,
                 (long long unsigned)raw_exp_cookie(bs));
+    }
+
+    uint8_t ph_flags = bs->ph.p_flags;
+    rc = hdf5_write_close(&data->h5_attrs[H5_ATTR_PH_FLAGS],
+                          TO_H5_UTYPE(ph_flags), &ph_flags);
+    if (rc < 0) {
+        log_ERR("Can't initialize some HDF5 attributes (ph_flags=%x)",
+                (unsigned int)ph_flags);
+
     }
 }
 
