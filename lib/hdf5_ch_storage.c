@@ -42,6 +42,9 @@
 #define COOKIE_H5_TYPE H5T_NATIVE_UINT64
 #define CHUNK_DIM  150000 // Set to largest expected standard write size which
                           // is currently sample.c, which uses nsamps=150000
+/* This should be sized to be at least as large as the largest expected write.
+ * This is the channel_data dataset, which uses CHUNK_DIM * 1024 * 2. */
+#define CHUNK_CACHE_SIZE (CHUNK_DIM * 1024 * sizeof(raw_samp_t))
 
 static int hdf5_ch_open(struct ch_storage *chns, unsigned flags);
 static int hdf5_ch_close(struct ch_storage *chns);
@@ -565,7 +568,21 @@ static int hdf5_ch_open(struct ch_storage *chns, unsigned flags)
     struct h5_ch_data tmp;
     h5_ch_data_init(&tmp, h5_data(chns)->dset_name); /* initialize defaults */
 
-    tmp.h5_file = H5Fcreate(chns->ch_path, flags, H5P_DEFAULT, H5P_DEFAULT);
+    /* Set chunk cache to be at least as large as our largest expected write.
+     * This is the channel_data dataset, which uses CHUNK_DIM * 1024 * 2
+     * bytes. */
+    hid_t fapl = H5Pcreate(H5P_FILE_ACCESS);
+    if (fapl < 0) {
+        goto fail;
+    };
+    H5Pset_cache(fapl,
+                 0,                    // unused
+                 11,                   // rdcc_nslots: the number of chunk slots,
+                                       // 10-100x chunks that can fit in rdcc_nbytes,
+                                       // recommended prime.
+                 CHUNK_CACHE_SIZE,     // rdcc_nbytes: total size of the raw data chunk cache in bytes
+                 1);                   // always preempt when full
+    tmp.h5_file = H5Fcreate(chns->ch_path, flags, H5P_DEFAULT, fapl);
     if (tmp.h5_file < 0) {
         goto fail;
     }
@@ -587,9 +604,15 @@ static int hdf5_ch_open(struct ch_storage *chns, unsigned flags)
         goto fail;
     }
     memcpy(h5_data(chns), &tmp, sizeof(tmp)); /* Success! */
+
+    H5Pclose(fapl);
+
     return 0;
 
  fail:
+    if (fapl != -1) {
+        H5Pclose(fapl);
+    }
     if (h5_ch_data_teardown(&tmp) == -1) {
         log_ERR("HDF5 teardown failed");
     }
