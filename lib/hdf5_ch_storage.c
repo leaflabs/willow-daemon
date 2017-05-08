@@ -34,11 +34,6 @@
 #include "raw_packets.h"
 
 #define DSET_EXTEND_FACTOR 1.75 /* TODO tune this knob */
-#define RANK 1                  /* we store as an array of board samples */
-#define CHUNK_DIM0 50
-#define CHUNK_DIM1 1
-#define IS_LITTLE_ENDIAN (1 == *(unsigned char *)&(const int){1})
-#define HOST_H5_ORDER (IS_LITTLE_ENDIAN ? H5T_ORDER_LE : H5T_ORDER_BE)
 #define COOKIE_H5_TYPE H5T_NATIVE_UINT64
 #define CHUNK_DIM  150000 // Set to largest expected standard write size which
                           // is currently sample.c, which uses nsamps=150000
@@ -170,11 +165,6 @@ static const struct dset_info dset_info[] = {
 struct h5_ch_data {
     const char *dset_name;      /* dataset name */
     hid_t h5_file;              /* HDF5 file type */
-    hid_t h5_dspace;            /* data space */
-    hid_t h5_arrtype;           /* sample array (within bsamp) data type */
-    hid_t h5_dtype;             /* board sample data type */
-    hid_t h5_dset;              /* data set */
-    hsize_t h5_chunk_dims[2];   /* data set chunk dimensions */
     hsize_t h5_dset_off;        /* current dataset write offset */
     hsize_t h5_dset_size;       /* current dataset size */
     struct dset dsets[H5_DSET_MAX];
@@ -205,13 +195,6 @@ static void h5_ch_data_init(struct h5_ch_data *data, const char *dset_name)
      */
     data->dset_name = dset_name;
     data->h5_file = -1;
-    data->h5_dspace = -1;
-    data->h5_arrtype = -1;
-    data->h5_dtype = -1;
-    data->h5_dset = -1;
-    /* TODO tune the chunk dimensions and the chunk cache */
-    data->h5_chunk_dims[0] = CHUNK_DIM0;
-    data->h5_chunk_dims[1] = CHUNK_DIM1;
 
     for (size_t i = 0; i < H5_DSET_MAX; i++) {
         data->dsets[i].dset = -1;
@@ -239,18 +222,6 @@ static int h5_ch_data_teardown(struct h5_ch_data *data)
         }
     }
     if (data->h5_attr_dspace >= 0 && H5Sclose(data->h5_attr_dspace) < 0) {
-        ret = -1;
-    }
-    if (data->h5_dset >= 0 && H5Dclose(data->h5_dset) < 0) {
-        ret = -1;
-    }
-    if (data->h5_arrtype >= 0 && H5Tclose(data->h5_arrtype) < 0) {
-        ret = -1;
-    }
-    if (data->h5_dtype >= 0 && H5Tclose(data->h5_dtype) < 0) {
-        ret = -1;
-    }
-    if (data->h5_dspace >= 0 && H5Sclose(data->h5_dspace) < 0) {
         ret = -1;
     }
 
@@ -313,61 +284,6 @@ static void hdf5_ch_free(struct ch_storage *chns)
 {
     free(h5_data(chns));
     free(chns);
-}
-
-/* Make the data space for storing board samples */
-static hid_t hdf5_create_dspace(struct h5_ch_data *data)
-{
-    const hsize_t cur_dim = 0, max_dim = H5S_UNLIMITED;
-    data->h5_dspace = H5Screate_simple(RANK, &cur_dim, &max_dim);
-    return data->h5_dspace;
-}
-
-/* Make the data types for storing board samples */
-static hid_t hdf5_create_dtypes(struct h5_ch_data *data)
-{
-    struct raw_pkt_bsmp bs;     /* just for type conversion/sizeof */
-    hsize_t nsamps = RAW_BSMP_NSAMP;
-    data->h5_arrtype = H5Tarray_create2(TO_H5_UTYPE(bs.b_samps[0]), 1,
-                                        &nsamps);
-    if (data->h5_arrtype < 0) {
-        return -1;
-    }
-    data->h5_dtype = H5Tcreate(H5T_COMPOUND, sizeof(struct raw_pkt_bsmp));
-    hid_t dtype = data->h5_dtype;
-    if (data->h5_dtype < 0 ||
-        H5Tinsert(dtype, "ph_flags", offsetof(struct raw_pkt_header, p_flags),
-                  TO_H5_UTYPE(bs.ph.p_flags)) < 0 ||
-        H5Tinsert(dtype, "samp_index", offsetof(struct raw_pkt_bsmp, b_sidx),
-                  TO_H5_UTYPE(bs.b_sidx)) < 0 ||
-        H5Tinsert(dtype, "chip_live",
-                  offsetof(struct raw_pkt_bsmp, b_chip_live),
-                  TO_H5_UTYPE(bs.b_chip_live)) < 0 ||
-        H5Tinsert(dtype, "samples", offsetof(struct raw_pkt_bsmp, b_samps),
-                  data->h5_arrtype) < 0) {
-        return -1;
-    }
-    return data->h5_dtype;
-}
-
-/* Make the data set itself */
-static hid_t hdf5_create_dset(struct h5_ch_data *data)
-{
-    hid_t ret = -1;
-    hid_t cprops = H5Pcreate(H5P_DATASET_CREATE);
-    if (cprops < 0) {
-        return -1;
-    }
-    if (H5Pset_chunk(cprops, RANK, data->h5_chunk_dims) >= 0) {
-        ret = H5Dcreate2(data->h5_file, data->dset_name,
-                         data->h5_dtype, data->h5_dspace,
-                         H5P_DEFAULT, cprops, H5P_DEFAULT);
-    }
-    H5Pclose(cprops);
-    if (ret >= 0) {
-        data->h5_dset = ret;
-    }
-    return ret;
 }
 
 static int hdf5_create_dsets(struct h5_ch_data *data) {
@@ -586,15 +502,6 @@ static int hdf5_ch_open(struct ch_storage *chns, unsigned flags)
     if (tmp.h5_file < 0) {
         goto fail;
     }
-    if (hdf5_create_dspace(&tmp) < 0) {
-        goto fail;
-    }
-    if (hdf5_create_dtypes(&tmp) < 0) {
-        goto fail;
-    }
-    if (hdf5_create_dset(&tmp) < 0) {
-        goto fail;
-    }
 
     if (hdf5_create_dsets(&tmp) < 0) {
         goto fail;
@@ -624,13 +531,6 @@ static int hdf5_ch_open(struct ch_storage *chns, unsigned flags)
 
 static int hdf5_ch_close(struct ch_storage *chns)
 {
-    struct h5_ch_data *data = h5_data(chns);
-    if (H5Dset_extent(data->h5_dset, &data->h5_dset_off) < 0) {
-        log_ERR("Can't clean up dataset on close; sample data in "
-                "%s, dataset %s after offset %llu will be garbage",
-                chns->ch_path, data->dset_name,
-                (long long unsigned)data->h5_dset_off);
-    }
     return h5_ch_data_teardown(h5_data(chns));
 }
 
@@ -670,6 +570,7 @@ static void hdf5_init_exp_attrs(struct ch_storage *chns,
 /* Increase the size of the dataset to make room for more samples. */
 static herr_t hdf5_extend(struct h5_ch_data *data, hsize_t minsize)
 {
+    int ret;
     hsize_t newsize;
     if (data->h5_dset_size) {
         newsize = (double)data->h5_dset_size * DSET_EXTEND_FACTOR + 0.5;
@@ -679,13 +580,6 @@ static herr_t hdf5_extend(struct h5_ch_data *data, hsize_t minsize)
     if (newsize < minsize) {
         newsize = minsize;
     }
-#if RANK != 1
-#error "If RANK !=1, hdf5_extend is broken"
-#endif
-    herr_t ret = H5Dset_extent(data->h5_dset, &newsize);
-    if (ret < 0) {
-        return -1;
-    };
 
     for (size_t i = 0; i < H5_DSET_MAX; i++) {
         const struct dset_info *dsinfo = &dset_info[i];
@@ -734,43 +628,14 @@ static int hdf5_ch_write(struct ch_storage *chns,
         }
     }
 
-    /* Everything's set up; do the write. */
-    int ret = -1;
-    hsize_t slabdims[RANK] = {(hsize_t)nsamps};
-    hid_t filespace = -1;
-    hid_t memspace = -1;
-
-    filespace = H5Dget_space(data->h5_dset);
-    if (filespace < 0) {
-        goto fail;
-    }
-    memspace = H5Screate_simple(RANK, slabdims, NULL);
-    if (memspace < 0) {
-        goto fail;
-    }
-    if (H5Sselect_hyperslab(filespace, H5S_SELECT_SET, &data->h5_dset_off,
-                            NULL, slabdims, NULL) < 0) {
-        goto fail;
-    }
-    if (H5Dwrite(data->h5_dset, data->h5_dtype, memspace, filespace,
-                 H5P_DEFAULT, bsamps) < 0) {
-        goto fail;
-    }
-
     /* Write datasets */
-    ret = hdf5_write_dsets(data, bsamps, nsamps);
+    int ret = hdf5_write_dsets(data, bsamps, nsamps);
     if (ret < 0) {
         goto fail;
     };
 
     data->h5_dset_off = next_offset;
     ret = 0;
- fail:
-    if (filespace != -1 && H5Sclose(filespace) < 0) {
-        log_ERR("can't free resources acquired while writing samples");
-    }
-    if (memspace != -1 && H5Sclose(memspace) < 0) {
-        log_ERR("can't free resources acquired while writing samples");
-    }
-    return ret;
+fail:
+     return ret;
 }
