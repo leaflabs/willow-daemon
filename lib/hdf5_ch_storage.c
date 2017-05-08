@@ -114,7 +114,8 @@ static const struct exp_attr_info exp_attr_info[] = {
 #define H5_NATTRS (H5_ATTR_MAX)
 
 #define H5_DSET_SAMPLE_INDEX  0
-#define H5_DSET_MAX           1
+#define H5_DSET_CHANNEL_DATA  1
+#define H5_DSET_MAX           2
 
 struct dset_info {
     size_t size;               // Size of each element in raw_pkt_bsmp
@@ -137,6 +138,13 @@ static const struct dset_info dset_info[] = {
         .nelems = 1,
         .name = "sample_index",
         .rank = 1
+    },
+    [H5_DSET_CHANNEL_DATA] = {
+        .size = sizeof(raw_samp_t),
+        .offset = offsetof(struct raw_pkt_bsmp, b_samps),
+        .nelems = 1024, // XXX
+        .name = "channel_data",
+        .rank = 2,
     },
 };
 
