@@ -20,7 +20,7 @@ On Ubuntu 12.04:
 
 3. Compile everything:
 
-    $ scons EXTRA_CFLAGS='-O2'
+    $ scons
 
 4. Now you can run the daemon, ./build/leafysd. Use "./build/leafysd -h" for
    help with command line arguments.
