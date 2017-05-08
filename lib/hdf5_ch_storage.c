@@ -285,22 +285,26 @@ static hid_t hdf5_create_dset(struct h5_ch_data *data)
 static hid_t hdf5_create_attrs(struct h5_ch_data *data)
 {
     struct raw_pkt_bsmp bs;
+    int rc = -1;
     raw_packet_init(&bs, RAW_MTYPE_BSMP, 0);
 
-    /* The dataset is the primary data object for these attributes. */
-    hid_t dobj = data->h5_dset;
-    assert(dobj >= 0);
+    /* The root group is the primary data object for these attributes. */
+    hid_t root_group = H5Gopen2(data->h5_file, "/", H5P_DEFAULT);
+    if (root_group < 0) {
+        log_ERR("Failed to find root group");
+        return -1;
+    }
 
     /* The attributes all live in the same 1x1 dataspace. */
     const hsize_t curd = 1, maxd = 1;
     data->h5_attr_dspace = H5Screate_simple(1, &curd, &maxd);
     if (data->h5_attr_dspace < 0) {
-        return -1;
+        goto cleanup;
     }
 
     /* Create the attributes. */
     for (size_t i = 0; i < H5_NATTRS; i++) {
-      data->h5_attrs[i] = H5Acreate2(dobj,
+      data->h5_attrs[i] = H5Acreate2(root_group,
                                      exp_attr_info[i].name,
                                      SIZE_TO_H5_UTYPE(exp_attr_info[i].size),
                                      data->h5_attr_dspace,
@@ -311,7 +315,7 @@ static hid_t hdf5_create_attrs(struct h5_ch_data *data)
     for (size_t i = 0; i < H5_NATTRS; i++) {
         /* Note that this also checks if we missed one. */
         if (data->h5_attrs[i] < 0) {
-            return -1;
+            goto cleanup;
         }
     }
 
@@ -322,10 +326,14 @@ static hid_t hdf5_create_attrs(struct h5_ch_data *data)
         hdf5_write_close(data->h5_attrs + H5_ATTR_PVERS,
                          TO_H5_UTYPE(bs.ph.p_proto_vers),
                          &bs.ph.p_proto_vers) < 0) {
-        return -1;
+        goto cleanup;
     }
 
-    return 0;
+    rc = 0;
+
+cleanup:
+    H5Gclose(root_group);
+    return rc;
 }
 
 static int hdf5_ch_open(struct ch_storage *chns, unsigned flags)
