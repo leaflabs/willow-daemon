@@ -1,5 +1,9 @@
 import os
 import os.path
+import platform
+import warnings
+import subprocess
+import shlex
 
 Help("""
 Build arguments:
@@ -21,6 +25,16 @@ def node_basename(node):
 def str_to_bool(str):
     str = str.lower().strip()
     return str.startswith('y') or str.startswith('t') or str.startswith('1')
+
+# Get information about Ubuntu release to enable easy building
+class UnsupportedOSWarning(Warning):
+    pass
+
+if platform.dist()[0] != 'Ubuntu':
+    warnings.warn('This build script only supports Ubuntu releases. Trying our best anyway...', UnsupportedOSWarning)
+    ubuntu_version = 'unsupported'
+else:
+    ubuntu_version = map(int, platform.dist()[1].split('.'))
 
 # Top-level build configuration
 program = 'leafysd'   # The name of the daemon program.
@@ -45,18 +59,34 @@ lib_deps = [
      # External dependencies:
      'event', 'event_pthreads', 'hdf5', 'protobuf-c', 'm', 'rt']
 libsng_deps = ['protobuf-c']
-test_lib_deps = ['check_pic', 'sng'] # External dependencies for tests
+test_lib_deps = ['check', 'sng'] # External dependencies for tests
+# checks for Ubuntu 16 and later
+if ubuntu_version != 'unsupported' and ubuntu_version[0] > 15:
+    test_lib_deps.append('subunit')
+
 verbosity_level = int(ARGUMENTS.get('V', 0))
 skip_test_build = str_to_bool(ARGUMENTS.get('SKIP_TESTS', 'n'))
 skip_util_build = str_to_bool(ARGUMENTS.get('SKIP_UTIL', 'n'))
 build_cc = ARGUMENTS.get('CC', 'gcc')
 build_ld = ARGUMENTS.get('LD', 'gcc')
 build_base_cflags = '-std=c99 -g -Wall -Wextra -Wpointer-arith -Werror'
-build_libsng_cflags = build_base_cflags
+
+# Ubuntu places libhdf5 in a weird spot. Query pkg-config for what we need
+if platform.dist()[0] == 'Ubuntu':
+    cmd = shlex.split('pkg-config --cflags hdf5')
+    hdf5_cflags = subprocess.check_output(cmd).strip()
+    build_base_cflags += ' ' + hdf5_cflags
+
 build_cflags = '-pthread ' + build_base_cflags
 build_cflags_extra = ARGUMENTS.get('EXTRA_CFLAGS', '')
 build_ldflags = '-pthread '
 build_ldflags_extra = ARGUMENTS.get('EXTRA_LDFLAGS', '')
+
+# Ubuntu...
+if platform.dist()[0] == 'Ubuntu':
+    cmd = shlex.split('pkg-config --libs hdf5')
+    hdf5_ldflags = subprocess.check_output(cmd).strip()
+    build_ldflags += ' ' + hdf5_ldflags
 
 # Put all generated files underneath the build directory. protoc-c is
 # configured to do this as well, to prevent anyone from carelessly
@@ -143,7 +173,7 @@ out_program = os.path.join(env.GetBuildPath(build_dir), program)
 main = env.Program(out_program, src_sources + libutil)
 
 # libsng
-shenv = env.Clone(CCFLAGS=build_libsng_cflags,
+shenv = env.Clone(CCFLAGS=build_base_cflags,
                   LIBS=libsng_deps,
                   CPPPATH=[build_lib_dir])
 if verbosity_level == 0:
