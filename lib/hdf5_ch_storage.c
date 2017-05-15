@@ -116,7 +116,8 @@ static const struct exp_attr_info exp_attr_info[] = {
 #define H5_DSET_SAMPLE_INDEX  0
 #define H5_DSET_CHANNEL_DATA  1
 #define H5_DSET_AUX_DATA      2
-#define H5_DSET_MAX           3
+#define H5_DSET_CHIP_LIVE     3
+#define H5_DSET_MAX           4
 
 struct dset_info {
     size_t size;               // Size of each element in raw_pkt_bsmp
@@ -153,6 +154,13 @@ static const struct dset_info dset_info[] = {
         .nelems = 96, // XXX
         .name = "aux_data",
         .rank = 2,
+    },
+    [H5_DSET_CHIP_LIVE] = {
+        .size = FIELD_SZ(struct raw_pkt_bsmp, b_chip_live),
+        .offset = offsetof(struct raw_pkt_bsmp, b_chip_live),
+        .nelems = 1,
+        .name = "chip_live",
+        .rank = 1,
     },
 };
 
