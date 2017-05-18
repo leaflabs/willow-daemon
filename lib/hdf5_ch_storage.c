@@ -35,8 +35,9 @@
 
 #define DSET_EXTEND_FACTOR 1.75 /* TODO tune this knob */
 #define COOKIE_H5_TYPE H5T_NATIVE_UINT64
-#define CHUNK_DIM  150000 // Set to largest expected standard write size which
-                          // is currently sample.c, which uses nsamps=150000
+#define CHUNK_DIM      150000  // Set to largest expected standard write size which
+                               // is currently sample.c, which uses nsamps=150000
+#define CHUNK_DIM_MAX  150000  // Maximum number of nsamples supported per write()
 /* This should be sized to be at least as large as the largest expected write.
  * This is the channel_data dataset, which uses CHUNK_DIM * 1024 * 2. */
 #define CHUNK_CACHE_SIZE (CHUNK_DIM * 1024 * sizeof(raw_samp_t))
@@ -318,7 +319,7 @@ static int hdf5_create_dsets(struct h5_ch_data *data) {
         };
         H5Pclose(cprops);
 
-        void *buf = malloc(CHUNK_DIM * dsinfo->size * dsinfo->nelems);
+        void *buf = malloc(CHUNK_DIM_MAX * dsinfo->size * dsinfo->nelems);
         if (!buf) {
             H5Dclose(dset);
             H5Sclose(dspace);
@@ -604,7 +605,7 @@ static int hdf5_ch_write(struct ch_storage *chns,
     }
 
     /* Too large */
-    if (nsamps > CHUNK_DIM) {
+    if (nsamps > CHUNK_DIM_MAX) {
         return -1;
     };
 
