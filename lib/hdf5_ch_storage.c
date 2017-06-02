@@ -35,9 +35,13 @@
 
 #define DSET_EXTEND_FACTOR 1.75 /* TODO tune this knob */
 #define COOKIE_H5_TYPE H5T_NATIVE_UINT64
-#define CHUNK_DIM      150000  // Set to largest expected standard write size which
-                               // is currently sample.c, which uses nsamps=150000
-#define CHUNK_DIM_MAX  150000  // Maximum number of nsamples supported per write()
+#define CHUNK_DIM       15000  // Half a second of samples, which results
+                               // in a reasonable minimum file size for a
+                               // short experiment.
+#define CHUNK_DIM_MAX  150000  // Maximum number of samples supported per
+                               // write().  The largest write size is
+                               // bounded presently by sample.c, which
+                               // uses nsamps=150000.
 /* This should be sized to be at least as large as the largest expected write.
  * This is the channel_data dataset, which uses CHUNK_DIM * 1024 * 2. */
 #define CHUNK_CACHE_SIZE (CHUNK_DIM * 1024 * sizeof(raw_samp_t))
