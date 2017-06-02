@@ -67,6 +67,12 @@
 #define DEFAULT_LENGTH_SECTORS MAX_LENGTH_SECTORS
 #define BUF_LEN (512 * MAX_LENGTH_SECTORS)
 
+/*
+ * we'll exit with this (nonstandard) status when bailing prematurely
+ * due to a suspicious-looking file
+ */
+#define EXIT_BOGUS_FILE 3
+
 static void usage(int exit_status)
 {
     fprintf(exit_status == EXIT_SUCCESS ? stdout : stderr,
@@ -340,5 +346,11 @@ int main(int argc, char *argv[])
 
     // DEBUG printf("========= Done.\n");
     printf("Copied %ld board samples.\n", count);
-    exit(EXIT_SUCCESS);         /* placate compiler */
+    /*
+     * if validation failed at the first or second sample, exit with a
+     * special, non-standard, status that indicates a suspicious-looking
+     * file
+     */
+    exit((count < 2 && (!args.count || count < args.count))? EXIT_BOGUS_FILE:
+                                                             EXIT_SUCCESS);
 }
