@@ -17,6 +17,8 @@
 // ************ ALWAYS USE [packed=true] IN REPEATED FIELDS. **************
 // ************************************************************************
 
+syntax="proto2";
+
 // The daemon sends DnodeSample (see below) messages to the client data socket.
 
 // BoardSubsample messages are sent during live streaming mode.
