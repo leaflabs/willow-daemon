@@ -392,6 +392,12 @@ static int hdf5_write_dsets(struct h5_ch_data* data,
         }
 
         filespace = H5Dget_space(dset->dset);
+        if (filespace < 0) {
+            log_ERR("failed to get filespace for dset '%s'\n",
+                    dsinfo->name);
+            H5Sclose(memspace);
+            goto fail;
+        }
 
         /* Create a count-sized selection */
         hsize_t offset[] = { data->h5_dset_off, 0 };
