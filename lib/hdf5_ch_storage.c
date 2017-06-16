@@ -405,6 +405,7 @@ static int hdf5_write_dsets(struct h5_ch_data* data,
                                  NULL, count, NULL);
         if (rc < 0) {
             log_ERR("failed to create hyperslab. count: %llu", count[0]);
+            H5Sclose(filespace);
             H5Sclose(memspace);
             goto fail;
         }
@@ -424,6 +425,7 @@ static int hdf5_write_dsets(struct h5_ch_data* data,
             log_ERR("failed to write h5dwriteee");
         }
 
+        H5Sclose(filespace);
         H5Sclose(memspace);
     }
 
