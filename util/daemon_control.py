@@ -26,6 +26,7 @@ from os.path import abspath, basename, dirname, join
 import socket
 import struct
 import sys
+import errno
 
 import google.protobuf.text_format
 
@@ -94,6 +95,28 @@ def get_daemon_control_sock(addr=('127.0.0.1', 1371), retry=False,
                 raise
         return sckt
 
+def recv(sckt, bufsize):
+    while True:
+        try:
+            return sckt.recv(bufsize)
+        except socket.error as se:
+            # retry interrupted system calls
+            if se.errno == errno.EINTR:
+                continue
+            else:
+                raise
+
+def send(sckt, string):
+    while True:
+        try:
+            return sckt.send(string)
+        except socket.error as se:
+            # retry interrupted system calls
+            if se.errno == errno.EINTR:
+                continue
+            else:
+                raise
+
 def do_control_cmds(commands, retry=False, max_retries=100,
                     control_socket=None):
     if control_socket is not None:
@@ -115,18 +138,18 @@ def do_control_cmds(commands, retry=False, max_retries=100,
             ser = cmd.SerializeToString()
             # Convert cmd's packed length to a network byte-order uint32, and
             # send that first.
-            sckt.send(struct.pack('>l', len(ser)))
+            send(sckt, struct.pack('>l', len(ser)))
             # Then send packed cmd.
-            sckt.send(ser)
+            send(sckt, ser)
 
             # Try to get the response's length as network byte-order uint32.
-            resplen_net = sckt.recv(4)
+            resplen_net = recv(sckt, 4)
             if len(resplen_net) == 4:
                 # Response length received. Convert it from network to host
                 # byte ordering.
                 resplen = struct.unpack('>l', resplen_net)[0]
                 # Receive the response protocol buffer.
-                pbuf_resp = sckt.recv(resplen)
+                pbuf_resp = recv(sckt, resplen)
             else:
                 # No response length was received. Maybe the socket was closed?
                 pbuf_resp = None
