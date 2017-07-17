@@ -11,7 +11,7 @@ On Ubuntu 12.04:
 
     $ sudo apt-get install libprotobuf-dev libprotobuf-c0-dev \
          libhdf5-serial-dev protobuf-c-compiler scons python \
-         libevent-dev
+         libevent-dev libpulse-dev
 
 2. Install optional dependencies:
 
