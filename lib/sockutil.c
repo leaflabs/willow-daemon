@@ -22,6 +22,7 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -407,4 +408,15 @@ int sockutil_get_iface_hwaddr(unsigned iface, uint8_t *hwaddr, size_t *len)
         ret = -1;
     }
     return ret;
+}
+
+int sockutil_set_tcp_nodelay(int sockfd)
+{
+    int one = 1;
+
+    return setsockopt(sockfd,
+                      IPPROTO_TCP,
+                      TCP_NODELAY, /* send immediately */
+                      &one,
+                      sizeof(one));
 }

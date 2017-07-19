@@ -185,4 +185,11 @@ static inline int sockutil_get_sock_hwaddr(int sockfd, uint8_t *hwaddr,
     return sockutil_get_iface_hwaddr(iface, hwaddr, len);
 }
 
+/**
+ * @brief Set the TCP_NODELAY option on a SOCK_STREAM socket
+ * @param sockfd socket
+ * @return 0 on success, -1 on failure.
+ */
+int sockutil_set_tcp_nodelay(int sockfd);
+
 #endif
