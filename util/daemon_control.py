@@ -93,6 +93,9 @@ def get_daemon_control_sock(addr=('127.0.0.1', 1371), retry=False,
                 continue
             else:
                 raise
+        # Configure sckt to transmit a TCP segment as soon as data
+        # is available, rather than wait for more more data
+        sckt.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         return sckt
 
 def recv(sckt, bufsize):
