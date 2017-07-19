@@ -267,6 +267,13 @@ static void* control_dn_conn_main(void *csessvp)
                 sleep(1);
                 goto next;
             }
+
+            /* send immediately */
+            if (sockutil_set_tcp_nodelay(dnode_sockfd) < 0) {
+                log_WARNING(
+                    "failed to set TCP_NODELAY on daemon control socket");
+            }
+
             evutil_make_socket_nonblocking(dnode_sockfd);
             cs->dnode_conn_why &= ~CONTROL_DCONN_WHY_CONN;
             safe_p_mutex_unlock(&cs->dnode_conn_mtx);
@@ -338,6 +345,12 @@ control_conn_open(struct control_session *cs,
                                  evutil_socket_t),
                   const char *log_who, int log_conn)
 {
+    /* send immediately */
+    if (sockutil_set_tcp_nodelay(fd) < 0) {
+        refuse_connection(fd, log_who, "failed to set TCP_NODELAY");
+        return;
+    }
+
     if (*bevp) {
         refuse_connection(fd, log_who, "another is ongoing");
         return;
