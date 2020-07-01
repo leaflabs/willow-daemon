@@ -133,6 +133,7 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
             if (print_usage) {
                 usage(EXIT_SUCCESS);
             }
+            break;
         case 'A':
             args->all_sub_channels = 1;
             break;
