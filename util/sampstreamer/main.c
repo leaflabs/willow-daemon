@@ -132,6 +132,7 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
             if (print_usage) {
                 usage(EXIT_SUCCESS);
             }
+            break;
         case 'e':
             args->set_err = 1;
             break;
