@@ -173,6 +173,7 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
             if (print_usage) {
                 usage(EXIT_SUCCESS);
             }
+            break;
         case 'A':
             args->dnode_addr = strdup(optarg);
             if (!args->dnode_addr) {
@@ -187,6 +188,7 @@ static void parse_args(struct arguments* args, int argc, char *const argv[])
             break;
         case 'h':
             usage(EXIT_SUCCESS);
+            break;
         case 'I':
             args->sample_iface = optarg;
             break;
